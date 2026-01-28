@@ -1,0 +1,56 @@
+graph TD
+    subgraph Frontend
+        A[React Native App]
+    end
+
+    subgraph Backend [FastAPI]
+        B[API Gateway or Load Balancer]
+        C[FastAPI Application]
+        D[Billing Middleware]
+        E[Chat Service]
+        F[Auth Service]
+    end
+
+    subgraph Databases
+        G[PostgreSQL]
+        H[Redis]
+        I[VectorDB]
+    end
+
+    subgraph External Services
+        J[Firebase Auth]
+        K[xAI Grok API]
+        L[Payment Gateway]
+    end
+
+    A -->|HTTPS| B
+    B --> C
+    C -->|Intercepts Requests| D
+    D --> E
+    D --> F
+    C --> F
+    C --> E
+
+    F -->|Verify Token| J
+    E -->|LLM Calls| K
+    E -->|Vector Search| I
+    E -->|Session and Messages| G
+
+    D -->|Credits and Rate Limit| H
+    D -->|User Wallet| G
+
+    A -->|In-App Purchases| L
+    L -->|Webhook| C
+
+    style A fill:#61DAFB,stroke:#333,stroke-width:2px
+    style B fill:#009688,stroke:#333,stroke-width:2px
+    style C fill:#009688,stroke:#333,stroke-width:2px
+    style D fill:#FFC107,stroke:#333,stroke-width:2px
+    style E fill:#00BCD4,stroke:#333,stroke-width:2px
+    style F fill:#9C27B0,stroke:#333,stroke-width:2px
+    style G fill:#336791,stroke:#333,stroke-width:2px
+    style H fill:#D82C20,stroke:#333,stroke-width:2px
+    style I fill:#4E2A8E,stroke:#333,stroke-width:2px
+    style J fill:#FFA000,stroke:#333,stroke-width:2px
+    style K fill:#1DA1F2,stroke:#333,stroke-width:2px
+    style L fill:#4CAF50,stroke:#333,stroke-width:2px

@@ -1,0 +1,36 @@
+sequenceDiagram
+    participant User as User
+    participant App as React Native App
+    participant Backend as FastAPI Backend
+    participant Auth as Auth Service
+    participant Chat as Chat Service
+    participant Billing as Billing Middleware
+    participant DB as Databases (PG, Redis, Vector)
+    participant Grok as xAI Grok API
+
+    User->>App: Sends Message
+    App->>Backend: POST /chat/completions
+    Backend->>Billing: Intercept Request
+    Billing->>Auth: Verify Token
+    Auth-->>Billing: User Info (Premium/Free)
+    Billing->>DB: Check Credits & Rate Limit
+    DB-->>Billing: Balance OK
+    Billing->>Chat: Process Request
+
+    alt Premium User
+        Chat->>DB: Vector Search (RAG)
+        DB-->>Chat: Relevant Memories
+        Chat->>Grok: Send Prompt (with Memories)
+    else Free User
+        Chat->>DB: Get Last 10 Messages
+        DB-->>Chat: Message History
+        Chat->>Grok: Send Prompt (Sliding Window)
+    end
+
+    Grok-->>Chat: AI Response
+    Chat-->>Backend: Return Response
+    Backend->>Billing: Post-Request Hook
+    Billing->>DB: Deduct Credits (Atomic)
+    DB-->>Billing: Deduction OK
+    Backend-->>App: Send AI Response
+    App-->>User: Display Message
