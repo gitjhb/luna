@@ -53,12 +53,44 @@
 
 ---
 
+## 高优先级（核心体验）
+
+### 🧠 长记忆系统 (Clawdbot 式)
+**设计文档：** `docs/MEMORY_ARCHITECTURE.md`
+
+**数据层：**
+- [ ] 创建 `user_memories` 表（content, category, importance, embedding_id）
+- [ ] 创建 `user_todos` 表（content, due_at, remind_at）
+- [ ] 配置向量数据库 per-user namespace
+
+**记忆提取：**
+- [ ] 实现 `extract_memories()` - 对话后用 LLM 提取关键信息
+- [ ] 异步后台处理，不阻塞响应
+- [ ] 分类：preference/fact/event/person/todo
+
+**记忆召回：**
+- [ ] 实现 `recall_memories()` - 语义搜索 top-5 相关记忆
+- [ ] 注入 system prompt（限制 ~200 tokens）
+- [ ] 缓存热门记忆减少向量查询
+
+**TODO/提醒：**
+- [ ] 从对话自动识别 TODO（"帮我记一下周五开会"）
+- [ ] Celery 定时任务检查提醒
+- [ ] 推送通知（App/Telegram）
+
+**用户管理：**
+- [ ] API: GET /memories - 查看自己的记忆
+- [ ] API: DELETE /memories/{id} - 删除记忆
+- [ ] 自动清理 90 天未召回的低重要性记忆
+
+---
+
 ## 低优先级
 
-### 🧠 RAG 记忆系统
-- [ ] 配置 Pinecone/ChromaDB 生产环境
-- [ ] 优化 embedding 成本
-- [ ] 添加记忆清理策略
+### 📊 RAG 优化
+- [ ] 配置 Pinecone 生产环境（比 ChromaDB 快）
+- [ ] Embedding 批量处理降成本
+- [ ] 记忆压缩/合并（相似记忆去重）
 
 ### 📊 监控
 - [ ] 集成 Prometheus 指标
