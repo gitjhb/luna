@@ -32,9 +32,11 @@ class IntimacyService:
     - 5 intimacy stages with distinct AI behavior
     """
 
-    # XP Formula Constants
-    BASE_XP = 100
-    MULTIPLIER = 1.15
+    # XP Formula Constants - Early levels are easy, later get progressively harder
+    # Level 1: 6 XP (3 messages), Level 2: 12, Level 3: 20, Level 4: 35, Level 5+: exponential
+    EARLY_LEVEL_XP = [0, 6, 12, 20, 35, 55]  # XP thresholds for levels 0-5
+    BASE_XP = 55  # Base for exponential after level 5
+    MULTIPLIER = 1.25  # Steeper curve after early levels
     MAX_LEVEL = 50
     DAILY_XP_CAP = 500
 
@@ -168,13 +170,15 @@ class IntimacyService:
     def xp_for_level(cls, level: int) -> float:
         """
         Calculate total XP required to reach a specific level.
-        Formula: XP = 100 * (1.15 ^ level)
-
-        Returns cumulative XP needed from level 0.
+        Early levels (1-5) use predefined thresholds for quick progression.
+        Later levels use exponential formula: BASE_XP * (1.25 ^ (level - 5))
         """
         if level <= 0:
             return 0
-        return cls.BASE_XP * (cls.MULTIPLIER ** level)
+        if level < len(cls.EARLY_LEVEL_XP):
+            return cls.EARLY_LEVEL_XP[level]
+        # Exponential for levels 6+
+        return cls.BASE_XP * (cls.MULTIPLIER ** (level - 5))
 
     @classmethod
     def xp_required_for_level(cls, level: int) -> float:
@@ -186,9 +190,27 @@ class IntimacyService:
     @classmethod
     def calculate_level(cls, total_xp: float) -> int:
         """
-        Calculate level from total XP using the inverse formula.
-        Level = log(XP / Base) / log(Multiplier)
+        Calculate level from total XP.
+        Uses early level thresholds first, then exponential formula.
         """
+        # Check early levels first
+        for level in range(len(cls.EARLY_LEVEL_XP) - 1, 0, -1):
+            if total_xp >= cls.EARLY_LEVEL_XP[level]:
+                # Check if we're beyond early levels
+                if level == len(cls.EARLY_LEVEL_XP) - 1:
+                    # Use exponential formula for higher levels
+                    import math
+                    excess_xp = total_xp - cls.BASE_XP
+                    if excess_xp <= 0:
+                        return level
+                    extra_levels = int(math.log(total_xp / cls.BASE_XP) / math.log(cls.MULTIPLIER))
+                    return level + extra_levels
+                return level
+        return 0
+        
+    @classmethod
+    def _legacy_calculate_level(cls, total_xp: float) -> int:
+        """Legacy method for reference."""
         if total_xp < cls.BASE_XP:
             return 0
 

@@ -53,15 +53,24 @@ export default function ChatScreen() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [characterAvatar, setCharacterAvatar] = useState(params.avatarUrl || 'https://i.pravatar.cc/100?img=5');
   const [backgroundImage, setBackgroundImage] = useState(params.backgroundUrl || DEFAULT_BACKGROUND);
-  const [relationshipLevel, setRelationshipLevel] = useState(1);
+  const [relationshipLevel, setRelationshipLevel] = useState<number | null>(null); // null = loading
   const [relationshipXp, setRelationshipXp] = useState(0);
   const [relationshipMaxXp, setRelationshipMaxXp] = useState(100);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showLevelUpModal, setShowLevelUpModal] = useState(false);
+  const [newLevel, setNewLevel] = useState(0);
   const [characterName, setCharacterName] = useState(params.characterName || 'Companion');
   
   const flatListRef = useRef<FlatList>(null);
+  const previousLevelRef = useRef<number | null>(null);
 
+  // Reset state when character changes
   useEffect(() => {
+    // Clear previous character's data
+    setRelationshipLevel(null);
+    setRelationshipXp(0);
+    setRelationshipMaxXp(100);
+    setMessages(sessionId || '', []);
     initializeSession();
   }, [params.characterId]);
 
@@ -83,11 +92,15 @@ export default function ChatScreen() {
       // Step 2: Fetch intimacy status
       try {
         const intimacyStatus = await intimacyService.getStatus(params.characterId);
+        previousLevelRef.current = intimacyStatus.currentLevel;
         setRelationshipLevel(intimacyStatus.currentLevel);
         setRelationshipXp(intimacyStatus.xpProgressInLevel);
         setRelationshipMaxXp(intimacyStatus.xpForNextLevel - intimacyStatus.xpForCurrentLevel);
       } catch (e) {
         console.log('Intimacy status not available:', e);
+        // Set default level 0 if no intimacy data
+        previousLevelRef.current = 0;
+        setRelationshipLevel(0);
       }
       
       // Step 3: Sync with backend - get or create session
@@ -160,6 +173,15 @@ export default function ChatScreen() {
       // Update intimacy after chat (XP earned from message)
       try {
         const updatedIntimacy = await intimacyService.getStatus(params.characterId);
+        const oldLevel = previousLevelRef.current;
+        
+        // Check for level up
+        if (oldLevel !== null && updatedIntimacy.currentLevel > oldLevel) {
+          setNewLevel(updatedIntimacy.currentLevel);
+          setShowLevelUpModal(true);
+        }
+        
+        previousLevelRef.current = updatedIntimacy.currentLevel;
         setRelationshipLevel(updatedIntimacy.currentLevel);
         setRelationshipXp(updatedIntimacy.xpProgressInLevel);
         setRelationshipMaxXp(updatedIntimacy.xpForNextLevel - updatedIntimacy.xpForCurrentLevel);
@@ -296,10 +318,16 @@ export default function ChatScreen() {
         <View style={styles.statusBar}>
           {/* Level Badge */}
           <View style={styles.levelContainer}>
-            <Text style={styles.levelText}>LV {relationshipLevel}</Text>
-            <View style={styles.xpBarContainer}>
-              <View style={[styles.xpBar, { width: `${(relationshipXp / relationshipMaxXp) * 100}%` }]} />
-            </View>
+            {relationshipLevel === null ? (
+              <Text style={styles.levelText}>加载中...</Text>
+            ) : (
+              <>
+                <Text style={styles.levelText}>LV {relationshipLevel}</Text>
+                <View style={styles.xpBarContainer}>
+                  <View style={[styles.xpBar, { width: `${(relationshipXp / relationshipMaxXp) * 100}%` }]} />
+                </View>
+              </>
+            )}
           </View>
           
           {/* Credits */}
@@ -475,6 +503,40 @@ export default function ChatScreen() {
                 </TouchableOpacity>
               </View>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Level Up Celebration Modal */}
+      <Modal
+        visible={showLevelUpModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLevelUpModal(false)}
+      >
+        <View style={styles.levelUpOverlay}>
+          <View style={styles.levelUpContent}>
+            <Text style={styles.levelUpEmoji}>🎉</Text>
+            <Text style={styles.levelUpTitle}>恭喜升级！</Text>
+            <Text style={styles.levelUpLevel}>Level {newLevel}</Text>
+            <Text style={styles.levelUpDesc}>
+              {newLevel <= 3 && '继续聊天解锁更多功能！'}
+              {newLevel === 4 && '🔓 解锁：更亲密的对话'}
+              {newLevel >= 5 && newLevel < 11 && '🔓 解锁：专属表情包'}
+              {newLevel >= 11 && newLevel < 26 && '🔓 解锁：语音消息'}
+              {newLevel >= 26 && '🔓 解锁：私密内容'}
+            </Text>
+            <TouchableOpacity 
+              style={styles.levelUpButton}
+              onPress={() => setShowLevelUpModal(false)}
+            >
+              <LinearGradient
+                colors={['#8B5CF6', '#EC4899'] as [string, string]}
+                style={styles.levelUpButtonGradient}
+              >
+                <Text style={styles.levelUpButtonText}>太棒了！</Text>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -838,6 +900,57 @@ const styles = StyleSheet.create({
   creditPackSaveText: {
     fontSize: 10,
     fontWeight: '600',
+    color: '#fff',
+  },
+  // Level Up Modal Styles
+  levelUpOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  levelUpContent: {
+    backgroundColor: '#1a1025',
+    borderRadius: 24,
+    padding: 32,
+    alignItems: 'center',
+    marginHorizontal: 40,
+    borderWidth: 2,
+    borderColor: '#8B5CF6',
+  },
+  levelUpEmoji: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  levelUpTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  levelUpLevel: {
+    fontSize: 48,
+    fontWeight: '800',
+    color: '#EC4899',
+    marginBottom: 16,
+  },
+  levelUpDesc: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.8)',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  levelUpButton: {
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  levelUpButtonGradient: {
+    paddingHorizontal: 40,
+    paddingVertical: 14,
+  },
+  levelUpButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
     color: '#fff',
   },
 });
