@@ -2,12 +2,12 @@
 xAI Grok API Service Wrapper
 """
 
-import os
 from typing import List, Dict, Optional, AsyncGenerator
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.exceptions import LLMServiceError
+from app.config import settings
 
 
 class GrokService:
@@ -18,12 +18,12 @@ class GrokService:
     """
     
     def __init__(self):
-        self.api_key = os.getenv("XAI_API_KEY")
+        self.api_key = settings.XAI_API_KEY
         if not self.api_key:
-            raise ValueError("XAI_API_KEY environment variable not set")
+            raise ValueError("XAI_API_KEY not set in settings")
         
-        self.base_url = "https://api.x.ai/v1"
-        self.model = "grok-beta"  # or "grok-vision-beta" for multimodal
+        self.base_url = settings.XAI_BASE_URL
+        self.model = settings.XAI_MODEL
         self.timeout = 60.0
     
     @retry(
@@ -182,12 +182,12 @@ class OpenAIEmbeddingService:
     """
     
     def __init__(self):
-        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_key = settings.OPENAI_API_KEY
         if not self.api_key:
-            raise ValueError("OPENAI_API_KEY environment variable not set")
+            raise ValueError("OPENAI_API_KEY not set in settings")
         
-        self.base_url = "https://api.openai.com/v1"
-        self.model = "text-embedding-3-small"
+        self.base_url = settings.OPENAI_BASE_URL
+        self.model = settings.OPENAI_EMBEDDING_MODEL
         self.timeout = 30.0
     
     @retry(

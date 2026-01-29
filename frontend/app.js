@@ -1,7 +1,7 @@
 // AI Companion Web Test App
 
 const API_URL = 'http://localhost:8000/api/v1';
-const USE_MOCK_API = true;
+const USE_MOCK_API = false;
 
 // State
 let currentCharacter = null;

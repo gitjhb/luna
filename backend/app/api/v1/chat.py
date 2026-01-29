@@ -15,6 +15,7 @@ from app.models.schemas import (
 )
 from app.services.intimacy_service import intimacy_service, IntimacyService
 from app.api.v1.characters import CHARACTERS
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ router = APIRouter(prefix="/chat")
 _sessions = {}
 _messages = {}
 
-MOCK_MODE = os.getenv("MOCK_LLM", "true").lower() == "true"
+MOCK_MODE = settings.MOCK_LLM
 
 
 def get_character_info(character_id: str) -> dict:
