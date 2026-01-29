@@ -35,10 +35,23 @@ export default function ChatsScreen() {
 
   const loadSessions = async () => {
     try {
-      const data = await chatService.getSessions();
-      setSessions(data);
+      // Fetch latest sessions from backend
+      const backendSessions = await chatService.getSessions();
+      
+      // Merge with local sessions to preserve any local-only data
+      // but always use backend's avatar/name (they may have been updated)
+      const mergedSessions = backendSessions.map(bs => {
+        const localSession = sessions.find(ls => ls.sessionId === bs.sessionId);
+        return {
+          ...localSession,
+          ...bs, // Backend data takes priority (updated avatars, names)
+        };
+      });
+      
+      setSessions(mergedSessions);
     } catch (error) {
       console.error('Failed to load sessions:', error);
+      // Keep using cached sessions if backend fails
     } finally {
       setLoading(false);
       setRefreshing(false);
