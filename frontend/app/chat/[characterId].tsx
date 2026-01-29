@@ -27,6 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useUserStore } from '../../store/userStore';
 import { useChatStore, selectActiveMessages, Message } from '../../store/chatStore';
 import { chatService } from '../../services/chatService';
+import { intimacyService } from '../../services/intimacyService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -67,6 +68,16 @@ export default function ChatScreen() {
   const initializeSession = async () => {
     try {
       setIsInitializing(true);
+      
+      // Fetch intimacy status
+      try {
+        const intimacyStatus = await intimacyService.getStatus(params.characterId);
+        setRelationshipLevel(intimacyStatus.currentLevel);
+        setRelationshipXp(intimacyStatus.xpProgressInLevel);
+        setRelationshipMaxXp(intimacyStatus.xpForNextLevel - intimacyStatus.xpForCurrentLevel);
+      } catch (e) {
+        console.log('Intimacy status not available:', e);
+      }
       
       if (params.sessionId) {
         setSessionId(params.sessionId);
@@ -122,10 +133,76 @@ export default function ChatScreen() {
         deductCredits(response.creditsDeducted);
       }
       
+      // Update intimacy after chat (XP earned from message)
+      try {
+        const updatedIntimacy = await intimacyService.getStatus(params.characterId);
+        setRelationshipLevel(updatedIntimacy.currentLevel);
+        setRelationshipXp(updatedIntimacy.xpProgressInLevel);
+        setRelationshipMaxXp(updatedIntimacy.xpForNextLevel - updatedIntimacy.xpForCurrentLevel);
+      } catch (e) {
+        // Silently fail if intimacy update fails
+      }
+      
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (error: any) {
       console.error('Send message error:', error);
       Alert.alert('Error', 'Failed to send message');
+    } finally {
+      setTyping(false);
+    }
+  };
+
+  const handleAskForPhoto = async () => {
+    if (!sessionId) return;
+    
+    // Use a special message to request a photo
+    const photoRequest = "Send me a photo of yourself 📸";
+    setInputText('');
+    
+    const userMessage: Message = {
+      messageId: `user-${Date.now()}`,
+      role: 'user',
+      content: photoRequest,
+      createdAt: new Date().toISOString(),
+    };
+    addMessage(sessionId, userMessage);
+    
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    setTyping(true, params.characterId);
+    
+    try {
+      const response = await chatService.sendMessage({ 
+        sessionId, 
+        message: photoRequest,
+        requestType: 'photo'  // Tell backend this is a photo request
+      });
+      
+      addMessage(sessionId, {
+        messageId: response.messageId,
+        role: 'assistant',
+        content: response.content,
+        type: response.type,
+        isLocked: response.isLocked,
+        imageUrl: response.imageUrl,
+        createdAt: response.createdAt,
+      });
+      
+      if (response.creditsDeducted) {
+        deductCredits(response.creditsDeducted);
+      }
+      
+      // Update intimacy
+      try {
+        const updatedIntimacy = await intimacyService.getStatus(params.characterId);
+        setRelationshipLevel(updatedIntimacy.currentLevel);
+        setRelationshipXp(updatedIntimacy.xpProgressInLevel);
+        setRelationshipMaxXp(updatedIntimacy.xpForNextLevel - updatedIntimacy.xpForCurrentLevel);
+      } catch (e) {}
+      
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    } catch (error: any) {
+      console.error('Photo request error:', error);
+      Alert.alert('Error', 'Failed to request photo');
     } finally {
       setTyping(false);
     }
@@ -202,13 +279,13 @@ export default function ChatScreen() {
           </View>
           
           {/* Credits */}
-          <View style={styles.creditsContainer}>
+          <TouchableOpacity style={styles.creditsContainer} onPress={() => setShowUpgradeModal(true)}>
             <Text style={styles.coinEmoji}>🪙</Text>
             <Text style={styles.creditsText}>{wallet?.totalCredits ?? 0}</Text>
-            <TouchableOpacity style={styles.addCreditsButton}>
+            <View style={styles.addCreditsButton}>
               <Ionicons name="add" size={14} color="#FFD700" />
-            </TouchableOpacity>
-          </View>
+            </View>
+          </TouchableOpacity>
           
           {/* Upgrade Button */}
           {!isSubscribed && (
@@ -237,6 +314,14 @@ export default function ChatScreen() {
           ListFooterComponent={isTyping ? renderTypingIndicator : null}
           showsVerticalScrollIndicator={false}
         />
+
+        {/* Action Buttons */}
+        <View style={styles.actionButtonsRow}>
+          <TouchableOpacity style={styles.actionButton} onPress={handleAskForPhoto}>
+            <Text style={styles.actionButtonEmoji}>📸</Text>
+            <Text style={styles.actionButtonText}>Ask for Photo</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Input Area - moved up */}
         <KeyboardAvoidingView
@@ -544,6 +629,31 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.5)',
     fontSize: 14,
     fontStyle: 'italic',
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    gap: 10,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.3)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.5)',
+    gap: 6,
+  },
+  actionButtonEmoji: {
+    fontSize: 16,
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
   inputContainer: {
     flexDirection: 'row',
