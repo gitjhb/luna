@@ -17,6 +17,8 @@ import {
   Image,
   Dimensions,
   ImageBackground,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -53,6 +55,7 @@ export default function ChatScreen() {
   const [relationshipLevel, setRelationshipLevel] = useState(1);
   const [relationshipXp, setRelationshipXp] = useState(0);
   const [relationshipMaxXp, setRelationshipMaxXp] = useState(100);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   
   const flatListRef = useRef<FlatList>(null);
   const characterName = params.characterName || 'Companion';
@@ -209,7 +212,7 @@ export default function ChatScreen() {
           
           {/* Upgrade Button */}
           {!isSubscribed && (
-            <TouchableOpacity style={styles.upgradeButton} onPress={() => router.push('/subscription')}>
+            <TouchableOpacity style={styles.upgradeButton} onPress={() => setShowUpgradeModal(true)}>
               <LinearGradient
                 colors={['#FF6B35', '#F7931E'] as [string, string]}
                 start={{ x: 0, y: 0 }}
@@ -272,6 +275,100 @@ export default function ChatScreen() {
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      {/* Upgrade Modal */}
+      <Modal
+        visible={showUpgradeModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowUpgradeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>升级会员</Text>
+              <TouchableOpacity onPress={() => setShowUpgradeModal(false)} style={styles.modalCloseButton}>
+                <Ionicons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              {/* Premium Plan */}
+              <TouchableOpacity style={styles.planCard}>
+                <LinearGradient
+                  colors={['#8B5CF6', '#EC4899'] as [string, string]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.planGradient}
+                >
+                  <View style={styles.planHeader}>
+                    <Text style={styles.planName}>Premium</Text>
+                    <View style={styles.planBadge}>
+                      <Text style={styles.planBadgeText}>热门</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.planPrice}>¥68<Text style={styles.planPeriod}>/月</Text></Text>
+                  <View style={styles.planFeatures}>
+                    <Text style={styles.planFeature}>✓ 每月 1000 金币</Text>
+                    <Text style={styles.planFeature}>✓ 无限文字聊天</Text>
+                    <Text style={styles.planFeature}>✓ 优先响应</Text>
+                    <Text style={styles.planFeature}>✓ 专属角色解锁</Text>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {/* VIP Plan */}
+              <TouchableOpacity style={styles.planCard}>
+                <LinearGradient
+                  colors={['#F59E0B', '#EF4444'] as [string, string]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.planGradient}
+                >
+                  <View style={styles.planHeader}>
+                    <Text style={styles.planName}>VIP</Text>
+                    <View style={[styles.planBadge, { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
+                      <Text style={styles.planBadgeText}>尊享</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.planPrice}>¥168<Text style={styles.planPeriod}>/月</Text></Text>
+                  <View style={styles.planFeatures}>
+                    <Text style={styles.planFeature}>✓ 每月 3000 金币</Text>
+                    <Text style={styles.planFeature}>✓ 无限聊天 + 语音</Text>
+                    <Text style={styles.planFeature}>✓ 极速响应</Text>
+                    <Text style={styles.planFeature}>✓ 全部角色解锁</Text>
+                    <Text style={styles.planFeature}>✓ 专属客服</Text>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {/* Credit Packs */}
+              <Text style={styles.sectionTitle}>金币充值</Text>
+              <View style={styles.creditPacks}>
+                <TouchableOpacity style={styles.creditPack}>
+                  <Text style={styles.creditPackCoins}>🪙 100</Text>
+                  <Text style={styles.creditPackPrice}>¥12</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.creditPack}>
+                  <Text style={styles.creditPackCoins}>🪙 500</Text>
+                  <Text style={styles.creditPackPrice}>¥50</Text>
+                  <View style={styles.creditPackSave}>
+                    <Text style={styles.creditPackSaveText}>省17%</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.creditPack}>
+                  <Text style={styles.creditPackCoins}>🪙 1200</Text>
+                  <Text style={styles.creditPackPrice}>¥98</Text>
+                  <View style={styles.creditPackSave}>
+                    <Text style={styles.creditPackSaveText}>省32%</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -482,5 +579,131 @@ const styles = StyleSheet.create({
     height: 48,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#1a1025',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: SCREEN_HEIGHT * 0.8,
+    paddingBottom: 34,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalScroll: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  planCard: {
+    marginBottom: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  planGradient: {
+    padding: 20,
+  },
+  planHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  planName: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  planBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  planBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  planPrice: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 12,
+  },
+  planPeriod: {
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  planFeatures: {
+    gap: 6,
+  },
+  planFeature: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  creditPacks: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  creditPack: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  creditPackCoins: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFD700',
+    marginBottom: 4,
+  },
+  creditPackPrice: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  creditPackSave: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  creditPackSaveText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
