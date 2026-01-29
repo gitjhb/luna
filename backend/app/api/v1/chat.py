@@ -6,12 +6,16 @@ from fastapi import APIRouter, HTTPException, Request
 from uuid import UUID, uuid4
 from datetime import datetime
 import os
+import logging
 
 from app.models.schemas import (
     ChatCompletionRequest, ChatCompletionResponse,
     CreateSessionRequest, CreateSessionResponse,
     SessionInfo, ChatMessage
 )
+from app.services.intimacy_service import intimacy_service, IntimacyService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat")
 
@@ -128,6 +132,37 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
     req.state.tokens_used = tokens
     req.state.session_id = request.session_id
     req.state.message_id = msg_id
+
+    # =========================================================================
+    # Intimacy XP Awards
+    # =========================================================================
+    user = getattr(req.state, "user", None)
+    user_id = str(user.user_id) if user else "demo-user-123"
+    character_id = str(_sessions[session_id]["character_id"])
+
+    # Award XP for sending message (+2 XP)
+    xp_result = await intimacy_service.award_xp(user_id, character_id, "message")
+    intimacy_xp = xp_result.get("xp_awarded", 0) if xp_result.get("success") else 0
+    level_up = xp_result.get("level_up", False)
+
+    # Check for continuous chat bonus (every 10 messages)
+    total_msgs = _sessions[session_id]["total_messages"]
+    if total_msgs > 0 and total_msgs % 10 == 0:
+        bonus_result = await intimacy_service.award_xp(user_id, character_id, "continuous_chat")
+        if bonus_result.get("success"):
+            intimacy_xp += bonus_result.get("xp_awarded", 0)
+            logger.info(f"Continuous chat bonus awarded: +{bonus_result.get('xp_awarded', 0)} XP")
+
+    # Check for emotional words bonus
+    if IntimacyService.contains_emotional_words(request.message):
+        emotional_result = await intimacy_service.award_xp(user_id, character_id, "emotional")
+        if emotional_result.get("success"):
+            intimacy_xp += emotional_result.get("xp_awarded", 0)
+            logger.info(f"Emotional expression bonus awarded: +{emotional_result.get('xp_awarded', 0)} XP")
+
+    # Store intimacy info in request state for potential use
+    req.state.intimacy_xp_awarded = intimacy_xp
+    req.state.intimacy_level_up = level_up
 
     return ChatCompletionResponse(
         message_id=msg_id,

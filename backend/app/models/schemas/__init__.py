@@ -187,3 +187,22 @@ class SubscriptionPlan(BaseModel):
     price_monthly_usd: float
     daily_credits: int
     features: List[str]
+
+
+# ============================================================================
+# Intimacy (Re-export from intimacy_schemas)
+# ============================================================================
+
+from app.models.schemas.intimacy_schemas import (
+    IntimacyStatus,
+    ActionAvailability,
+    XPAwardResponse,
+    LevelUpEvent,
+    DailyCheckinResponse,
+    IntimacyHistoryEntry,
+    IntimacyHistoryResponse,
+    StageInfo,
+    AllStagesResponse,
+    FeatureUnlock,
+    AllFeaturesResponse,
+)

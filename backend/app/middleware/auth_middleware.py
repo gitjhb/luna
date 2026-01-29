@@ -12,6 +12,9 @@ import os
 
 from app.models.schemas import UserContext
 
+# Consistent demo user ID for mock mode
+DEMO_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
+
 
 class AuthMiddleware(BaseHTTPMiddleware):
     """
@@ -52,9 +55,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Create user context
         if self.mock_mode:
-            # Mock mode: create demo user
+            # Mock mode: create demo user with consistent ID
             request.state.user = UserContext(
-                user_id=uuid4(),
+                user_id=DEMO_USER_ID,
                 email="demo@example.com",
                 subscription_tier="free",
                 is_subscribed=False,
