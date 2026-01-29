@@ -67,10 +67,11 @@ apiClient.interceptors.response.use(
     // Handle 402 Payment Required (insufficient credits)
     if (error.response?.status === 402) {
       // Return structured error for UI handling
+      const errData = error.response.data || {};
       return Promise.reject({
+        ...errData,
         error: 'insufficient_credits',
-        message: error.response.data.message,
-        ...error.response.data,
+        message: errData.message || 'Insufficient credits',
       });
     }
     
@@ -140,7 +141,7 @@ export const api = {
  * Replace with real API calls in production
  */
 export const mockApi = {
-  enabled: true, // Set to false to use real API
+  enabled: false, // Set to false to use real API
   
   delay: (ms: number = 1000) => new Promise((resolve) => setTimeout(resolve, ms)),
   
@@ -151,7 +152,7 @@ export const mockApi = {
         userId: 'mock-user-id',
         email: 'user@example.com',
         displayName: 'John Doe',
-        subscriptionTier: 'free',
+        subscriptionTier: 'free' as const,
         createdAt: new Date().toISOString(),
       },
       wallet: {
@@ -171,7 +172,7 @@ export const mockApi = {
         avatarUrl: 'https://i.pravatar.cc/300?img=1',
         description: 'A sophisticated and intelligent companion who loves deep conversations.',
         personalityTraits: ['Intelligent', 'Empathetic', 'Sophisticated'],
-        tierRequired: 'free',
+        tierRequired: 'free' as const,
         isSpicy: false,
         tags: ['Conversation', 'Advice', 'Philosophy'],
       },
@@ -181,7 +182,7 @@ export const mockApi = {
         avatarUrl: 'https://i.pravatar.cc/300?img=5',
         description: 'A playful and flirtatious companion with a seductive charm.',
         personalityTraits: ['Playful', 'Seductive', 'Confident'],
-        tierRequired: 'premium',
+        tierRequired: 'premium' as const,
         isSpicy: true,
         tags: ['Flirty', 'Romantic', 'Spicy'],
       },
@@ -191,7 +192,7 @@ export const mockApi = {
         avatarUrl: 'https://i.pravatar.cc/300?img=9',
         description: 'An elegant and mysterious companion who enjoys roleplay.',
         personalityTraits: ['Mysterious', 'Elegant', 'Creative'],
-        tierRequired: 'vip',
+        tierRequired: 'vip' as const,
         isSpicy: true,
         tags: ['Roleplay', 'Fantasy', 'Exclusive'],
       },
@@ -209,11 +210,36 @@ export const mockApi = {
       createdAt: new Date().toISOString(),
     },
     
+    chatSessions: [
+      {
+        sessionId: 'session-123',
+        characterId: 'char-1',
+        characterName: 'Sophia',
+        characterAvatar: 'https://i.pravatar.cc/300?img=1',
+        title: 'Deep conversation about life...',
+        totalMessages: 24,
+        totalCreditsSpent: 3.6,
+        lastMessageAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 min ago
+        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+      },
+      {
+        sessionId: 'session-456',
+        characterId: 'char-2',
+        characterName: 'Isabella',
+        characterAvatar: 'https://i.pravatar.cc/300?img=5',
+        title: 'Playful banter and flirting',
+        totalMessages: 56,
+        totalCreditsSpent: 8.4,
+        lastMessageAt: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(), // 3 hours ago
+        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
+      },
+    ],
+    
     chatResponse: {
       messageId: `msg-${Date.now()}`,
-      role: 'assistant',
+      role: 'assistant' as const,
       content: 'Hello! How can I help you today?',
-      type: 'text',
+      type: 'text' as const,
       tokensUsed: 15,
       creditsDeducted: 0.15,
       createdAt: new Date().toISOString(),

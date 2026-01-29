@@ -23,12 +23,14 @@ export const authService = {
    * Login with Firebase token
    */
   login: async (data: LoginRequest): Promise<LoginResponse> => {
-    if (shouldUseMock()) {
-      await mockApi.delay(1000);
-      return mockApi.responses.login;
-    }
+    // Always use mock for login until Firebase is set up
+    // TODO: Implement real Firebase auth
+    await mockApi.delay(1000);
+    return mockApi.responses.login;
     
-    return api.post<LoginResponse>('/auth/login', data);
+    // Real implementation:
+    // const endpoint = data.provider === 'apple' ? '/auth/apple' : '/auth/google';
+    // return api.post<LoginResponse>(endpoint, { firebase_token: data.idToken });
   },
   
   /**

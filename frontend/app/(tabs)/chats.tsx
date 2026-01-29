@@ -1,62 +1,250 @@
 /**
- * Chats Screen
- * 
- * List of user's chat sessions.
+ * Chats Screen - Purple Pink Theme
  */
 
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  RefreshControl,
+  Image,
+  Alert,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme/config';
+import { useChatStore, ChatSession } from '../../store/chatStore';
+import { chatService } from '../../services/chatService';
+import { formatDistanceToNow } from 'date-fns';
+import { zhCN } from 'date-fns/locale';
 
 export default function ChatsScreen() {
+  const router = useRouter();
+  const { sessions, setSessions, deleteSession } = useChatStore();
+  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadSessions();
+  }, []);
+
+  const loadSessions = async () => {
+    try {
+      const data = await chatService.getSessions();
+      setSessions(data);
+    } catch (error) {
+      console.error('Failed to load sessions:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadSessions();
+  }, []);
+
+  const handleSessionPress = (session: ChatSession) => {
+    router.push({
+      pathname: '/chat/[characterId]',
+      params: {
+        characterId: session.characterId,
+        sessionId: session.sessionId,
+        characterName: session.characterName,
+      },
+    });
+  };
+
+  const handleDeleteSession = (session: ChatSession) => {
+    Alert.alert('删除对话', `确定删除与 ${session.characterName} 的对话吗？`, [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '删除',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await chatService.deleteSession(session.sessionId);
+            deleteSession(session.sessionId);
+          } catch (error) {
+            Alert.alert('错误', '删除失败');
+          }
+        },
+      },
+    ]);
+  };
+
+  const formatTime = (dateString: string) => {
+    try {
+      return formatDistanceToNow(new Date(dateString), { addSuffix: true, locale: zhCN });
+    } catch {
+      return '';
+    }
+  };
+
+  const renderSession = ({ item }: { item: ChatSession }) => (
+    <TouchableOpacity
+      style={styles.sessionCard}
+      onPress={() => handleSessionPress(item)}
+      onLongPress={() => handleDeleteSession(item)}
+      activeOpacity={0.8}
+    >
+      <Image
+        source={{ uri: item.characterAvatar || 'https://i.pravatar.cc/100' }}
+        style={styles.avatar}
+      />
+      <View style={styles.sessionInfo}>
+        <View style={styles.sessionHeader}>
+          <Text style={styles.characterName}>{item.characterName}</Text>
+          <Text style={styles.timestamp}>{formatTime(item.lastMessageAt || item.createdAt)}</Text>
+        </View>
+        <Text style={styles.sessionTitle} numberOfLines={1}>
+          {item.title || '新对话'}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderEmpty = () => (
+    <View style={styles.emptyState}>
+      <View style={styles.emptyIcon}>
+        <Ionicons name="chatbubbles-outline" size={48} color={theme.colors.text.tertiary} />
+      </View>
+      <Text style={styles.emptyTitle}>暂无对话</Text>
+      <Text style={styles.emptySubtext}>去发现页面开始聊天吧</Text>
+      <TouchableOpacity style={styles.startButton} onPress={() => router.push('/(tabs)')}>
+        <LinearGradient colors={theme.colors.primary.gradient} style={styles.startButtonGradient}>
+          <Text style={styles.startButtonText}>去发现</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <LinearGradient colors={theme.colors.background.gradient} style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.title}>Your Chats</Text>
+          <Text style={styles.title}>消息</Text>
+          {sessions.length > 0 && (
+            <Text style={styles.subtitle}>{sessions.length} 个对话</Text>
+          )}
         </View>
-        
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>No chats yet</Text>
-          <Text style={styles.emptySubtext}>Start a conversation with a companion</Text>
-        </View>
+
+        <FlatList
+          data={sessions}
+          keyExtractor={(item) => item.sessionId}
+          renderItem={renderSession}
+          contentContainerStyle={sessions.length === 0 ? styles.emptyContainer : styles.listContainer}
+          ListEmptyComponent={!loading ? renderEmpty : null}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary.main} />
+          }
+          showsVerticalScrollIndicator={false}
+        />
       </SafeAreaView>
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  safeArea: { flex: 1 },
   header: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.md,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
   },
   title: {
-    fontFamily: theme.typography.fontFamily.bold,
-    fontSize: theme.typography.fontSize['2xl'],
-    color: theme.colors.text.primary,
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  subtitle: {
+    fontSize: 13,
+    color: theme.colors.text.secondary,
+    marginTop: 2,
+  },
+  listContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 100,
+  },
+  emptyContainer: { flex: 1 },
+  sessionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 10,
+  },
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 14,
+    backgroundColor: theme.colors.background.tertiary,
+  },
+  sessionInfo: { flex: 1 },
+  sessionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  characterName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  timestamp: {
+    fontSize: 12,
+    color: theme.colors.text.tertiary,
+  },
+  sessionTitle: {
+    fontSize: 14,
+    color: theme.colors.text.secondary,
+    marginTop: 4,
   },
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 40,
   },
-  emptyText: {
-    fontFamily: theme.typography.fontFamily.bold,
-    fontSize: theme.typography.fontSize.xl,
+  emptyIcon: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
     color: theme.colors.text.secondary,
   },
   emptySubtext: {
-    fontFamily: theme.typography.fontFamily.regular,
-    fontSize: theme.typography.fontSize.base,
+    fontSize: 14,
     color: theme.colors.text.tertiary,
-    marginTop: theme.spacing.xs,
+    marginTop: 6,
+    marginBottom: 24,
+  },
+  startButton: {
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  startButtonGradient: {
+    paddingHorizontal: 28,
+    paddingVertical: 13,
+  },
+  startButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

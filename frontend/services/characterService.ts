@@ -7,6 +7,34 @@
 import { api, mockApi, shouldUseMock } from './api';
 import { Character } from '../types';
 
+// Convert snake_case to camelCase
+const snakeToCamel = (obj: any): any => {
+  if (Array.isArray(obj)) {
+    return obj.map(snakeToCamel);
+  }
+  if (obj !== null && typeof obj === 'object') {
+    return Object.keys(obj).reduce((acc, key) => {
+      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+      acc[camelKey] = snakeToCamel(obj[key]);
+      return acc;
+    }, {} as any);
+  }
+  return obj;
+};
+
+// Map backend character to frontend Character type
+const mapCharacter = (data: any): Character => ({
+  characterId: data.character_id || data.characterId,
+  name: data.name,
+  avatarUrl: data.avatar_url || data.avatarUrl || 'https://i.pravatar.cc/300',
+  backgroundUrl: data.background_url || data.backgroundUrl,
+  description: data.description,
+  personalityTraits: data.personality_traits || data.personalityTraits || [],
+  tierRequired: data.tier_required || data.tierRequired || 'free',
+  isSpicy: data.is_spicy || data.isSpicy || false,
+  tags: data.tags || data.personality_traits || data.personalityTraits || [],
+});
+
 export const characterService = {
   /**
    * Get all available characters
@@ -17,7 +45,8 @@ export const characterService = {
       return mockApi.responses.characters;
     }
     
-    return api.get<Character[]>('/config/characters');
+    const response = await api.get<{ characters: any[]; total: number }>('/characters');
+    return response.characters.map(mapCharacter);
   },
   
   /**
@@ -35,6 +64,7 @@ export const characterService = {
       return character;
     }
     
-    return api.get<Character>(`/config/characters/${characterId}`);
+    const data = await api.get<any>(`/characters/${characterId}`);
+    return mapCharacter(data);
   },
 };

@@ -1,11 +1,5 @@
 /**
- * Login Screen
- * 
- * High-conversion login screen with:
- * - Continue with Apple
- * - Continue with Google
- * - Compelling value proposition
- * - Terms and privacy links
+ * Login Screen - Purple Pink Theme
  */
 
 import React, { useState } from 'react';
@@ -14,168 +8,138 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Image,
-  Alert,
+  ActivityIndicator,
+  ImageBackground,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { theme, getShadow } from '../../theme/config';
+import { theme } from '../../theme/config';
 import { useUserStore } from '../../store/userStore';
-import { authService } from '../../services/authService';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+const BG_IMAGE = 'https://i.pinimg.com/originals/8b/1c/a0/8b1ca08def61220dc83e5c3d91e55cde.jpg';
 
 export default function LoginScreen() {
   const router = useRouter();
   const { login } = useUserStore();
   const [loading, setLoading] = useState(false);
 
-  const handleAppleLogin = async () => {
+  const handleLogin = async (provider: 'apple' | 'google') => {
     setLoading(true);
     try {
-      // Mock Apple Sign-In
-      // In production, use expo-apple-authentication
       const mockUser = {
-        userId: 'mock-user-id',
-        email: 'user@example.com',
-        displayName: 'John Doe',
+        userId: 'user-001',
+        email: provider === 'apple' ? 'user@icloud.com' : 'user@gmail.com',
+        displayName: 'User',
         subscriptionTier: 'free' as const,
         createdAt: new Date().toISOString(),
       };
       
       const mockWallet = {
-        totalCredits: 10,
+        totalCredits: 50,
         dailyFreeCredits: 10,
-        purchedCredits: 0,
+        purchedCredits: 40,
         bonusCredits: 0,
         dailyCreditsLimit: 10,
       };
       
+      await new Promise(r => setTimeout(r, 800));
       login(mockUser, 'mock-token', mockWallet);
       router.replace('/(tabs)');
     } catch (error) {
-      console.error('Apple login failed:', error);
-      Alert.alert('Error', 'Failed to sign in with Apple');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    try {
-      // Mock Google Sign-In
-      // In production, use expo-auth-session or @react-native-google-signin/google-signin
-      const mockUser = {
-        userId: 'mock-user-id',
-        email: 'user@gmail.com',
-        displayName: 'John Doe',
-        subscriptionTier: 'free' as const,
-        createdAt: new Date().toISOString(),
-      };
-      
-      const mockWallet = {
-        totalCredits: 10,
-        dailyFreeCredits: 10,
-        purchedCredits: 0,
-        bonusCredits: 0,
-        dailyCreditsLimit: 10,
-      };
-      
-      login(mockUser, 'mock-token', mockWallet);
-      router.replace('/(tabs)');
-    } catch (error) {
-      console.error('Google login failed:', error);
-      Alert.alert('Error', 'Failed to sign in with Google');
+      console.error('Login failed:', error);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <LinearGradient
-      colors={theme.colors.background.gradient}
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      {/* Background Image */}
+      <ImageBackground
+        source={{ uri: BG_IMAGE }}
+        style={styles.backgroundImage}
+        resizeMode="cover"
+      >
+        <LinearGradient
+          colors={['rgba(26,16,37,0.2)', 'rgba(26,16,37,0.6)', 'rgba(26,16,37,0.98)'] as [string, string, string]}
+          style={styles.overlay}
+        />
+      </ImageBackground>
+
       <SafeAreaView style={styles.safeArea}>
-        {/* Logo & Branding */}
-        <View style={styles.header}>
+        {/* Spacer to push content down */}
+        <View style={styles.spacer} />
+
+        {/* Content */}
+        <View style={styles.content}>
+          {/* Logo */}
           <View style={styles.logoContainer}>
             <LinearGradient
               colors={theme.colors.primary.gradient}
               style={styles.logoGradient}
             >
-              <Ionicons name="chatbubble-ellipses" size={40} color={theme.colors.text.inverse} />
+              <Ionicons name="heart" size={36} color="#fff" />
             </LinearGradient>
           </View>
           
           <Text style={styles.appName}>{theme.appName}</Text>
-          <Text style={styles.tagline}>{theme.appTagline}</Text>
-        </View>
+          <Text style={styles.tagline}>遇见你的专属AI伴侣 💕</Text>
 
-        {/* Value Proposition */}
-        <View style={styles.features}>
-          <FeatureItem
-            icon="diamond"
-            text="Premium AI companions tailored to you"
-          />
-          <FeatureItem
-            icon="lock-closed"
-            text="Private & secure conversations"
-          />
-          <FeatureItem
-            icon="flame"
-            text="Exclusive spicy content for subscribers"
-          />
-        </View>
+          {/* Features */}
+          <View style={styles.features}>
+            <FeatureItem icon="chatbubble-ellipses" text="深度情感交流" />
+            <FeatureItem icon="shield-checkmark" text="私密安全对话" />
+            <FeatureItem icon="sparkles" text="独特个性体验" />
+          </View>
 
-        {/* Auth Buttons */}
-        <View style={styles.authContainer}>
-          {/* Apple Sign-In */}
-          <TouchableOpacity
-            style={styles.authButton}
-            onPress={handleAppleLogin}
-            disabled={loading}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.authButtonContent, styles.appleButton]}>
-              <Ionicons name="logo-apple" size={24} color={theme.colors.text.primary} />
-              <Text style={styles.authButtonText}>Continue with Apple</Text>
-            </View>
-          </TouchableOpacity>
+          {/* Auth Buttons */}
+          <View style={styles.authSection}>
+            <TouchableOpacity
+              style={styles.appleButton}
+              onPress={() => handleLogin('apple')}
+              disabled={loading}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="logo-apple" size={22} color="#fff" />
+              <Text style={styles.appleButtonText}>Apple 登录</Text>
+            </TouchableOpacity>
 
-          {/* Google Sign-In */}
-          <TouchableOpacity
-            style={styles.authButton}
-            onPress={handleGoogleLogin}
-            disabled={loading}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.authButtonContent, styles.googleButton]}>
-              <Ionicons name="logo-google" size={24} color={theme.colors.text.primary} />
-              <Text style={styles.authButtonText}>Continue with Google</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={styles.googleButton}
+              onPress={() => handleLogin('google')}
+              disabled={loading}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="logo-google" size={20} color="#fff" />
+              <Text style={styles.googleButtonText}>Google 登录</Text>
+            </TouchableOpacity>
 
-        {/* Terms */}
-        <View style={styles.footer}>
+            {loading && (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="large" color={theme.colors.primary.main} />
+              </View>
+            )}
+          </View>
+
+          {/* Terms */}
           <Text style={styles.termsText}>
-            By continuing, you agree to our{' '}
-            <Text style={styles.termsLink}>Terms of Service</Text>
-            {' '}and{' '}
-            <Text style={styles.termsLink}>Privacy Policy</Text>
+            继续即表示同意 <Text style={styles.termsLink}>服务条款</Text> 和 <Text style={styles.termsLink}>隐私政策</Text>
           </Text>
         </View>
       </SafeAreaView>
-    </LinearGradient>
+    </View>
   );
 }
 
 const FeatureItem: React.FC<{ icon: any; text: string }> = ({ icon, text }) => (
   <View style={styles.featureItem}>
-    <View style={styles.featureIconContainer}>
-      <Ionicons name={icon} size={20} color={theme.colors.primary.main} />
+    <View style={styles.featureIcon}>
+      <Ionicons name={icon} size={18} color={theme.colors.primary.main} />
     </View>
     <Text style={styles.featureText}>{text}</Text>
   </View>
@@ -184,104 +148,122 @@ const FeatureItem: React.FC<{ icon: any; text: string }> = ({ icon, text }) => (
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: theme.colors.background.primary,
+  },
+  backgroundImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: SCREEN_HEIGHT * 0.55,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
   },
   safeArea: {
     flex: 1,
-    paddingHorizontal: theme.spacing.lg,
   },
-  header: {
-    alignItems: 'center',
-    marginTop: theme.spacing['3xl'],
-    marginBottom: theme.spacing.xl,
+  spacer: {
+    flex: 1,
+  },
+  content: {
+    paddingHorizontal: 28,
+    paddingBottom: 24,
   },
   logoContainer: {
-    marginBottom: theme.spacing.lg,
+    alignSelf: 'center',
+    marginBottom: 16,
   },
   logoGradient: {
-    width: 100,
-    height: 100,
-    borderRadius: theme.borderRadius.full,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    ...getShadow('xl'),
   },
   appName: {
-    fontFamily: theme.typography.fontFamily.bold,
-    fontSize: theme.typography.fontSize['3xl'],
-    color: theme.colors.text.primary,
-    marginBottom: theme.spacing.xs,
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#fff',
+    textAlign: 'center',
   },
   tagline: {
-    fontFamily: theme.typography.fontFamily.regular,
-    fontSize: theme.typography.fontSize.lg,
+    fontSize: 16,
     color: theme.colors.text.secondary,
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 28,
   },
   features: {
-    marginBottom: theme.spacing['2xl'],
-    gap: theme.spacing.md,
+    marginBottom: 28,
+    gap: 12,
   },
   featureItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.md,
+    gap: 14,
   },
-  featureIconContainer: {
+  featureIcon: {
     width: 40,
     height: 40,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+    borderRadius: 20,
+    backgroundColor: 'rgba(236, 72, 153, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   featureText: {
-    flex: 1,
-    fontFamily: theme.typography.fontFamily.medium,
-    fontSize: theme.typography.fontSize.base,
+    fontSize: 15,
     color: theme.colors.text.secondary,
-    lineHeight: theme.typography.fontSize.base * theme.typography.lineHeight.normal,
+    fontWeight: '500',
   },
-  authContainer: {
-    gap: theme.spacing.md,
-    marginBottom: theme.spacing.xl,
+  authSection: {
+    gap: 12,
+    marginBottom: 20,
   },
-  authButton: {
-    borderRadius: theme.borderRadius.lg,
-    overflow: 'hidden',
-    ...getShadow('md'),
-  },
-  authButtonContent: {
+  appleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: theme.spacing.md,
-    gap: theme.spacing.sm,
+    backgroundColor: '#000',
+    paddingVertical: 15,
+    borderRadius: 28,
+    gap: 10,
   },
-  appleButton: {
-    backgroundColor: theme.colors.text.primary,
+  appleButtonText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
   },
   googleButton: {
-    backgroundColor: theme.colors.background.secondary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingVertical: 15,
+    borderRadius: 28,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    gap: 10,
   },
-  authButtonText: {
-    fontFamily: theme.typography.fontFamily.bold,
-    fontSize: theme.typography.fontSize.lg,
-    color: theme.colors.text.primary,
+  googleButtonText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
   },
-  footer: {
-    marginTop: 'auto',
-    paddingBottom: theme.spacing.lg,
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(26, 16, 37, 0.8)',
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   termsText: {
-    fontFamily: theme.typography.fontFamily.regular,
-    fontSize: theme.typography.fontSize.sm,
+    fontSize: 12,
     color: theme.colors.text.tertiary,
     textAlign: 'center',
-    lineHeight: theme.typography.fontSize.sm * theme.typography.lineHeight.relaxed,
+    lineHeight: 18,
   },
   termsLink: {
     color: theme.colors.primary.main,
-    textDecorationLine: 'underline',
   },
 });

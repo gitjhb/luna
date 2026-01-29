@@ -28,7 +28,21 @@ MOCK_MODE = os.getenv("MOCK_LLM", "true").lower() == "true"
 
 @router.post("/sessions", response_model=CreateSessionResponse)
 async def create_session(request: CreateSessionRequest):
-    """Create a new chat session with a character"""
+    """
+    Create a new chat session with a character.
+    If a session already exists for this character, return the existing one.
+    This ensures each user has only one session per character.
+    """
+    # Check if session already exists for this character
+    for session in _sessions.values():
+        if str(session["character_id"]) == str(request.character_id):
+            return CreateSessionResponse(
+                session_id=session["session_id"],
+                character_name=session["character_name"],
+                character_avatar=None,
+            )
+    
+    # Create new session if none exists
     session_id = uuid4()
     _sessions[str(session_id)] = {
         "session_id": session_id,
@@ -48,8 +62,14 @@ async def create_session(request: CreateSessionRequest):
 
 
 @router.get("/sessions", response_model=list[SessionInfo])
-async def list_sessions():
-    """List all chat sessions for current user"""
+async def list_sessions(character_id: UUID = None):
+    """List all chat sessions for current user, optionally filtered by character_id"""
+    sessions = _sessions.values()
+    
+    # Filter by character_id if provided
+    if character_id:
+        sessions = [s for s in sessions if str(s["character_id"]) == str(character_id)]
+    
     return [
         SessionInfo(
             session_id=s["session_id"],
@@ -59,7 +79,7 @@ async def list_sessions():
             created_at=s["created_at"],
             updated_at=s["updated_at"],
         )
-        for s in _sessions.values()
+        for s in sessions
     ]
 
 

@@ -1,33 +1,27 @@
 /**
  * Root Layout
- * 
- * Main app layout with navigation structure.
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
+import { View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useUserStore } from '../store/userStore';
 import { theme } from '../theme/config';
 
-// Create a client
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 2,
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      staleTime: 1000 * 60 * 5,
     },
   },
 });
 
 export default function RootLayout() {
-  const isAuthenticated = useUserStore((state) => state.isAuthenticated);
-
   return (
     <QueryClientProvider client={queryClient}>
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: theme.colors.background.primary }}>
         <StatusBar style="light" />
         <Stack
           screenOptions={{
@@ -35,18 +29,18 @@ export default function RootLayout() {
             contentStyle: {
               backgroundColor: theme.colors.background.primary,
             },
+            animation: 'slide_from_right',
           }}
         >
-          {!isAuthenticated ? (
-            <Stack.Screen name="auth/login" />
-          ) : (
-            <>
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="chat/[characterId]" />
-            </>
-          )}
+          <Stack.Screen name="index" />
+          <Stack.Screen name="auth/login" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen 
+            name="chat/[characterId]" 
+            options={{ animation: 'slide_from_bottom' }}
+          />
         </Stack>
-      </GestureHandlerRootView>
+      </View>
     </QueryClientProvider>
   );
 }

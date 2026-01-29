@@ -1,11 +1,5 @@
 /**
- * Companions Screen (Home)
- * 
- * Main screen displaying available AI companions.
- * Features:
- * - Horizontal scrolling character cards
- * - Filter by tier/tags
- * - Search functionality
+ * Companions Screen - Purple Pink Theme
  */
 
 import React, { useState, useEffect } from 'react';
@@ -17,34 +11,34 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  RefreshControl,
+  Image,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { theme, getShadow } from '../../../theme/config';
-import { useUserStore } from '../../../store/userStore';
-import { CharacterCard } from '../../../components/molecules/CharacterCard';
-import { Character } from '../../../types';
-import { characterService } from '../../../services/characterService';
+import { theme, getShadow } from '../../theme/config';
+import { useUserStore } from '../../store/userStore';
+import { Character } from '../../types';
+import { characterService } from '../../services/characterService';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CARD_WIDTH = SCREEN_WIDTH - 48;
 
 export default function CompanionsScreen() {
   const router = useRouter();
-  const { user, isSubscribed } = useUserStore();
+  const { user, wallet } = useUserStore();
   
   const [characters, setCharacters] = useState<Character[]>([]);
-  const [filteredCharacters, setFilteredCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState<'all' | 'free' | 'premium' | 'spicy'>('all');
 
   useEffect(() => {
     loadCharacters();
   }, []);
-
-  useEffect(() => {
-    filterCharacters();
-  }, [characters, searchQuery, selectedFilter]);
 
   const loadCharacters = async () => {
     try {
@@ -54,48 +48,29 @@ export default function CompanionsScreen() {
       console.error('Failed to load characters:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const filterCharacters = () => {
-    let filtered = characters;
-
-    // Apply search filter
-    if (searchQuery) {
-      filtered = filtered.filter(
-        (char) =>
-          char.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          char.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          char.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-      );
-    }
-
-    // Apply tier filter
-    if (selectedFilter === 'free') {
-      filtered = filtered.filter((char) => char.tierRequired === 'free');
-    } else if (selectedFilter === 'premium') {
-      filtered = filtered.filter((char) => char.tierRequired !== 'free');
-    } else if (selectedFilter === 'spicy') {
-      filtered = filtered.filter((char) => char.isSpicy);
-    }
-
-    setFilteredCharacters(filtered);
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadCharacters();
   };
+
+  const filteredCharacters = characters.filter(char =>
+    !searchQuery || 
+    char.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    char.description.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const handleCharacterPress = (character: Character) => {
-    // Check if character is locked
-    const isLocked = character.tierRequired !== 'free' && !isSubscribed;
-    
-    if (isLocked) {
-      // Show paywall or upgrade prompt
-      return;
-    }
-
     router.push({
       pathname: '/chat/[characterId]',
       params: {
         characterId: character.characterId,
         characterName: character.name,
+        avatarUrl: character.avatarUrl,
+        backgroundUrl: character.backgroundUrl,
       },
     });
   };
@@ -114,130 +89,90 @@ export default function CompanionsScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Hello, {user?.displayName || 'there'}</Text>
-            <Text style={styles.subtitle}>Choose your companion</Text>
+            <Text style={styles.greeting}>Hi, {user?.displayName || 'there'} 👋</Text>
+            <Text style={styles.subtitle}>选择你的伴侣</Text>
           </View>
           
-          <TouchableOpacity
-            style={styles.profileButton}
-            onPress={() => router.push('/profile')}
-          >
-            <LinearGradient
-              colors={theme.colors.primary.gradient}
-              style={styles.profileButtonGradient}
-            >
-              <Ionicons name="person" size={24} color={theme.colors.text.inverse} />
-            </LinearGradient>
+          <TouchableOpacity style={styles.creditsBadge} onPress={() => router.push('/(tabs)/profile')}>
+            <Ionicons name="diamond" size={16} color={theme.colors.primary.main} />
+            <Text style={styles.creditsText}>{wallet?.totalCredits?.toFixed(0) || '0'}</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Search Bar */}
+        {/* Search */}
         <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color={theme.colors.text.tertiary} />
+          <Ionicons name="search" size={18} color={theme.colors.text.tertiary} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search companions..."
+            placeholder="搜索..."
             placeholderTextColor={theme.colors.text.tertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={20} color={theme.colors.text.tertiary} />
-            </TouchableOpacity>
-          )}
         </View>
 
-        {/* Filters */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filtersContainer}
-        >
-          <FilterChip
-            label="All"
-            active={selectedFilter === 'all'}
-            onPress={() => setSelectedFilter('all')}
-          />
-          <FilterChip
-            label="Free"
-            active={selectedFilter === 'free'}
-            onPress={() => setSelectedFilter('free')}
-          />
-          <FilterChip
-            label="Premium"
-            active={selectedFilter === 'premium'}
-            onPress={() => setSelectedFilter('premium')}
-            icon="diamond"
-          />
-          <FilterChip
-            label="Spicy"
-            active={selectedFilter === 'spicy'}
-            onPress={() => setSelectedFilter('spicy')}
-            icon="flame"
-          />
-        </ScrollView>
-
-        {/* Characters List */}
+        {/* Characters */}
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.charactersContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.colors.primary.main}
+            />
+          }
         >
-          {filteredCharacters.map((character) => {
-            const isLocked = character.tierRequired !== 'free' && !isSubscribed;
-            
-            return (
-              <CharacterCard
-                key={character.characterId}
-                character={character}
-                onPress={() => handleCharacterPress(character)}
-                isLocked={isLocked}
+          {filteredCharacters.map((character) => (
+            <TouchableOpacity
+              key={character.characterId}
+              style={styles.characterCard}
+              onPress={() => handleCharacterPress(character)}
+              activeOpacity={0.9}
+            >
+              <Image
+                source={{ uri: character.avatarUrl || 'https://i.pravatar.cc/300' }}
+                style={styles.characterImage}
               />
-            );
-          })}
-
-          {filteredCharacters.length === 0 && (
-            <View style={styles.emptyState}>
-              <Ionicons name="search" size={64} color={theme.colors.text.tertiary} />
-              <Text style={styles.emptyStateText}>No companions found</Text>
-              <Text style={styles.emptyStateSubtext}>
-                Try adjusting your search or filters
-              </Text>
-            </View>
-          )}
+              <LinearGradient
+                colors={['transparent', 'rgba(26,16,37,0.8)', 'rgba(26,16,37,0.98)'] as [string, string, string]}
+                style={styles.cardGradient}
+              />
+              <View style={styles.cardContent}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.characterName}>{character.name}</Text>
+                  {character.isSpicy && (
+                    <View style={styles.spicyBadge}>
+                      <Ionicons name="flame" size={14} color="#FF6B6B" />
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.characterDesc} numberOfLines={2}>
+                  {character.description}
+                </Text>
+                <View style={styles.tagsRow}>
+                  {(character.personalityTraits || []).slice(0, 3).map((trait, i) => (
+                    <View key={i} style={styles.tag}>
+                      <Text style={styles.tagText}>{trait}</Text>
+                    </View>
+                  ))}
+                </View>
+                <TouchableOpacity style={styles.chatButton} onPress={() => handleCharacterPress(character)}>
+                  <LinearGradient colors={theme.colors.primary.gradient} style={styles.chatButtonGradient}>
+                    <Text style={styles.chatButtonText}>开始聊天</Text>
+                    <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          ))}
+          
+          <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
   );
 }
-
-const FilterChip: React.FC<{
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  icon?: any;
-}> = ({ label, active, onPress, icon }) => (
-  <TouchableOpacity
-    style={[styles.filterChip, active && styles.filterChipActive]}
-    onPress={onPress}
-    activeOpacity={0.7}
-  >
-    {active ? (
-      <LinearGradient
-        colors={theme.colors.primary.gradient}
-        style={styles.filterChipGradient}
-      >
-        {icon && <Ionicons name={icon} size={16} color={theme.colors.text.inverse} />}
-        <Text style={[styles.filterChipText, styles.filterChipTextActive]}>{label}</Text>
-      </LinearGradient>
-    ) : (
-      <>
-        {icon && <Ionicons name={icon} size={16} color={theme.colors.text.secondary} />}
-        <Text style={styles.filterChipText}>{label}</Text>
-      </>
-    )}
-  </TouchableOpacity>
-);
 
 const styles = StyleSheet.create({
   container: {
@@ -256,98 +191,131 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.md,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
   },
   greeting: {
-    fontFamily: theme.typography.fontFamily.bold,
-    fontSize: theme.typography.fontSize['2xl'],
-    color: theme.colors.text.primary,
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#fff',
   },
   subtitle: {
-    fontFamily: theme.typography.fontFamily.regular,
-    fontSize: theme.typography.fontSize.base,
+    fontSize: 15,
     color: theme.colors.text.secondary,
+    marginTop: 2,
   },
-  profileButton: {
-    borderRadius: theme.borderRadius.full,
-    overflow: 'hidden',
-    ...getShadow('md'),
-  },
-  profileButtonGradient: {
-    width: 48,
-    height: 48,
-    justifyContent: 'center',
+  creditsBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(236, 72, 153, 0.15)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  creditsText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.colors.primary.main,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.background.secondary,
-    marginHorizontal: theme.spacing.lg,
-    marginBottom: theme.spacing.md,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.lg,
-    gap: theme.spacing.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    marginHorizontal: 20,
+    marginBottom: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    gap: 10,
   },
   searchInput: {
     flex: 1,
-    fontFamily: theme.typography.fontFamily.regular,
-    fontSize: theme.typography.fontSize.base,
-    color: theme.colors.text.primary,
-  },
-  filtersContainer: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.md,
-    gap: theme.spacing.sm,
-  },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.background.secondary,
-    gap: theme.spacing.xs,
-  },
-  filterChipActive: {
-    backgroundColor: 'transparent',
-  },
-  filterChipGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.full,
-    gap: theme.spacing.xs,
-  },
-  filterChipText: {
-    fontFamily: theme.typography.fontFamily.medium,
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.text.secondary,
-  },
-  filterChipTextActive: {
-    color: theme.colors.text.inverse,
+    fontSize: 15,
+    color: '#fff',
   },
   charactersContainer: {
-    paddingVertical: theme.spacing.md,
-    gap: theme.spacing.lg,
+    paddingHorizontal: 20,
+    gap: 20,
   },
-  emptyState: {
+  characterCard: {
+    width: CARD_WIDTH,
+    height: 380,
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: theme.colors.background.secondary,
+    ...getShadow('lg'),
+  },
+  characterImage: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+  },
+  cardGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '65%',
+  },
+  cardContent: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+  },
+  cardHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: theme.spacing['3xl'],
+    gap: 8,
+    marginBottom: 6,
   },
-  emptyStateText: {
-    fontFamily: theme.typography.fontFamily.bold,
-    fontSize: theme.typography.fontSize.xl,
+  characterName: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  spicyBadge: {
+    backgroundColor: 'rgba(255, 107, 107, 0.2)',
+    padding: 6,
+    borderRadius: 12,
+  },
+  characterDesc: {
+    fontSize: 14,
     color: theme.colors.text.secondary,
-    marginTop: theme.spacing.md,
+    lineHeight: 20,
+    marginBottom: 12,
   },
-  emptyStateSubtext: {
-    fontFamily: theme.typography.fontFamily.regular,
-    fontSize: theme.typography.fontSize.base,
-    color: theme.colors.text.tertiary,
-    marginTop: theme.spacing.xs,
+  tagsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  tag: {
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  tagText: {
+    fontSize: 12,
+    color: theme.colors.text.secondary,
+  },
+  chatButton: {
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  chatButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 13,
+    gap: 8,
+  },
+  chatButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

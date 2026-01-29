@@ -69,7 +69,16 @@ export default function ChatScreen() {
     try {
       setIsInitializing(true);
       
-      // Fetch intimacy status
+      // Step 1: Check for cached session first (instant load)
+      const cachedSession = useChatStore.getState().getSessionByCharacterId(params.characterId);
+      if (cachedSession) {
+        setSessionId(cachedSession.sessionId);
+        setActiveSession(cachedSession.sessionId, params.characterId);
+        if (cachedSession.characterAvatar) setCharacterAvatar(cachedSession.characterAvatar);
+        // Messages are already in store from cache, no need to set again
+      }
+      
+      // Step 2: Fetch intimacy status
       try {
         const intimacyStatus = await intimacyService.getStatus(params.characterId);
         setRelationshipLevel(intimacyStatus.currentLevel);
@@ -79,17 +88,29 @@ export default function ChatScreen() {
         console.log('Intimacy status not available:', e);
       }
       
-      if (params.sessionId) {
-        setSessionId(params.sessionId);
-        setActiveSession(params.sessionId, params.characterId);
-        const history = await chatService.getSessionHistory(params.sessionId);
-        setMessages(params.sessionId, history);
+      // Step 3: Sync with backend - get or create session
+      const session = await chatService.getOrCreateSession(params.characterId);
+      setSessionId(session.sessionId);
+      setActiveSession(session.sessionId, params.characterId);
+      if (session.characterAvatar) setCharacterAvatar(session.characterAvatar);
+      if (session.characterBackground) setBackgroundImage(session.characterBackground);
+      
+      // Update session in store
+      const existingSession = useChatStore.getState().getSessionByCharacterId(params.characterId);
+      if (existingSession) {
+        useChatStore.getState().updateSession(session.sessionId, session);
       } else {
-        const session = await chatService.createSession(params.characterId);
-        setSessionId(session.sessionId);
-        setActiveSession(session.sessionId, params.characterId);
-        if (session.characterAvatar) setCharacterAvatar(session.characterAvatar);
-        if (session.characterBackground) setBackgroundImage(session.characterBackground);
+        useChatStore.getState().addSession(session);
+      }
+      
+      // Step 4: Load message history from backend
+      try {
+        const history = await chatService.getSessionHistory(session.sessionId);
+        if (history.length > 0) {
+          setMessages(session.sessionId, history);
+        }
+      } catch (e) {
+        console.log('Could not load history:', e);
       }
     } catch (error) {
       console.error('Failed to initialize session:', error);

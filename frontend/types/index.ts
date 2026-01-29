@@ -10,6 +10,7 @@ export interface Character {
   characterId: string;
   name: string;
   avatarUrl: string;
+  backgroundUrl?: string;
   description: string;
   personalityTraits: string[];
   tierRequired: 'free' | 'premium' | 'vip';
@@ -155,4 +156,124 @@ export interface AsyncState<T> {
   data: T | null;
   loading: boolean;
   error: string | null;
+}
+
+// ============================================================================
+// Intimacy System Types
+// ============================================================================
+
+export type IntimacyStage = 'strangers' | 'acquaintances' | 'close_friends' | 'ambiguous' | 'soulmates';
+
+export type ActionType = 'message' | 'continuous_chat' | 'checkin' | 'emotional' | 'voice' | 'share';
+
+export interface ActionAvailability {
+  actionType: ActionType;
+  actionName: string;
+  xpReward: number;
+  dailyLimit: number | null;
+  usedToday: number;
+  available: boolean;
+  cooldownSeconds: number | null;
+}
+
+export interface IntimacyStatus {
+  characterId: string;
+  characterName: string | null;
+  currentLevel: number;
+  totalXp: number;
+  xpForCurrentLevel: number;
+  xpForNextLevel: number;
+  xpProgressInLevel: number;
+  progressPercent: number;
+  intimacyStage: IntimacyStage;
+  stageNameCn: string;
+  streakDays: number;
+  lastInteractionDate: string | null;
+  dailyXpEarned: number;
+  dailyXpLimit: number;
+  dailyXpRemaining: number;
+  availableActions: ActionAvailability[];
+  unlockedFeatures: string[];
+}
+
+export interface XPAwardResponse {
+  success: boolean;
+  actionType: ActionType;
+  xpAwarded: number;
+  xpBefore: number;
+  newTotalXp: number;
+  levelBefore: number;
+  newLevel: number;
+  levelUp: boolean;
+  levelsGained: number;
+  stageBefore: IntimacyStage | null;
+  newStage: IntimacyStage | null;
+  stageChanged: boolean;
+  dailyXpEarned: number;
+  dailyXpRemaining: number;
+  streakDays: number;
+  celebrationMessage: string | null;
+  unlockedFeatures: string[];
+}
+
+export interface DailyCheckinResponse {
+  success: boolean;
+  message: string;
+  xpAwarded: number;
+  streakDays: number;
+  streakBonus: number;
+  totalXpAwarded: number;
+  newTotalXp: number;
+  newLevel: number;
+  levelUp: boolean;
+}
+
+export interface IntimacyHistoryEntry {
+  actionType: ActionType;
+  actionName: string;
+  xpAwarded: number;
+  createdAt: string;
+}
+
+export interface IntimacyHistoryResponse {
+  characterId: string;
+  entries: IntimacyHistoryEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+export interface StageInfo {
+  stageId: IntimacyStage;
+  stageName: string;
+  stageNameCn: string;
+  levelRange: string;
+  minLevel: number;
+  maxLevel: number;
+  description: string;
+  aiAttitude: string;
+  keyUnlocks: string[];
+}
+
+export interface AllStagesResponse {
+  stages: StageInfo[];
+  currentStage: IntimacyStage;
+  currentLevel: number;
+}
+
+export interface FeatureUnlock {
+  level: number;
+  featureId: string;
+  featureName: string;
+  featureNameCn: string;
+  description: string;
+  isUnlocked: boolean;
+}
+
+export interface AllFeaturesResponse {
+  features: FeatureUnlock[];
+  currentLevel: number;
+  totalUnlocked: number;
+  totalFeatures: number;
 }

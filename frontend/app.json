@@ -1,15 +1,12 @@
 {
   "expo": {
-    "name": "LuxeCompanion",
-    "slug": "luxe-companion",
+    "name": "Luna",
+    "slug": "luna-companion",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "luxecompanion",
+    "scheme": "luna",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/images/splash.png",
-      "resizeMode": "contain",
       "backgroundColor": "#0A0A0F"
     },
     "assetBundlePatterns": [
@@ -17,26 +14,21 @@
     ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.luxecompanion.app",
-      "infoPlist": {
-        "NSFaceIDUsageDescription": "We use Face ID to secure your account"
-      }
+      "bundleIdentifier": "com.luna.companion"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0A0A0F"
       },
-      "package": "com.luxecompanion.app"
+      "package": "com.luna.companion"
     },
     "web": {
       "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "output": "static"
     },
     "plugins": [
       "expo-router",
-      "expo-apple-authentication"
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
@@ -44,9 +36,6 @@
     "extra": {
       "router": {
         "origin": false
-      },
-      "eas": {
-        "projectId": "your-project-id"
       }
     }
   }

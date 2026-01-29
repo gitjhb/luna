@@ -2,9 +2,12 @@
  * Chat Store (Zustand)
  * 
  * Manages chat sessions, messages, and spicy mode state.
+ * Persisted to AsyncStorage for offline access.
  */
 
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface Message {
   messageId: string;
@@ -66,9 +69,14 @@ interface ChatState {
   setTyping: (isTyping: boolean, characterId?: string) => void;
   
   unlockMessage: (sessionId: string, messageId: string) => void;
+  
+  // Find session by character ID
+  getSessionByCharacterId: (characterId: string) => ChatSession | undefined;
 }
 
-export const useChatStore = create<ChatState>((set, get) => ({
+export const useChatStore = create<ChatState>()(
+  persist(
+    (set, get) => ({
   // Initial state
   activeSessionId: null,
   activeCharacterId: null,
@@ -182,7 +190,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
       });
     }
   },
-}));
+  
+  getSessionByCharacterId: (characterId) => {
+    return get().sessions.find((s) => s.characterId === characterId);
+  },
+}),
+    {
+      name: 'chat-storage',
+      storage: createJSONStorage(() => AsyncStorage),
+      // Only persist sessions and messages, not UI state
+      partialize: (state) => ({
+        sessions: state.sessions,
+        messagesBySession: state.messagesBySession,
+      }),
+    }
+  )
+);
 
 /**
  * Selectors
@@ -190,6 +213,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 export const selectActiveMessages = (state: ChatState) => {
   const sessionId = state.activeSessionId;
   return sessionId ? state.messagesBySession[sessionId] || [] : [];
+};
+
+export const selectSessionByCharacterId = (characterId: string) => (state: ChatState) => {
+  return state.sessions.find((s) => s.characterId === characterId);
 };
 
 export const selectIsSpicyMode = (state: ChatState) => state.isSpicyMode;

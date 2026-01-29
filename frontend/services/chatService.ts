@@ -53,6 +53,34 @@ const mapMessage = (data: any): Message => ({
 
 export const chatService = {
   /**
+   * Get or create session for a character
+   * Returns existing session if one exists, creates new one if not
+   */
+  getOrCreateSession: async (characterId: string): Promise<ChatSession> => {
+    if (shouldUseMock()) {
+      await mockApi.delay(500);
+      return {
+        ...mockApi.responses.chatSession,
+        characterId,
+      };
+    }
+    
+    // Try to get existing session first
+    try {
+      const sessions = await api.get<any[]>('/chat/sessions', { character_id: characterId });
+      if (sessions && sessions.length > 0) {
+        return mapSession(sessions[0]);
+      }
+    } catch (e) {
+      // No existing session, create new one
+    }
+    
+    // Create new session
+    const data = await api.post<any>('/chat/sessions', { character_id: characterId });
+    return mapSession(data);
+  },
+  
+  /**
    * Create new chat session
    */
   createSession: async (characterId: string): Promise<ChatSession> => {
