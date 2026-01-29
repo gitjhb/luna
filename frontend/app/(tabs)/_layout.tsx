@@ -2,16 +2,38 @@
  * Tabs Layout - Purple Pink Theme
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter, useSegments } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../../theme/config';
+import { useChatStore } from '../../store/chatStore';
 
 const GRADIENT_COLORS: [string, string] = ['#EC4899', '#8B5CF6'];
 
 export default function TabsLayout() {
+  const router = useRouter();
+  const segments = useSegments();
+  const { sessions } = useChatStore();
+  const [hasInitialized, setHasInitialized] = useState(false);
+
+  // Redirect to appropriate tab based on whether user has chats
+  useEffect(() => {
+    if (hasInitialized) return;
+    
+    // Only redirect on initial load when on index (discover) page
+    const currentTab = segments[segments.length - 1];
+    if (currentTab === 'index' || currentTab === '(tabs)') {
+      if (sessions.length > 0) {
+        // Has chats -> go to messages
+        router.replace('/(tabs)/chats');
+      }
+      // No chats -> stay on discover (index)
+    }
+    setHasInitialized(true);
+  }, [sessions, hasInitialized]);
+
   return (
     <Tabs
       screenOptions={{
@@ -23,22 +45,7 @@ export default function TabsLayout() {
         tabBarItemStyle: styles.tabBarItem,
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: '发现',
-          tabBarIcon: ({ color, focused }) => (
-            focused ? (
-              <LinearGradient colors={GRADIENT_COLORS} style={styles.activeIcon}>
-                <Ionicons name="heart" size={22} color="#fff" />
-              </LinearGradient>
-            ) : (
-              <Ionicons name="heart-outline" size={24} color={color} />
-            )
-          ),
-        }}
-      />
-      
+      {/* Order: 消息 -> 发现 -> 我的 */}
       <Tabs.Screen
         name="chats"
         options={{
@@ -50,6 +57,22 @@ export default function TabsLayout() {
               </LinearGradient>
             ) : (
               <Ionicons name="chatbubbles-outline" size={24} color={color} />
+            )
+          ),
+        }}
+      />
+      
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: '发现',
+          tabBarIcon: ({ color, focused }) => (
+            focused ? (
+              <LinearGradient colors={GRADIENT_COLORS} style={styles.activeIcon}>
+                <Ionicons name="heart" size={22} color="#fff" />
+              </LinearGradient>
+            ) : (
+              <Ionicons name="heart-outline" size={24} color={color} />
             )
           ),
         }}
