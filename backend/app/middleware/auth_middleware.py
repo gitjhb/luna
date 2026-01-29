@@ -12,8 +12,9 @@ import os
 
 from app.models.schemas import UserContext
 
-# Consistent demo user ID for mock mode
-DEMO_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
+# Consistent demo user ID for mock mode (UUID v7 format)
+# UUID v7: timestamp-based with version=7, variant=10
+DEMO_USER_ID = UUID("0193e5a0-0000-7000-8000-000000000001")
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
