@@ -26,14 +26,14 @@ class CharacterListResponse(BaseModel):
     total: int
 
 # Character data with real images
-# Using pravatar.cc for consistent, attractive avatars
+# Using pravatar.cc for avatars, picsum.photos for backgrounds
 CHARACTERS = [
     {
         "character_id": "c1a2b3c4-d5e6-4f7a-8b9c-0d1e2f3a4b5c",
         "name": "小美",
         "description": "温柔体贴的邻家女孩，喜欢听你倾诉，陪你度过每一个温暖的时刻 💕",
         "avatar_url": "https://i.pravatar.cc/300?img=28",
-        "background_url": "https://i.imgur.com/vB5HQXQ.jpg",
+        "background_url": "https://images.unsplash.com/photo-1518837695005-2083093ee35b?w=800",
         "is_spicy": False,
         "personality_traits": ["温柔", "善解人意", "可爱"],
         "is_active": True,
@@ -44,7 +44,7 @@ CHARACTERS = [
         "name": "Luna",
         "description": "神秘魅惑的夜之精灵，在月光下为你展现不一样的世界 🌙",
         "avatar_url": "https://i.pravatar.cc/300?img=29",
-        "background_url": "https://i.imgur.com/QCwPvPL.jpg",
+        "background_url": "https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=800",
         "is_spicy": True,
         "personality_traits": ["神秘", "魅惑", "聪慧"],
         "is_active": True,
@@ -55,7 +55,7 @@ CHARACTERS = [
         "name": "Sakura",
         "description": "活泼开朗的元气少女，每天都充满阳光和笑容 ✨",
         "avatar_url": "https://i.pravatar.cc/300?img=40",
-        "background_url": "https://i.imgur.com/Hm5bSFQ.jpg",
+        "background_url": "https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=800",
         "is_spicy": False,
         "personality_traits": ["活泼", "开朗", "元气"],
         "is_active": True,
@@ -66,7 +66,7 @@ CHARACTERS = [
         "name": "Yuki",
         "description": "冷艳高贵的大小姐，外冷内热，只对你展现温柔一面 ❄️",
         "avatar_url": "https://i.pravatar.cc/300?img=32",
-        "background_url": "https://i.imgur.com/k5ExwzH.jpg",
+        "background_url": "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?w=800",
         "is_spicy": True,
         "personality_traits": ["高冷", "傲娇", "优雅"],
         "is_active": True,
