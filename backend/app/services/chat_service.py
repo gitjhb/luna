@@ -39,7 +39,12 @@ class ChatService:
     
     def __init__(self):
         self.grok_service = GrokService()
-        self.vector_service = VectorService()
+        # VectorService is optional - may fail due to dependency issues
+        try:
+            self.vector_service = VectorService()
+        except Exception as e:
+            print(f"Warning: VectorService unavailable: {e}")
+            self.vector_service = None
         self.max_context_messages = 10  # For free users
         self.max_rag_memories = 5       # For premium users
     
@@ -308,8 +313,10 @@ class ChatService:
             for msg in reversed(recent_messages)
         ]
         
-        # Search for relevant memories
+        # Search for relevant memories (if vector service available)
         try:
+            if self.vector_service is None:
+                return recent_context
             relevant_memories = await self.vector_service.search_memories(
                 user_id=user_id,
                 query_text=current_message,
@@ -417,6 +424,8 @@ IMPORTANT GUIDELINES:
         """
         Embed messages and store in vector database (async background task).
         """
+        if self.vector_service is None:
+            return  # Skip embedding if vector service unavailable
         try:
             for message in messages:
                 # Embed message

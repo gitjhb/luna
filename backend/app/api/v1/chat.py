@@ -138,19 +138,44 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         reply = _mock_reply(request.message)
         tokens = len(request.message) // 4 + len(reply) // 4
     else:
-        # Production: use ChatService with Grok
-        from app.services.chat_service import ChatService
-        from app.models.schemas import UserContext
+        # Production: use GrokService directly (bypass ChatService for now)
+        from app.services.llm_service import GrokService
         
-        chat_service = ChatService()
-        user_context = UserContext(
-            user_id=uuid4(),
-            subscription_tier="free",
-            is_subscribed=False,
-        )
-        response = await chat_service.chat_completion(request, user_context)
-        reply = response.content
-        tokens = response.tokens_used
+        grok = GrokService()
+        
+        # Build conversation context from in-memory messages
+        conversation = []
+        character_name = _sessions[session_id]["character_name"]
+        
+        # System prompt for character
+        system_prompt = f"""You are {character_name}, a friendly AI companion. 
+Be warm, engaging, and conversational. Respond in the same language the user uses.
+Keep responses concise but meaningful."""
+        
+        conversation.append({"role": "system", "content": system_prompt})
+        
+        # Add recent messages from session
+        for msg in _messages[session_id][-10:]:
+            conversation.append({"role": msg.role, "content": msg.content})
+        
+        # Add current user message
+        conversation.append({"role": "user", "content": request.message})
+        
+        # Call Grok API
+        try:
+            result = await grok.chat_completion(
+                messages=conversation,
+                temperature=0.8,
+                max_tokens=500
+            )
+            # Extract content and tokens from Grok response
+            reply = result["choices"][0]["message"]["content"]
+            tokens = result.get("usage", {}).get("total_tokens", 0)
+        except Exception as e:
+            logger.error(f"Grok API error: {e}")
+            # Fallback to mock response on error
+            reply = f"抱歉，我暂时无法回应。错误：{str(e)[:100]}"
+            tokens = 10
 
     # Store assistant message
     msg_id = uuid4()

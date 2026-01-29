@@ -68,9 +68,7 @@ class GrokService:
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
-            "top_p": top_p,
-            "frequency_penalty": frequency_penalty,
-            "presence_penalty": presence_penalty,
+            # Note: Grok doesn't support frequency_penalty, presence_penalty, top_p
             "stream": stream
         }
         
