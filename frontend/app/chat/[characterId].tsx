@@ -1,12 +1,5 @@
 /**
- * Chat Screen
- * 
- * Main chat interface with:
- * - Spicy mode toggle (requires subscription)
- * - Message list with optimized rendering
- * - Input field with send button
- * - Credit header
- * - Typing indicator
+ * Chat Screen - Intimate Style
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -20,107 +13,98 @@ import {
   StyleSheet,
   FlatList,
   Alert,
+  Keyboard,
+  Image,
+  Dimensions,
+  ImageBackground,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { theme, getSpicyTheme } from '../../theme/config';
 import { useUserStore } from '../../store/userStore';
-import { useChatStore, selectActiveMessages, selectIsSpicyMode } from '../../store/chatStore';
-import { ChatBubble } from '../../components/molecules/ChatBubble';
-import { CreditHeader } from '../../components/molecules/CreditHeader';
-import { TypingIndicator } from '../../components/atoms/TypingIndicator';
-import { PaywallModal } from '../../components/organisms/PaywallModal';
+import { useChatStore, selectActiveMessages, Message } from '../../store/chatStore';
 import { chatService } from '../../services/chatService';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+const DEFAULT_BACKGROUND = 'https://i.imgur.com/vB5HQXQ.jpg';
 
 export default function ChatScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ characterId: string; characterName: string }>();
+  const params = useLocalSearchParams<{ characterId: string; characterName: string; sessionId?: string; backgroundUrl?: string; avatarUrl?: string }>();
   
-  // Store state
-  const { isSubscribed, wallet, deductCredits } = useUserStore();
+  const { wallet, deductCredits, isSubscribed } = useUserStore();
   const {
-    activeSessionId,
-    isSpicyMode,
     isTyping,
     setActiveSession,
     addMessage,
-    toggleSpicyMode,
+    setMessages,
     setTyping,
-    unlockMessage,
   } = useChatStore();
   
   const messages = useChatStore(selectActiveMessages);
   
-  // Local state
   const [inputText, setInputText] = useState('');
-  const [showPaywall, setShowPaywall] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(params.sessionId || null);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [characterAvatar, setCharacterAvatar] = useState(params.avatarUrl || 'https://i.pravatar.cc/100?img=5');
+  const [backgroundImage, setBackgroundImage] = useState(params.backgroundUrl || DEFAULT_BACKGROUND);
+  const [relationshipLevel, setRelationshipLevel] = useState(1);
+  const [relationshipXp, setRelationshipXp] = useState(0);
+  const [relationshipMaxXp, setRelationshipMaxXp] = useState(100);
   
   const flatListRef = useRef<FlatList>(null);
-  
-  // Initialize session
+  const characterName = params.characterName || 'Companion';
+
   useEffect(() => {
     initializeSession();
   }, [params.characterId]);
-  
+
   const initializeSession = async () => {
     try {
-      // Create or get existing session
-      const session = await chatService.createSession(params.characterId);
-      setSessionId(session.sessionId);
-      setActiveSession(session.sessionId, params.characterId);
+      setIsInitializing(true);
       
-      // Load message history
-      const history = await chatService.getSessionHistory(session.sessionId);
-      // Set messages in store
+      if (params.sessionId) {
+        setSessionId(params.sessionId);
+        setActiveSession(params.sessionId, params.characterId);
+        const history = await chatService.getSessionHistory(params.sessionId);
+        setMessages(params.sessionId, history);
+      } else {
+        const session = await chatService.createSession(params.characterId);
+        setSessionId(session.sessionId);
+        setActiveSession(session.sessionId, params.characterId);
+        if (session.characterAvatar) setCharacterAvatar(session.characterAvatar);
+        if (session.characterBackground) setBackgroundImage(session.characterBackground);
+      }
     } catch (error) {
       console.error('Failed to initialize session:', error);
-      Alert.alert('Error', 'Failed to start chat session');
+    } finally {
+      setIsInitializing(false);
     }
   };
-  
-  // Handle spicy mode toggle
-  const handleSpicyToggle = () => {
-    if (!isSubscribed) {
-      setShowPaywall(true);
-      return;
-    }
-    toggleSpicyMode();
-  };
-  
-  // Send message
+
   const handleSend = async () => {
-    if (!inputText.trim() || !sessionId) return;
+    const text = inputText.trim();
+    if (!text || !sessionId) return;
     
-    const userMessage = {
-      messageId: `temp-${Date.now()}`,
-      role: 'user' as const,
-      content: inputText.trim(),
-      createdAt: new Date().toISOString(),
-    };
-    
-    // Add user message immediately
-    addMessage(sessionId, userMessage);
+    Keyboard.dismiss();
     setInputText('');
     
-    // Scroll to bottom
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+    const userMessage: Message = {
+      messageId: `user-${Date.now()}`,
+      role: 'user',
+      content: text,
+      createdAt: new Date().toISOString(),
+    };
+    addMessage(sessionId, userMessage);
     
-    // Show typing indicator
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     setTyping(true, params.characterId);
     
     try {
-      // Call API
-      const response = await chatService.sendMessage({
-        sessionId,
-        message: userMessage.content,
-      });
+      const response = await chatService.sendMessage({ sessionId, message: text });
       
-      // Add assistant message
       addMessage(sessionId, {
         messageId: response.messageId,
         role: 'assistant',
@@ -131,254 +115,371 @@ export default function ChatScreen() {
         createdAt: response.createdAt,
       });
       
-      // Deduct credits
       if (response.creditsDeducted) {
         deductCredits(response.creditsDeducted);
       }
       
-      // Scroll to bottom
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (error: any) {
-      console.error('Failed to send message:', error);
-      
-      if (error.error === 'insufficient_credits') {
-        Alert.alert(
-          'Insufficient Credits',
-          `You need ${error.required} credits. Current balance: ${error.currentBalance}`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Buy Credits', onPress: () => router.push('/profile/credits') },
-          ]
-        );
-      } else if (error.error === 'rate_limit_exceeded') {
-        Alert.alert(
-          'Rate Limit Exceeded',
-          `Please wait ${error.retryAfter} seconds before sending another message.`
-        );
-      } else {
-        Alert.alert('Error', 'Failed to send message. Please try again.');
-      }
+      console.error('Send message error:', error);
+      Alert.alert('Error', 'Failed to send message');
     } finally {
       setTyping(false);
     }
   };
-  
-  // Handle unlock message
-  const handleUnlock = async (messageId: string) => {
-    if (!sessionId) return;
+
+  const renderMessage = ({ item }: { item: Message }) => {
+    const isUser = item.role === 'user';
     
-    try {
-      await chatService.unlockMessage(sessionId, messageId);
-      unlockMessage(sessionId, messageId);
-      deductCredits(5); // Unlock cost
-    } catch (error) {
-      console.error('Failed to unlock message:', error);
-      Alert.alert('Error', 'Failed to unlock content');
-    }
-  };
-  
-  // Apply spicy theme
-  const activeTheme = isSpicyMode ? getSpicyTheme() : theme;
-  const accentColor = isSpicyMode ? theme.colors.spicy.main : theme.colors.primary.main;
-  
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Credit Header */}
-      <CreditHeader
-        credits={wallet?.totalCredits || 0}
-        onBuyCredits={() => router.push('/profile/credits')}
-        isSpicyMode={isSpicyMode}
-      />
-      
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color={theme.colors.text.primary} />
-        </TouchableOpacity>
-        
-        <View style={styles.headerInfo}>
-          <Text style={styles.characterName}>{params.characterName}</Text>
-          {isTyping && (
-            <Text style={styles.typingText}>typing...</Text>
-          )}
-        </View>
-        
-        {/* Spicy Mode Toggle */}
-        <TouchableOpacity
-          style={[styles.spicyToggle, isSpicyMode && styles.spicyToggleActive]}
-          onPress={handleSpicyToggle}
-        >
-          <Ionicons
-            name="flame"
-            size={20}
-            color={isSpicyMode ? theme.colors.text.inverse : theme.colors.text.secondary}
-          />
-          {!isSubscribed && (
-            <View style={styles.lockBadge}>
-              <Ionicons name="lock-closed" size={10} color={theme.colors.text.inverse} />
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
-      
-      {/* Messages List */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={(item) => item.messageId}
-        renderItem={({ item }) => (
-          <ChatBubble
-            message={item}
-            onUnlock={handleUnlock}
-            isSpicyMode={isSpicyMode}
-          />
+    return (
+      <View style={[styles.messageRow, isUser ? styles.messageRowUser : styles.messageRowAI]}>
+        {/* AI Avatar */}
+        {!isUser && (
+          <Image source={{ uri: characterAvatar }} style={styles.avatar} />
         )}
-        contentContainerStyle={styles.messagesList}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        ListFooterComponent={isTyping ? <TypingIndicator isSpicyMode={isSpicyMode} /> : null}
-      />
-      
-      {/* Input Area */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        
+        {/* Message Bubble */}
+        <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
+          <Text style={[styles.messageText, isUser ? styles.messageTextUser : styles.messageTextAI]}>
+            {item.content}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  const renderTypingIndicator = () => (
+    <View style={[styles.messageRow, styles.messageRowAI]}>
+      <Image source={{ uri: characterAvatar }} style={styles.avatar} />
+      <View style={[styles.bubble, styles.bubbleAI, styles.typingBubble]}>
+        <Text style={styles.typingText}>正在输入...</Text>
+      </View>
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      {/* Full screen background image */}
+      <ImageBackground
+        source={{ uri: backgroundImage }}
+        style={styles.backgroundImage}
+        resizeMode="cover"
       >
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder="Type a message..."
-            placeholderTextColor={theme.colors.text.tertiary}
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-            maxLength={2000}
-          />
+        {/* Gradient overlay for readability */}
+        <LinearGradient
+          colors={['rgba(26,16,37,0.3)', 'rgba(26,16,37,0.7)', 'rgba(26,16,37,0.95)'] as [string, string, string]}
+          style={styles.overlay}
+        />
+      </ImageBackground>
+
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
           
-          <TouchableOpacity
-            style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
-            onPress={handleSend}
-            disabled={!inputText.trim()}
-          >
-            <LinearGradient
-              colors={isSpicyMode ? theme.colors.spicy.gradient : theme.colors.primary.gradient}
-              style={styles.sendButtonGradient}
-            >
-              <Ionicons name="send" size={20} color={theme.colors.text.inverse} />
-            </LinearGradient>
+          <View style={styles.headerCenter}>
+            <Text style={styles.characterName}>{characterName}</Text>
+          </View>
+          
+          <TouchableOpacity style={styles.menuButton}>
+            <Ionicons name="ellipsis-horizontal" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
-      
-      {/* Paywall Modal */}
-      <PaywallModal
-        visible={showPaywall}
-        onClose={() => setShowPaywall(false)}
-        onSubscribe={(plan) => {
-          // Handle subscription
-          console.log('Subscribe to:', plan);
-          setShowPaywall(false);
-        }}
-        feature="Spicy Mode"
-      />
-    </SafeAreaView>
+
+        {/* Status Bar - Level, Credits, Upgrade */}
+        <View style={styles.statusBar}>
+          {/* Level Badge */}
+          <View style={styles.levelContainer}>
+            <Text style={styles.levelText}>LV {relationshipLevel}</Text>
+            <View style={styles.xpBarContainer}>
+              <View style={[styles.xpBar, { width: `${(relationshipXp / relationshipMaxXp) * 100}%` }]} />
+            </View>
+          </View>
+          
+          {/* Credits */}
+          <View style={styles.creditsContainer}>
+            <Text style={styles.coinEmoji}>🪙</Text>
+            <Text style={styles.creditsText}>{wallet?.totalCredits ?? 0}</Text>
+            <TouchableOpacity style={styles.addCreditsButton}>
+              <Ionicons name="add" size={14} color="#FFD700" />
+            </TouchableOpacity>
+          </View>
+          
+          {/* Upgrade Button */}
+          {!isSubscribed && (
+            <TouchableOpacity style={styles.upgradeButton} onPress={() => router.push('/subscription')}>
+              <LinearGradient
+                colors={['#FF6B35', '#F7931E'] as [string, string]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.upgradeGradient}
+              >
+                <Text style={styles.upgradeIcon}>🔥</Text>
+                <Text style={styles.upgradeText}>UPGRADE</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Messages */}
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(item) => item.messageId}
+          renderItem={renderMessage}
+          contentContainerStyle={styles.messagesList}
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          ListFooterComponent={isTyping ? renderTypingIndicator : null}
+          showsVerticalScrollIndicator={false}
+        />
+
+        {/* Input Area - moved up */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={0}
+        >
+          <View style={styles.inputContainer}>
+            {/* Input */}
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                placeholder={`与 ${characterName} 聊天`}
+                placeholderTextColor="rgba(255,255,255,0.4)"
+                value={inputText}
+                onChangeText={setInputText}
+                multiline
+                maxLength={2000}
+              />
+            </View>
+            
+            {/* Send Button */}
+            <TouchableOpacity 
+              style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]} 
+              onPress={handleSend}
+              disabled={!inputText.trim()}
+            >
+              <LinearGradient
+                colors={inputText.trim() ? ['#EC4899', '#8B5CF6'] as [string, string] : ['#555', '#444'] as [string, string]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.sendButtonGradient}
+              >
+                <Ionicons name="send" size={20} color="#fff" />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background.primary,
+    backgroundColor: '#1a1025',
+  },
+  backgroundImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: SCREEN_HEIGHT * 0.6,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  safeArea: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerInfo: {
-    flex: 1,
-    marginLeft: theme.spacing.sm,
-  },
-  characterName: {
-    fontFamily: theme.typography.fontFamily.bold,
-    fontSize: theme.typography.fontSize.lg,
-    color: theme.colors.text.primary,
-  },
-  typingText: {
-    fontFamily: theme.typography.fontFamily.regular,
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.text.secondary,
-    fontStyle: 'italic',
-  },
-  spicyToggle: {
     width: 44,
     height: 44,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.background.secondary,
     justifyContent: 'center',
     alignItems: 'center',
-    position: 'relative',
   },
-  spicyToggleActive: {
-    backgroundColor: theme.colors.spicy.main,
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
   },
-  lockBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: theme.colors.primary.main,
+  characterName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  menuButton: {
+    width: 44,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  statusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  levelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  levelText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  xpBarContainer: {
+    width: 50,
+    height: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  xpBar: {
+    height: '100%',
+    backgroundColor: '#A855F7',
+    borderRadius: 3,
+  },
+  creditsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 215, 0, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
+    gap: 4,
+  },
+  coinEmoji: {
+    fontSize: 14,
+  },
+  creditsText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFD700',
+  },
+  addCreditsButton: {
+    marginLeft: 2,
+  },
+  upgradeButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  upgradeGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  upgradeIcon: {
+    fontSize: 12,
+  },
+  upgradeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
   },
   messagesList: {
-    paddingVertical: theme.spacing.md,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  messageRow: {
+    flexDirection: 'row',
+    marginBottom: 12,
+    alignItems: 'flex-end',
+  },
+  messageRowUser: {
+    justifyContent: 'flex-end',
+  },
+  messageRowAI: {
+    justifyContent: 'flex-start',
+  },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 8,
+  },
+  bubble: {
+    maxWidth: SCREEN_WIDTH * 0.72,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+  },
+  bubbleUser: {
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderBottomRightRadius: 4,
+  },
+  bubbleAI: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderBottomLeftRadius: 4,
+  },
+  messageText: {
+    fontSize: 15,
+    lineHeight: 21,
+  },
+  messageTextUser: {
+    color: '#fff',
+  },
+  messageTextAI: {
+    color: 'rgba(255, 255, 255, 0.92)',
+  },
+  typingBubble: {
+    paddingVertical: 8,
+  },
+  typingText: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 14,
+    fontStyle: 'italic',
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    backgroundColor: theme.colors.background.secondary,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-    gap: theme.spacing.sm,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
+    gap: 10,
+  },
+  inputWrapper: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
+    minHeight: 48,
+    justifyContent: 'center',
   },
   input: {
-    flex: 1,
-    backgroundColor: theme.colors.background.tertiary,
-    borderRadius: theme.borderRadius.lg,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    fontFamily: theme.typography.fontFamily.regular,
-    fontSize: theme.typography.fontSize.base,
-    color: theme.colors.text.primary,
+    fontSize: 16,
+    color: '#fff',
     maxHeight: 100,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: theme.borderRadius.full,
+    borderRadius: 24,
     overflow: 'hidden',
   },
   sendButtonDisabled: {
     opacity: 0.5,
   },
   sendButtonGradient: {
-    width: '100%',
-    height: '100%',
+    width: 48,
+    height: 48,
     justifyContent: 'center',
     alignItems: 'center',
   },
