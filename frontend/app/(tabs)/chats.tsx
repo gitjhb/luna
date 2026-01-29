@@ -18,14 +18,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme/config';
-import { useChatStore, ChatSession } from '../../store/chatStore';
+import { useChatStore, ChatSession, Message } from '../../store/chatStore';
 import { chatService } from '../../services/chatService';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 
 export default function ChatsScreen() {
   const router = useRouter();
-  const { sessions, setSessions, deleteSession } = useChatStore();
+  const { sessions, setSessions, deleteSession, messagesBySession } = useChatStore();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -87,6 +87,13 @@ export default function ChatsScreen() {
     }
   };
 
+  const getLastMessage = (sessionId: string): string => {
+    const messages = messagesBySession[sessionId];
+    if (!messages || messages.length === 0) return '新对话';
+    const lastMsg = messages[messages.length - 1];
+    return lastMsg.content.slice(0, 50) + (lastMsg.content.length > 50 ? '...' : '');
+  };
+
   const renderSession = ({ item }: { item: ChatSession }) => (
     <TouchableOpacity
       style={styles.sessionCard}
@@ -104,7 +111,7 @@ export default function ChatsScreen() {
           <Text style={styles.timestamp}>{formatTime(item.lastMessageAt || item.createdAt)}</Text>
         </View>
         <Text style={styles.sessionTitle} numberOfLines={1}>
-          {item.title || '新对话'}
+          {getLastMessage(item.sessionId)}
         </Text>
       </View>
     </TouchableOpacity>

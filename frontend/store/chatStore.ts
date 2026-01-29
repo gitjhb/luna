@@ -131,10 +131,33 @@ export const useChatStore = create<ChatState>()(
   },
   
   setSessions: (sessions) => {
-    set({ sessions });
+    // Deduplicate by sessionId (keep first occurrence)
+    const seen = new Set<string>();
+    const uniqueSessions = sessions.filter((s) => {
+      if (seen.has(s.sessionId)) return false;
+      seen.add(s.sessionId);
+      return true;
+    });
+    set({ sessions: uniqueSessions });
   },
   
   addSession: (session) => {
+    // Don't add if session already exists
+    const existing = get().sessions.find((s) => s.sessionId === session.sessionId);
+    if (existing) return;
+    
+    // Also check by characterId - only one session per character
+    const existingByChar = get().sessions.find((s) => s.characterId === session.characterId);
+    if (existingByChar) {
+      // Update existing instead of adding new
+      set({
+        sessions: get().sessions.map((s) =>
+          s.characterId === session.characterId ? { ...s, ...session } : s
+        ),
+      });
+      return;
+    }
+    
     set({
       sessions: [session, ...get().sessions],
     });
