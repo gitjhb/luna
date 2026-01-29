@@ -31,6 +31,7 @@ const mapSession = (data: any): ChatSession => ({
   characterId: data.character_id || data.characterId,
   characterName: data.character_name || data.characterName || 'Unknown',
   characterAvatar: data.character_avatar || data.characterAvatar || 'https://i.pravatar.cc/100',
+  characterBackground: data.character_background || data.characterBackground,
   title: data.title || 'New Chat',
   totalMessages: data.total_messages || data.totalMessages || 0,
   totalCreditsSpent: data.total_credits_spent || data.totalCreditsSpent || 0,

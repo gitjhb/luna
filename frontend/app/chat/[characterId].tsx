@@ -57,9 +57,9 @@ export default function ChatScreen() {
   const [relationshipXp, setRelationshipXp] = useState(0);
   const [relationshipMaxXp, setRelationshipMaxXp] = useState(100);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [characterName, setCharacterName] = useState(params.characterName || 'Companion');
   
   const flatListRef = useRef<FlatList>(null);
-  const characterName = params.characterName || 'Companion';
 
   useEffect(() => {
     initializeSession();
@@ -74,7 +74,9 @@ export default function ChatScreen() {
       if (cachedSession) {
         setSessionId(cachedSession.sessionId);
         setActiveSession(cachedSession.sessionId, params.characterId);
+        if (cachedSession.characterName) setCharacterName(cachedSession.characterName);
         if (cachedSession.characterAvatar) setCharacterAvatar(cachedSession.characterAvatar);
+        if (cachedSession.characterBackground) setBackgroundImage(cachedSession.characterBackground);
         // Messages are already in store from cache, no need to set again
       }
       
@@ -92,6 +94,7 @@ export default function ChatScreen() {
       const session = await chatService.getOrCreateSession(params.characterId);
       setSessionId(session.sessionId);
       setActiveSession(session.sessionId, params.characterId);
+      if (session.characterName) setCharacterName(session.characterName);
       if (session.characterAvatar) setCharacterAvatar(session.characterAvatar);
       if (session.characterBackground) setBackgroundImage(session.characterBackground);
       

@@ -26,6 +26,7 @@ export interface ChatSession {
   characterId: string;
   characterName: string;
   characterAvatar: string;
+  characterBackground?: string;
   title: string;
   totalMessages: number;
   totalCreditsSpent: number;

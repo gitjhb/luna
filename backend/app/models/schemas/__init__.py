@@ -63,6 +63,7 @@ class CreateSessionResponse(BaseModel):
     session_id: UUID
     character_name: str
     character_avatar: Optional[str] = None
+    character_background: Optional[str] = None
 
 
 class SessionInfo(BaseModel):
@@ -70,6 +71,7 @@ class SessionInfo(BaseModel):
     character_id: UUID
     character_name: str
     character_avatar: Optional[str] = None
+    character_background: Optional[str] = None
     total_messages: int = 0
     created_at: datetime
     updated_at: datetime

@@ -14,6 +14,7 @@ from app.models.schemas import (
     SessionInfo, ChatMessage
 )
 from app.services.intimacy_service import intimacy_service, IntimacyService
+from app.api.v1.characters import CHARACTERS
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,14 @@ _messages = {}
 MOCK_MODE = os.getenv("MOCK_LLM", "true").lower() == "true"
 
 
+def get_character_info(character_id: str) -> dict:
+    """Get character info by ID"""
+    for c in CHARACTERS:
+        if c["character_id"] == str(character_id):
+            return c
+    return {"name": "AI Companion", "avatar_url": None, "background_url": None}
+
+
 @router.post("/sessions", response_model=CreateSessionResponse)
 async def create_session(request: CreateSessionRequest):
     """
@@ -33,13 +42,17 @@ async def create_session(request: CreateSessionRequest):
     If a session already exists for this character, return the existing one.
     This ensures each user has only one session per character.
     """
+    # Get character info
+    character = get_character_info(str(request.character_id))
+    
     # Check if session already exists for this character
     for session in _sessions.values():
         if str(session["character_id"]) == str(request.character_id):
             return CreateSessionResponse(
                 session_id=session["session_id"],
                 character_name=session["character_name"],
-                character_avatar=None,
+                character_avatar=session.get("character_avatar"),
+                character_background=session.get("character_background"),
             )
     
     # Create new session if none exists
@@ -47,7 +60,9 @@ async def create_session(request: CreateSessionRequest):
     _sessions[str(session_id)] = {
         "session_id": session_id,
         "character_id": request.character_id,
-        "character_name": "AI Companion",
+        "character_name": character["name"],
+        "character_avatar": character.get("avatar_url"),
+        "character_background": character.get("background_url"),
         "total_messages": 0,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
@@ -56,8 +71,9 @@ async def create_session(request: CreateSessionRequest):
 
     return CreateSessionResponse(
         session_id=session_id,
-        character_name="AI Companion",
-        character_avatar=None,
+        character_name=character["name"],
+        character_avatar=character.get("avatar_url"),
+        character_background=character.get("background_url"),
     )
 
 
@@ -75,6 +91,8 @@ async def list_sessions(character_id: UUID = None):
             session_id=s["session_id"],
             character_id=s["character_id"],
             character_name=s["character_name"],
+            character_avatar=s.get("character_avatar"),
+            character_background=s.get("character_background"),
             total_messages=s["total_messages"],
             created_at=s["created_at"],
             updated_at=s["updated_at"],
