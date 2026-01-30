@@ -42,6 +42,9 @@ interface UserState {
   isPremium: boolean;
   isVip: boolean;
   
+  // Hydration status
+  _hasHydrated: boolean;
+  
   // Actions
   login: (user: User, token: string, wallet: Wallet) => void;
   logout: () => void;
@@ -49,6 +52,7 @@ interface UserState {
   deductCredits: (amount: number) => void;
   updateUser: (user: Partial<User>) => void;
   setSubscription: (tier: 'free' | 'premium' | 'vip', expiresAt?: string) => void;
+  setHasHydrated: (state: boolean) => void;
 }
 
 export const useUserStore = create<UserState>()(
@@ -62,6 +66,7 @@ export const useUserStore = create<UserState>()(
       isSubscribed: false,
       isPremium: false,
       isVip: false,
+      _hasHydrated: false,
       
       // Actions
       login: (user, token, wallet) => {
@@ -151,10 +156,17 @@ export const useUserStore = create<UserState>()(
           });
         }
       },
+      
+      setHasHydrated: (state) => {
+        set({ _hasHydrated: state });
+      },
     }),
     {
       name: 'user-storage',
       storage: createJSONStorage(() => AsyncStorage),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

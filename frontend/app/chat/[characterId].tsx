@@ -19,6 +19,7 @@ import {
   ImageBackground,
   Modal,
   ScrollView,
+  Animated,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -26,8 +27,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useUserStore } from '../../store/userStore';
 import { useChatStore, selectActiveMessages, Message } from '../../store/chatStore';
+
+// Spicy mode costs 2 extra credits per message
+const SPICY_MODE_CREDIT_COST = 2;
 import { chatService } from '../../services/chatService';
 import { intimacyService } from '../../services/intimacyService';
+import { pricingService, CoinPack, MembershipPlan } from '../../services/pricingService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -38,15 +43,20 @@ export default function ChatScreen() {
   const params = useLocalSearchParams<{ characterId: string; characterName: string; sessionId?: string; backgroundUrl?: string; avatarUrl?: string }>();
   
   const { wallet, deductCredits, isSubscribed } = useUserStore();
+  const isSpicyMode = useChatStore((s) => s.isSpicyMode);
   const {
     isTyping,
     setActiveSession,
     addMessage,
     setMessages,
     setTyping,
+    getIntimacy,
+    setIntimacy,
+    updateSession,
   } = useChatStore();
   
   const messages = useChatStore(selectActiveMessages);
+  const cachedIntimacy = useChatStore((s) => s.intimacyByCharacter[params.characterId]);
   
   const [inputText, setInputText] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(params.sessionId || null);
@@ -57,20 +67,84 @@ export default function ChatScreen() {
   const [relationshipXp, setRelationshipXp] = useState(0);
   const [relationshipMaxXp, setRelationshipMaxXp] = useState(100);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeModalType, setUpgradeModalType] = useState<'coins' | 'membership'>('coins');
+  const [coinPacks, setCoinPacks] = useState<CoinPack[]>([]);
+  const [membershipPlans, setMembershipPlans] = useState<MembershipPlan[]>([]);
   const [showLevelUpModal, setShowLevelUpModal] = useState(false);
   const [newLevel, setNewLevel] = useState(0);
   const [characterName, setCharacterName] = useState(params.characterName || 'Companion');
+  const [showLevelInfoModal, setShowLevelInfoModal] = useState(false);
+  const [showGiftModal, setShowGiftModal] = useState(false);
   
   const flatListRef = useRef<FlatList>(null);
   const previousLevelRef = useRef<number | null>(null);
+  const isSendingRef = useRef(false);  // Prevent duplicate sends
+  
+  // Animated progress bar
+  const xpProgressAnim = useRef(new Animated.Value(0)).current;
+
+  // Load pricing config on mount
+  useEffect(() => {
+    pricingService.getConfig().then(config => {
+      setCoinPacks(config.coinPacks);
+      setMembershipPlans(config.membershipPlans);
+    });
+  }, []);
+
+  // Scroll to bottom when keyboard opens
+  useEffect(() => {
+    const keyboardShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => {
+        // Multiple attempts to ensure scroll completes after layout
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 150);
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 400);
+      }
+    );
+    return () => keyboardShowListener.remove();
+  }, []);
+
+  // Scroll to bottom when messages load (initial load)
+  useEffect(() => {
+    if (messages.length > 0 && !isInitializing) {
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
+    }
+  }, [messages.length, isInitializing]);
+
+  // Animate progress bar when XP changes
+  useEffect(() => {
+    // Ensure xp is non-negative (can be negative briefly during level transitions)
+    const safeXp = Math.max(0, relationshipXp);
+    const safeMax = Math.max(1, relationshipMaxXp); // Avoid division by zero
+    const progress = (safeXp / safeMax) * 100;
+    
+    Animated.timing(xpProgressAnim, {
+      toValue: Math.max(0, Math.min(progress, 100)), // Clamp between 0-100
+      duration: 500,
+      useNativeDriver: false,
+    }).start();
+  }, [relationshipXp, relationshipMaxXp, relationshipLevel]); // Also trigger on level change
 
   // Reset state when character changes
   useEffect(() => {
-    // Clear previous character's data
-    setRelationshipLevel(null);
-    setRelationshipXp(0);
-    setRelationshipMaxXp(100);
-    setMessages(sessionId || '', []);
+    // Load cached intimacy immediately (instant display)
+    if (cachedIntimacy) {
+      previousLevelRef.current = cachedIntimacy.currentLevel;
+      setRelationshipLevel(cachedIntimacy.currentLevel);
+      // Calculate max XP for current level range
+      const maxXp = cachedIntimacy.xpForNextLevel - cachedIntimacy.xpForCurrentLevel;
+      // Validate: max should be positive, xpProgress should be 0 to max
+      const validMax = maxXp > 0 ? maxXp : 6; // Default to 6 for level 1
+      const validProgress = Math.max(0, Math.min(cachedIntimacy.xpProgressInLevel, validMax));
+      setRelationshipXp(validProgress);
+      setRelationshipMaxXp(validMax);
+    } else {
+      setRelationshipLevel(null);
+      setRelationshipXp(0);
+      setRelationshipMaxXp(6); // Level 1 needs 6 XP
+    }
+    // Don't clear messages here - let initializeSession handle it
+    // Messages are already cached in store, clearing causes flicker
     initializeSession();
   }, [params.characterId]);
 
@@ -89,18 +163,33 @@ export default function ChatScreen() {
         // Messages are already in store from cache, no need to set again
       }
       
-      // Step 2: Fetch intimacy status
+      // Step 2: Fetch intimacy status (and cache it locally)
       try {
         const intimacyStatus = await intimacyService.getStatus(params.characterId);
         previousLevelRef.current = intimacyStatus.currentLevel;
         setRelationshipLevel(intimacyStatus.currentLevel);
-        setRelationshipXp(intimacyStatus.xpProgressInLevel);
-        setRelationshipMaxXp(intimacyStatus.xpForNextLevel - intimacyStatus.xpForCurrentLevel);
+        // Calculate and validate max XP
+        const maxXp = intimacyStatus.xpForNextLevel - intimacyStatus.xpForCurrentLevel;
+        const validMax = maxXp > 0 ? maxXp : 6;
+        const validProgress = Math.max(0, Math.min(intimacyStatus.xpProgressInLevel, validMax));
+        setRelationshipXp(validProgress);
+        setRelationshipMaxXp(validMax);
+        // Cache to local store for instant load next time
+        setIntimacy(params.characterId, {
+          currentLevel: intimacyStatus.currentLevel,
+          xpProgressInLevel: validProgress,
+          xpForNextLevel: intimacyStatus.xpForNextLevel,
+          xpForCurrentLevel: intimacyStatus.xpForCurrentLevel,
+        });
       } catch (e) {
         console.log('Intimacy status not available:', e);
-        // Set default level 0 if no intimacy data
-        previousLevelRef.current = 0;
-        setRelationshipLevel(0);
+        // Only set default if no cached data (default level is 1)
+        if (!cachedIntimacy) {
+          previousLevelRef.current = 1;
+          setRelationshipLevel(1);
+          setRelationshipXp(0);
+          setRelationshipMaxXp(6);
+        }
       }
       
       // Step 3: Sync with backend - get or create session
@@ -119,25 +208,34 @@ export default function ChatScreen() {
         useChatStore.getState().addSession(session);
       }
       
-      // Step 4: Load message history from backend
+      // Step 4: Load message history from backend (only if newer than cache)
       try {
+        const cachedMessages = useChatStore.getState().messagesBySession[session.sessionId] || [];
         const history = await chatService.getSessionHistory(session.sessionId);
-        if (history.length > 0) {
+        // Only update if backend has more messages or cache is empty
+        if (history.length > 0 && history.length >= cachedMessages.length) {
           setMessages(session.sessionId, history);
         }
       } catch (e) {
         console.log('Could not load history:', e);
+        // Keep using cached messages on error
       }
     } catch (error) {
       console.error('Failed to initialize session:', error);
     } finally {
       setIsInitializing(false);
+      // Scroll to bottom after loading completes
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 200);
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 500);
     }
   };
 
   const handleSend = async () => {
     const text = inputText.trim();
-    if (!text || !sessionId) return;
+    if (!text || !sessionId || isTyping || isSendingRef.current) return;  // Prevent duplicate sends
+    
+    // Immediately block further sends using ref (sync, not async like state)
+    isSendingRef.current = true;
     
     Keyboard.dismiss();
     setInputText('');
@@ -154,7 +252,19 @@ export default function ChatScreen() {
     setTyping(true, params.characterId);
     
     try {
-      const response = await chatService.sendMessage({ sessionId, message: text });
+      // Check if user has enough credits for spicy mode
+      if (isSpicyMode && (wallet?.totalCredits || 0) < SPICY_MODE_CREDIT_COST) {
+        Alert.alert('Insufficient Credits', 'Spicy mode requires 2 credits per message. Please recharge.');
+        setTyping(false);
+        return;
+      }
+      
+      const response = await chatService.sendMessage({ 
+        sessionId, 
+        message: text,
+        spicyMode: isSpicyMode,
+        intimacyLevel: relationshipLevel || 1,
+      });
       
       addMessage(sessionId, {
         messageId: response.messageId,
@@ -165,6 +275,9 @@ export default function ChatScreen() {
         imageUrl: response.imageUrl,
         createdAt: response.createdAt,
       });
+      
+      // Update session's lastMessageAt for accurate time display in chat list
+      updateSession(sessionId, { lastMessageAt: new Date().toISOString() });
       
       if (response.creditsDeducted) {
         deductCredits(response.creditsDeducted);
@@ -183,8 +296,19 @@ export default function ChatScreen() {
         
         previousLevelRef.current = updatedIntimacy.currentLevel;
         setRelationshipLevel(updatedIntimacy.currentLevel);
-        setRelationshipXp(updatedIntimacy.xpProgressInLevel);
-        setRelationshipMaxXp(updatedIntimacy.xpForNextLevel - updatedIntimacy.xpForCurrentLevel);
+        // Calculate and validate
+        const maxXp = updatedIntimacy.xpForNextLevel - updatedIntimacy.xpForCurrentLevel;
+        const validMax = maxXp > 0 ? maxXp : 6;
+        const validProgress = Math.max(0, Math.min(updatedIntimacy.xpProgressInLevel, validMax));
+        setRelationshipXp(validProgress);
+        setRelationshipMaxXp(validMax);
+        // Update local cache
+        setIntimacy(params.characterId, {
+          currentLevel: updatedIntimacy.currentLevel,
+          xpProgressInLevel: validProgress,
+          xpForNextLevel: updatedIntimacy.xpForNextLevel,
+          xpForCurrentLevel: updatedIntimacy.xpForCurrentLevel,
+        });
       } catch (e) {
         // Silently fail if intimacy update fails
       }
@@ -195,6 +319,7 @@ export default function ChatScreen() {
       Alert.alert('Error', 'Failed to send message');
     } finally {
       setTyping(false);
+      isSendingRef.current = false;  // Allow sending again
     }
   };
 
@@ -220,7 +345,9 @@ export default function ChatScreen() {
       const response = await chatService.sendMessage({ 
         sessionId, 
         message: photoRequest,
-        requestType: 'photo'  // Tell backend this is a photo request
+        requestType: 'photo',  // Tell backend this is a photo request
+        spicyMode: isSpicyMode,
+        intimacyLevel: relationshipLevel || 1,
       });
       
       addMessage(sessionId, {
@@ -233,6 +360,9 @@ export default function ChatScreen() {
         createdAt: response.createdAt,
       });
       
+      // Update session's lastMessageAt for accurate time display in chat list
+      updateSession(sessionId, { lastMessageAt: new Date().toISOString() });
+      
       if (response.creditsDeducted) {
         deductCredits(response.creditsDeducted);
       }
@@ -241,8 +371,19 @@ export default function ChatScreen() {
       try {
         const updatedIntimacy = await intimacyService.getStatus(params.characterId);
         setRelationshipLevel(updatedIntimacy.currentLevel);
-        setRelationshipXp(updatedIntimacy.xpProgressInLevel);
-        setRelationshipMaxXp(updatedIntimacy.xpForNextLevel - updatedIntimacy.xpForCurrentLevel);
+        // Calculate and validate
+        const maxXp = updatedIntimacy.xpForNextLevel - updatedIntimacy.xpForCurrentLevel;
+        const validMax = maxXp > 0 ? maxXp : 6;
+        const validProgress = Math.max(0, Math.min(updatedIntimacy.xpProgressInLevel, validMax));
+        setRelationshipXp(validProgress);
+        setRelationshipMaxXp(validMax);
+        // Update local cache
+        setIntimacy(params.characterId, {
+          currentLevel: updatedIntimacy.currentLevel,
+          xpProgressInLevel: validProgress,
+          xpForNextLevel: updatedIntimacy.xpForNextLevel,
+          xpForCurrentLevel: updatedIntimacy.xpForCurrentLevel,
+        });
       } catch (e) {}
       
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
@@ -317,21 +458,34 @@ export default function ChatScreen() {
         {/* Status Bar - Level, Credits, Upgrade */}
         <View style={styles.statusBar}>
           {/* Level Badge */}
-          <View style={styles.levelContainer}>
+          <TouchableOpacity style={styles.levelContainer} onPress={() => setShowLevelInfoModal(true)}>
             {relationshipLevel === null ? (
               <Text style={styles.levelText}>加载中...</Text>
             ) : (
               <>
-                <Text style={styles.levelText}>LV {relationshipLevel}</Text>
+                <View style={styles.levelRow}>
+                  <Ionicons name="information-circle-outline" size={14} color="rgba(255,255,255,0.7)" style={{ marginRight: 4 }} />
+                  <Text style={styles.levelText}>LV {relationshipLevel}</Text>
+                </View>
                 <View style={styles.xpBarContainer}>
-                  <View style={[styles.xpBar, { width: `${(relationshipXp / relationshipMaxXp) * 100}%` }]} />
+                  <Animated.View 
+                    style={[
+                      styles.xpBar, 
+                      { 
+                        width: xpProgressAnim.interpolate({
+                          inputRange: [0, 100],
+                          outputRange: ['0%', '100%'],
+                        })
+                      }
+                    ]} 
+                  />
                 </View>
               </>
             )}
-          </View>
+          </TouchableOpacity>
           
           {/* Credits */}
-          <TouchableOpacity style={styles.creditsContainer} onPress={() => setShowUpgradeModal(true)}>
+          <TouchableOpacity style={styles.creditsContainer} onPress={() => { setUpgradeModalType('coins'); setShowUpgradeModal(true); }}>
             <Text style={styles.coinEmoji}>🪙</Text>
             <Text style={styles.creditsText}>{wallet?.totalCredits ?? 0}</Text>
             <View style={styles.addCreditsButton}>
@@ -341,7 +495,7 @@ export default function ChatScreen() {
           
           {/* Upgrade Button */}
           {!isSubscribed && (
-            <TouchableOpacity style={styles.upgradeButton} onPress={() => setShowUpgradeModal(true)}>
+            <TouchableOpacity style={styles.upgradeButton} onPress={() => { setUpgradeModalType('membership'); setShowUpgradeModal(true); }}>
               <LinearGradient
                 colors={['#FF6B35', '#F7931E'] as [string, string]}
                 start={{ x: 0, y: 0 }}
@@ -372,6 +526,10 @@ export default function ChatScreen() {
           <TouchableOpacity style={styles.actionButton} onPress={handleAskForPhoto}>
             <Text style={styles.actionButtonEmoji}>📸</Text>
             <Text style={styles.actionButtonText}>Ask for Photo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton} onPress={() => setShowGiftModal(true)}>
+            <Text style={styles.actionButtonEmoji}>🎁</Text>
+            <Text style={styles.actionButtonText}>送礼物</Text>
           </TouchableOpacity>
         </View>
 
@@ -424,84 +582,97 @@ export default function ChatScreen() {
           <View style={styles.modalContent}>
             {/* Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>升级会员</Text>
+              <Text style={styles.modalTitle}>
+                {upgradeModalType === 'coins' ? 'Buy Coins' : 'Membership'}
+              </Text>
               <TouchableOpacity onPress={() => setShowUpgradeModal(false)} style={styles.modalCloseButton}>
                 <Ionicons name="close" size={24} color="#fff" />
               </TouchableOpacity>
             </View>
             
             <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-              {/* Premium Plan */}
-              <TouchableOpacity style={styles.planCard}>
-                <LinearGradient
-                  colors={['#8B5CF6', '#EC4899'] as [string, string]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.planGradient}
-                >
-                  <View style={styles.planHeader}>
-                    <Text style={styles.planName}>Premium</Text>
-                    <View style={styles.planBadge}>
-                      <Text style={styles.planBadgeText}>热门</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.planPrice}>¥68<Text style={styles.planPeriod}>/月</Text></Text>
-                  <View style={styles.planFeatures}>
-                    <Text style={styles.planFeature}>✓ 每月 1000 金币</Text>
-                    <Text style={styles.planFeature}>✓ 无限文字聊天</Text>
-                    <Text style={styles.planFeature}>✓ 优先响应</Text>
-                    <Text style={styles.planFeature}>✓ 专属角色解锁</Text>
-                  </View>
-                </LinearGradient>
-              </TouchableOpacity>
+              {/* Membership Plans */}
+              {upgradeModalType === 'membership' && (
+                <>
+                  {membershipPlans.map((plan, index) => {
+                    const gradientColors: Record<string, [string, string]> = {
+                      free: ['#6B7280', '#4B5563'],
+                      premium: ['#8B5CF6', '#EC4899'],
+                      vip: ['#F59E0B', '#EF4444'],
+                    };
+                    const isCurrentPlan = (plan.tier === 'free' && !isSubscribed) || 
+                      (plan.tier !== 'free' && isSubscribed);
+                    
+                    return (
+                      <TouchableOpacity 
+                        key={plan.id} 
+                        style={[styles.planCard, isCurrentPlan && styles.planCardCurrent]}
+                        disabled={isCurrentPlan}
+                      >
+                        <LinearGradient
+                          colors={gradientColors[plan.tier] || gradientColors.free}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={styles.planGradient}
+                        >
+                          <View style={styles.planHeader}>
+                            <Text style={styles.planName}>{plan.name}</Text>
+                            {plan.highlighted && (
+                              <View style={styles.planBadge}>
+                                <Text style={styles.planBadgeText}>Popular</Text>
+                              </View>
+                            )}
+                            {isCurrentPlan && (
+                              <View style={[styles.planBadge, { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
+                                <Text style={styles.planBadgeText}>Current</Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text style={styles.planPrice}>
+                            {plan.price === 0 ? 'Free' : `$${plan.price}`}
+                            {plan.price > 0 && <Text style={styles.planPeriod}>/month</Text>}
+                          </Text>
+                          <Text style={styles.planDailyCredits}>
+                            +{plan.dailyCredits} credits/day
+                          </Text>
+                          <View style={styles.planFeatures}>
+                            {plan.features.map((feature, i) => (
+                              <Text key={i} style={styles.planFeature}>✓ {feature}</Text>
+                            ))}
+                          </View>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </>
+              )}
 
-              {/* VIP Plan */}
-              <TouchableOpacity style={styles.planCard}>
-                <LinearGradient
-                  colors={['#F59E0B', '#EF4444'] as [string, string]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.planGradient}
-                >
-                  <View style={styles.planHeader}>
-                    <Text style={styles.planName}>VIP</Text>
-                    <View style={[styles.planBadge, { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
-                      <Text style={styles.planBadgeText}>尊享</Text>
-                    </View>
+              {/* Coin Packs */}
+              {upgradeModalType === 'coins' && (
+                <>
+                  <View style={styles.coinPacksGrid}>
+                    {coinPacks.map((pack) => (
+                      <TouchableOpacity key={pack.id} style={styles.coinPackCard}>
+                        {pack.popular && (
+                          <View style={styles.coinPackPopular}>
+                            <Text style={styles.coinPackPopularText}>Best Value</Text>
+                          </View>
+                        )}
+                        {pack.discount && (
+                          <View style={styles.coinPackDiscount}>
+                            <Text style={styles.coinPackDiscountText}>{pack.discount}% OFF</Text>
+                          </View>
+                        )}
+                        <Text style={styles.coinPackCoins}>🪙 {pack.coins.toLocaleString()}</Text>
+                        {pack.bonusCoins && (
+                          <Text style={styles.coinPackBonus}>+{pack.bonusCoins} bonus</Text>
+                        )}
+                        <Text style={styles.coinPackPrice}>${pack.price.toFixed(2)}</Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
-                  <Text style={styles.planPrice}>¥168<Text style={styles.planPeriod}>/月</Text></Text>
-                  <View style={styles.planFeatures}>
-                    <Text style={styles.planFeature}>✓ 每月 3000 金币</Text>
-                    <Text style={styles.planFeature}>✓ 无限聊天 + 语音</Text>
-                    <Text style={styles.planFeature}>✓ 极速响应</Text>
-                    <Text style={styles.planFeature}>✓ 全部角色解锁</Text>
-                    <Text style={styles.planFeature}>✓ 专属客服</Text>
-                  </View>
-                </LinearGradient>
-              </TouchableOpacity>
-
-              {/* Credit Packs */}
-              <Text style={styles.sectionTitle}>金币充值</Text>
-              <View style={styles.creditPacks}>
-                <TouchableOpacity style={styles.creditPack}>
-                  <Text style={styles.creditPackCoins}>🪙 100</Text>
-                  <Text style={styles.creditPackPrice}>¥12</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.creditPack}>
-                  <Text style={styles.creditPackCoins}>🪙 500</Text>
-                  <Text style={styles.creditPackPrice}>¥50</Text>
-                  <View style={styles.creditPackSave}>
-                    <Text style={styles.creditPackSaveText}>省17%</Text>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.creditPack}>
-                  <Text style={styles.creditPackCoins}>🪙 1200</Text>
-                  <Text style={styles.creditPackPrice}>¥98</Text>
-                  <View style={styles.creditPackSave}>
-                    <Text style={styles.creditPackSaveText}>省32%</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
+                </>
+              )}
             </ScrollView>
           </View>
         </View>
@@ -540,6 +711,324 @@ export default function ChatScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Level Info Modal */}
+      <Modal
+        visible={showLevelInfoModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLevelInfoModal(false)}
+      >
+        <View style={styles.levelInfoOverlay}>
+          <View style={styles.levelInfoContent}>
+            <View style={styles.levelInfoHeader}>
+              <Text style={styles.levelInfoTitle}>💕 亲密度系统</Text>
+              <TouchableOpacity onPress={() => setShowLevelInfoModal(false)}>
+                <Ionicons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.levelInfoScroll} showsVerticalScrollIndicator={false}>
+              {/* Current Status */}
+              <View style={styles.levelInfoSection}>
+                <Text style={styles.levelInfoSectionTitle}>当前状态</Text>
+                <View style={styles.currentStatusCard}>
+                  <View>
+                    <Text style={styles.currentStatusLevel}>LV {relationshipLevel || 1}</Text>
+                    <Text style={styles.currentStatusStage}>
+                      {(relationshipLevel || 1) <= 3 ? '👋 初识' : 
+                       (relationshipLevel || 1) <= 10 ? '😊 熟悉' :
+                       (relationshipLevel || 1) <= 25 ? '💛 好友' :
+                       (relationshipLevel || 1) <= 40 ? '💕 亲密' : '❤️ 挚爱'}
+                    </Text>
+                  </View>
+                  <View style={styles.xpStatusBox}>
+                    <Text style={styles.xpStatusText}>
+                      {Math.round(relationshipXp)} / {Math.round(relationshipMaxXp)} XP
+                    </Text>
+                    <View style={styles.xpStatusBar}>
+                      <View style={[styles.xpStatusBarFill, { width: `${Math.min(100, (relationshipXp / relationshipMaxXp) * 100)}%` }]} />
+                    </View>
+                    <Text style={styles.xpStatusHint}>
+                      还需 {Math.round(relationshipMaxXp - relationshipXp)} XP 升级
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Stages */}
+              <View style={styles.levelInfoSection}>
+                <Text style={styles.levelInfoSectionTitle}>亲密阶段</Text>
+                
+                <View style={[styles.stageCard, (relationshipLevel || 1) <= 3 && styles.stageCardActive]}>
+                  <View style={styles.stageHeader}>
+                    <Text style={styles.stageEmoji}>👋</Text>
+                    <View style={styles.stageInfo}>
+                      <Text style={styles.stageName}>初识</Text>
+                      <Text style={styles.stageLevel}>LV 1-3</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.stageDesc}>刚认识，保持礼貌距离</Text>
+                  <View style={styles.stageFeatures}>
+                    <Text style={styles.featureItem}>✓ 基础文字聊天</Text>
+                    <Text style={styles.featureItem}>✓ 基础表情回复</Text>
+                    <Text style={[styles.featureItem, styles.featureLocked]}>✗ 发送图片</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.stageCard, (relationshipLevel || 1) > 3 && (relationshipLevel || 1) <= 10 && styles.stageCardActive]}>
+                  <View style={styles.stageHeader}>
+                    <Text style={styles.stageEmoji}>😊</Text>
+                    <View style={styles.stageInfo}>
+                      <Text style={styles.stageName}>熟悉</Text>
+                      <Text style={styles.stageLevel}>LV 4-10</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.stageDesc}>开始熟络，可以开玩笑</Text>
+                  <View style={styles.stageFeatures}>
+                    <Text style={styles.featureItem}>✓ 专属表情包</Text>
+                    <Text style={styles.featureItem}>✓ 发送图片</Text>
+                    <Text style={styles.featureItem}>✓ 更俏皮的回复</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.stageCard, (relationshipLevel || 1) > 10 && (relationshipLevel || 1) <= 25 && styles.stageCardActive]}>
+                  <View style={styles.stageHeader}>
+                    <Text style={styles.stageEmoji}>💛</Text>
+                    <View style={styles.stageInfo}>
+                      <Text style={styles.stageName}>好友</Text>
+                      <Text style={styles.stageLevel}>LV 11-25</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.stageDesc}>无话不谈的好朋友</Text>
+                  <View style={styles.stageFeatures}>
+                    <Text style={styles.featureItem}>✓ 语音消息</Text>
+                    <Text style={styles.featureItem}>✓ 更多话题解锁</Text>
+                    <Text style={styles.featureItem}>✓ 送礼物</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.stageCard, (relationshipLevel || 1) > 25 && (relationshipLevel || 1) <= 40 && styles.stageCardActive]}>
+                  <View style={styles.stageHeader}>
+                    <Text style={styles.stageEmoji}>💕</Text>
+                    <View style={styles.stageInfo}>
+                      <Text style={styles.stageName}>亲密</Text>
+                      <Text style={styles.stageLevel}>LV 26-40</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.stageDesc}>特别的存在，独特的羁绊</Text>
+                  <View style={styles.stageFeatures}>
+                    <Text style={styles.featureItem}>✓ 私密话题</Text>
+                    <Text style={styles.featureItem}>✓ 专属称呼</Text>
+                    <Text style={styles.featureItem}>✓ Spicy 模式</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.stageCard, (relationshipLevel || 1) > 40 && styles.stageCardActive]}>
+                  <View style={styles.stageHeader}>
+                    <Text style={styles.stageEmoji}>❤️</Text>
+                    <View style={styles.stageInfo}>
+                      <Text style={styles.stageName}>挚爱</Text>
+                      <Text style={styles.stageLevel}>LV 41+</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.stageDesc}>灵魂伴侣，心有灵犀</Text>
+                  <View style={styles.stageFeatures}>
+                    <Text style={styles.featureItem}>✓ 全部功能解锁</Text>
+                    <Text style={styles.featureItem}>✓ 专属剧情</Text>
+                    <Text style={styles.featureItem}>✓ 优先回复</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* How to earn XP */}
+              <View style={styles.levelInfoSection}>
+                <Text style={styles.levelInfoSectionTitle}>如何提升亲密度</Text>
+                <View style={styles.xpWayCard}>
+                  <Text style={styles.xpWayItem}>💬 发送消息 <Text style={styles.xpAmount}>+2 XP</Text></Text>
+                  <Text style={styles.xpWayItem}>📅 每日签到 <Text style={styles.xpAmount}>+20 XP</Text></Text>
+                  <Text style={styles.xpWayItem}>🔥 连续聊天（10条） <Text style={styles.xpAmount}>+5 XP</Text></Text>
+                  <Text style={styles.xpWayItem}>💝 表达情感 <Text style={styles.xpAmount}>+10 XP</Text></Text>
+                  <Text style={styles.xpWayItem}>🎁 送礼物 <Text style={styles.xpAmount}>+50~500 XP</Text></Text>
+                </View>
+              </View>
+
+              {/* Gifts */}
+              <View style={styles.levelInfoSection}>
+                <Text style={styles.levelInfoSectionTitle}>🎁 礼物商城</Text>
+                <Text style={styles.giftDesc}>用金币给 TA 送礼物，快速提升亲密度！</Text>
+                <View style={styles.giftGrid}>
+                  <View style={styles.giftItem}>
+                    <Text style={styles.giftEmoji}>🌹</Text>
+                    <Text style={styles.giftName}>玫瑰</Text>
+                    <Text style={styles.giftPrice}>10 🪙</Text>
+                    <Text style={styles.giftXp}>+50 XP</Text>
+                  </View>
+                  <View style={styles.giftItem}>
+                    <Text style={styles.giftEmoji}>🧸</Text>
+                    <Text style={styles.giftName}>小熊</Text>
+                    <Text style={styles.giftPrice}>50 🪙</Text>
+                    <Text style={styles.giftXp}>+150 XP</Text>
+                  </View>
+                  <View style={styles.giftItem}>
+                    <Text style={styles.giftEmoji}>💎</Text>
+                    <Text style={styles.giftName}>钻石</Text>
+                    <Text style={styles.giftPrice}>100 🪙</Text>
+                    <Text style={styles.giftXp}>+300 XP</Text>
+                  </View>
+                  <View style={styles.giftItem}>
+                    <Text style={styles.giftEmoji}>👑</Text>
+                    <Text style={styles.giftName}>皇冠</Text>
+                    <Text style={styles.giftPrice}>200 🪙</Text>
+                    <Text style={styles.giftXp}>+500 XP</Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.giftShopButton}>
+                  <Text style={styles.giftShopButtonText}>即将开放</Text>
+                </TouchableOpacity>
+              </View>
+
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Gift Modal - Floating popup */}
+      <Modal
+        visible={showGiftModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowGiftModal(false)}
+      >
+        <TouchableOpacity 
+          style={styles.giftModalOverlay} 
+          activeOpacity={1} 
+          onPress={() => setShowGiftModal(false)}
+        >
+          <View style={styles.giftModalContent}>
+            <View style={styles.giftModalHeader}>
+              <Text style={styles.giftModalTitle}>🎁 送礼物给 {characterName}</Text>
+              <TouchableOpacity onPress={() => setShowGiftModal(false)}>
+                <Ionicons name="close-circle" size={24} color="rgba(255,255,255,0.6)" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.giftModalGrid}>
+              <TouchableOpacity 
+                style={styles.giftModalItem}
+                onPress={() => {
+                  Alert.alert('送礼物', '确定花费 10 金币送一朵玫瑰吗？\n(+50 XP)', [
+                    { text: '取消', style: 'cancel' },
+                    { text: '送出', onPress: () => {
+                      Alert.alert('❤️', `${characterName} 收到了你的玫瑰，好开心！`);
+                      setShowGiftModal(false);
+                    }}
+                  ]);
+                }}
+              >
+                <Text style={styles.giftModalEmoji}>🌹</Text>
+                <Text style={styles.giftModalName}>玫瑰</Text>
+                <Text style={styles.giftModalPrice}>10 🪙</Text>
+                <Text style={styles.giftModalXp}>+50 XP</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.giftModalItem}
+                onPress={() => {
+                  Alert.alert('送礼物', '确定花费 30 金币送巧克力吗？\n(+100 XP)', [
+                    { text: '取消', style: 'cancel' },
+                    { text: '送出', onPress: () => {
+                      Alert.alert('🥰', `${characterName} 超喜欢巧克力！谢谢你～`);
+                      setShowGiftModal(false);
+                    }}
+                  ]);
+                }}
+              >
+                <Text style={styles.giftModalEmoji}>🍫</Text>
+                <Text style={styles.giftModalName}>巧克力</Text>
+                <Text style={styles.giftModalPrice}>30 🪙</Text>
+                <Text style={styles.giftModalXp}>+100 XP</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.giftModalItem}
+                onPress={() => {
+                  Alert.alert('送礼物', '确定花费 50 金币送小熊吗？\n(+150 XP)', [
+                    { text: '取消', style: 'cancel' },
+                    { text: '送出', onPress: () => {
+                      Alert.alert('🤗', `${characterName} 抱紧了小熊，会一直珍藏的！`);
+                      setShowGiftModal(false);
+                    }}
+                  ]);
+                }}
+              >
+                <Text style={styles.giftModalEmoji}>🧸</Text>
+                <Text style={styles.giftModalName}>小熊</Text>
+                <Text style={styles.giftModalPrice}>50 🪙</Text>
+                <Text style={styles.giftModalXp}>+150 XP</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.giftModalItem}
+                onPress={() => {
+                  Alert.alert('送礼物', '确定花费 100 金币送钻石吗？\n(+300 XP)', [
+                    { text: '取消', style: 'cancel' },
+                    { text: '送出', onPress: () => {
+                      Alert.alert('💎', `哇！${characterName} 被你的慷慨感动了！`);
+                      setShowGiftModal(false);
+                    }}
+                  ]);
+                }}
+              >
+                <Text style={styles.giftModalEmoji}>💎</Text>
+                <Text style={styles.giftModalName}>钻石</Text>
+                <Text style={styles.giftModalPrice}>100 🪙</Text>
+                <Text style={styles.giftModalXp}>+300 XP</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.giftModalItem}
+                onPress={() => {
+                  Alert.alert('送礼物', '确定花费 200 金币送皇冠吗？\n(+500 XP)', [
+                    { text: '取消', style: 'cancel' },
+                    { text: '送出', onPress: () => {
+                      Alert.alert('👑', `${characterName} 戴上了皇冠，感觉自己是世界上最幸福的人！`);
+                      setShowGiftModal(false);
+                    }}
+                  ]);
+                }}
+              >
+                <Text style={styles.giftModalEmoji}>👑</Text>
+                <Text style={styles.giftModalName}>皇冠</Text>
+                <Text style={styles.giftModalPrice}>200 🪙</Text>
+                <Text style={styles.giftModalXp}>+500 XP</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.giftModalItem}
+                onPress={() => {
+                  Alert.alert('送礼物', '确定花费 500 金币送城堡吗？\n(+1000 XP)', [
+                    { text: '取消', style: 'cancel' },
+                    { text: '送出', onPress: () => {
+                      Alert.alert('🏰', `天哪！${characterName} 激动得说不出话来！你是最棒的！`);
+                      setShowGiftModal(false);
+                    }}
+                  ]);
+                }}
+              >
+                <Text style={styles.giftModalEmoji}>🏰</Text>
+                <Text style={styles.giftModalName}>城堡</Text>
+                <Text style={styles.giftModalPrice}>500 🪙</Text>
+                <Text style={styles.giftModalXp}>+1000 XP</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.giftModalFooter}>
+              <Text style={styles.giftModalBalance}>💰 当前余额: {wallet?.totalCredits ?? 0} 金币</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -554,7 +1043,8 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: SCREEN_HEIGHT * 0.6,
+    bottom: 0,
+    height: SCREEN_HEIGHT,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -605,6 +1095,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  levelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   levelText: {
     fontSize: 13,
@@ -858,6 +1352,63 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: 'rgba(255, 255, 255, 0.9)',
   },
+  planCardCurrent: {
+    opacity: 0.7,
+  },
+  planDailyCredits: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFD700',
+    marginBottom: 12,
+  },
+  coinPacksGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 20,
+  },
+  coinPackCard: {
+    width: (SCREEN_WIDTH - 64) / 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  coinPackPopular: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#EC4899',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  coinPackPopularText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  coinPackDiscount: {
+    position: 'absolute',
+    top: -8,
+    left: -8,
+    backgroundColor: '#10B981',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  coinPackDiscountText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  coinPackBonus: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#10B981',
+    marginTop: 2,
+  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
@@ -887,6 +1438,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#fff',
+  },
+  coinPackCoins: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFD700',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  coinPackPrice: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+    marginTop: 4,
   },
   creditPackSave: {
     position: 'absolute',
@@ -952,5 +1516,268 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#fff',
+  },
+  // Level Info Modal Styles
+  levelInfoOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'flex-end',
+  },
+  levelInfoContent: {
+    backgroundColor: '#1a1025',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
+    paddingBottom: 30,
+  },
+  levelInfoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  levelInfoTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  levelInfoScroll: {
+    padding: 20,
+  },
+  levelInfoSection: {
+    marginBottom: 24,
+  },
+  levelInfoSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 12,
+  },
+  currentStatusCard: {
+    backgroundColor: 'rgba(168, 85, 247, 0.2)',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  currentStatusLevel: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#A855F7',
+  },
+  currentStatusStage: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+  },
+  xpStatusBox: {
+    alignItems: 'flex-end',
+  },
+  xpStatusText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  xpStatusBar: {
+    width: 100,
+    height: 6,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 3,
+    marginTop: 6,
+    overflow: 'hidden',
+  },
+  xpStatusBarFill: {
+    height: '100%',
+    backgroundColor: '#A855F7',
+    borderRadius: 3,
+  },
+  xpStatusHint: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 4,
+  },
+  stageCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  stageCardActive: {
+    borderColor: '#A855F7',
+    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+  },
+  stageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  stageEmoji: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  stageInfo: {
+    flex: 1,
+  },
+  stageName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  stageLevel: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  stageDesc: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginBottom: 8,
+  },
+  stageFeatures: {
+    gap: 4,
+  },
+  featureItem: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  featureLocked: {
+    color: 'rgba(255, 255, 255, 0.4)',
+  },
+  xpWayCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
+  },
+  xpWayItem: {
+    fontSize: 14,
+    color: '#fff',
+  },
+  xpAmount: {
+    color: '#A855F7',
+    fontWeight: '600',
+  },
+  giftDesc: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginBottom: 12,
+  },
+  giftGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 16,
+  },
+  giftItem: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    width: '23%',
+  },
+  giftEmoji: {
+    fontSize: 28,
+    marginBottom: 4,
+  },
+  giftName: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '500',
+  },
+  giftPrice: {
+    fontSize: 11,
+    color: '#FFD700',
+    marginTop: 2,
+  },
+  giftXp: {
+    fontSize: 10,
+    color: '#A855F7',
+    marginTop: 2,
+  },
+  giftShopButton: {
+    backgroundColor: 'rgba(168, 85, 247, 0.3)',
+    borderRadius: 20,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  giftShopButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.6)',
+  },
+  // Gift Modal Styles
+  giftModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  giftModalContent: {
+    backgroundColor: '#2a1f3d',
+    borderRadius: 20,
+    padding: 16,
+    width: '100%',
+    maxWidth: 340,
+    borderWidth: 1,
+    borderColor: 'rgba(168, 85, 247, 0.3)',
+  },
+  giftModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  giftModalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  giftModalGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'center',
+  },
+  giftModalItem: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    width: '30%',
+  },
+  giftModalEmoji: {
+    fontSize: 32,
+    marginBottom: 4,
+  },
+  giftModalName: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '500',
+  },
+  giftModalPrice: {
+    fontSize: 11,
+    color: '#FFD700',
+    marginTop: 4,
+  },
+  giftModalXp: {
+    fontSize: 10,
+    color: '#A855F7',
+    marginTop: 2,
+  },
+  giftModalFooter: {
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+  },
+  giftModalBalance: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.7)',
   },
 });

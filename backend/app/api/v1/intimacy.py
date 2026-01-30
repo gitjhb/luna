@@ -189,7 +189,7 @@ async def get_all_stages(request: Request, character_id: UUID = None):
         user_id = str(user.user_id)
 
     current_stage = "strangers"
-    current_level = 0
+    current_level = 1
 
     if character_id:
         status = await intimacy_service.get_intimacy_status(user_id, str(character_id))
@@ -230,7 +230,7 @@ async def get_all_features(request: Request, character_id: UUID = None):
     else:
         user_id = str(user.user_id)
 
-    current_level = 0
+    current_level = 1
     if character_id:
         status = await intimacy_service.get_intimacy_status(user_id, str(character_id))
         current_level = status["current_level"]

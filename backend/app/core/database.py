@@ -9,8 +9,8 @@ from typing import AsyncGenerator
 
 logger = logging.getLogger(__name__)
 
-# Check if we're in mock/development mode
-MOCK_MODE = os.getenv("MOCK_DATABASE", "true").lower() == "true"
+# Check if we're in mock/development mode - default to FALSE now (use SQLite)
+MOCK_MODE = os.getenv("MOCK_DATABASE", "false").lower() == "true"
 
 _engine = None
 _session_factory = None
@@ -44,7 +44,7 @@ class MockDB:
 
 
 async def init_db():
-    """Initialize database connection"""
+    """Initialize database connection and create tables"""
     global _engine, _session_factory
 
     if MOCK_MODE:
@@ -53,6 +53,7 @@ async def init_db():
 
     try:
         from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+        from app.models.database.chat_models import Base
 
         database_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/app.db")
         
@@ -78,10 +79,16 @@ async def init_db():
             expire_on_commit=False,
         )
 
-        logger.info("Database connection initialized")
+        # Create all tables
+        async with _engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        
+        logger.info("Database connection initialized and tables created")
 
     except Exception as e:
         logger.warning(f"Database init failed, using mock: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 async def close_db():

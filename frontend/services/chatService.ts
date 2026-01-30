@@ -11,6 +11,8 @@ interface SendMessageRequest {
   sessionId: string;
   message: string;
   requestType?: 'text' | 'photo' | 'video' | 'voice';
+  spicyMode?: boolean;        // Enable adult content (costs 2 credits extra)
+  intimacyLevel?: number;     // Current relationship level with character
 }
 
 interface SendMessageResponse {
@@ -35,7 +37,7 @@ const mapSession = (data: any): ChatSession => ({
   title: data.title || 'New Chat',
   totalMessages: data.total_messages || data.totalMessages || 0,
   totalCreditsSpent: data.total_credits_spent || data.totalCreditsSpent || 0,
-  lastMessageAt: data.last_message_at || data.lastMessageAt || data.created_at || data.createdAt,
+  lastMessageAt: data.updated_at || data.updatedAt || data.last_message_at || data.lastMessageAt || data.created_at || data.createdAt,
   createdAt: data.created_at || data.createdAt,
 });
 
@@ -139,6 +141,8 @@ export const chatService = {
       session_id: data.sessionId,
       message: data.message,
       request_type: data.requestType || 'text',
+      spicy_mode: data.spicyMode || false,
+      intimacy_level: data.intimacyLevel || 1,
     });
     
     return {

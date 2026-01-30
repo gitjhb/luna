@@ -34,6 +34,14 @@ export interface ChatSession {
   createdAt: string;
 }
 
+export interface IntimacyCache {
+  currentLevel: number;
+  xpProgressInLevel: number;
+  xpForNextLevel: number;
+  xpForCurrentLevel: number;
+  updatedAt: string;
+}
+
 interface ChatState {
   // Active session
   activeSessionId: string | null;
@@ -44,6 +52,12 @@ interface ChatState {
   
   // Sessions list
   sessions: ChatSession[];
+  
+  // Intimacy cache by characterId
+  intimacyByCharacter: Record<string, IntimacyCache>;
+  
+  // Hydration status
+  _hasHydrated: boolean;
   
   // Spicy mode
   isSpicyMode: boolean;
@@ -73,6 +87,13 @@ interface ChatState {
   
   // Find session by character ID
   getSessionByCharacterId: (characterId: string) => ChatSession | undefined;
+  
+  // Intimacy cache actions
+  setIntimacy: (characterId: string, intimacy: Omit<IntimacyCache, 'updatedAt'>) => void;
+  getIntimacy: (characterId: string) => IntimacyCache | undefined;
+  
+  // Hydration
+  setHasHydrated: (state: boolean) => void;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -83,6 +104,8 @@ export const useChatStore = create<ChatState>()(
   activeCharacterId: null,
   messagesBySession: {},
   sessions: [],
+  intimacyByCharacter: {},
+  _hasHydrated: false,
   isSpicyMode: false,
   isTyping: false,
   typingCharacterId: null,
@@ -218,15 +241,39 @@ export const useChatStore = create<ChatState>()(
   getSessionByCharacterId: (characterId) => {
     return get().sessions.find((s) => s.characterId === characterId);
   },
+  
+  setIntimacy: (characterId, intimacy) => {
+    set({
+      intimacyByCharacter: {
+        ...get().intimacyByCharacter,
+        [characterId]: {
+          ...intimacy,
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    });
+  },
+  
+  getIntimacy: (characterId) => {
+    return get().intimacyByCharacter[characterId];
+  },
+  
+  setHasHydrated: (state) => {
+    set({ _hasHydrated: state });
+  },
 }),
     {
       name: 'chat-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      // Only persist sessions and messages, not UI state
+      // Only persist sessions, messages, and intimacy - not UI state
       partialize: (state) => ({
         sessions: state.sessions,
         messagesBySession: state.messagesBySession,
+        intimacyByCharacter: state.intimacyByCharacter,
       }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

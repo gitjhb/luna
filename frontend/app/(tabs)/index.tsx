@@ -23,6 +23,7 @@ import { theme, getShadow } from '../../theme/config';
 import { useUserStore } from '../../store/userStore';
 import { Character } from '../../types';
 import { characterService } from '../../services/characterService';
+import SettingsDrawer from '../../components/SettingsDrawer';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 48;
@@ -35,6 +36,7 @@ export default function CompanionsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
 
   useEffect(() => {
     loadCharacters();
@@ -88,7 +90,14 @@ export default function CompanionsScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
         <View style={styles.header}>
-          <View>
+          <TouchableOpacity 
+            style={styles.menuButton}
+            onPress={() => setShowSettingsDrawer(true)}
+          >
+            <Ionicons name="menu-outline" size={26} color="#fff" />
+          </TouchableOpacity>
+          
+          <View style={styles.headerCenter}>
             <Text style={styles.greeting}>Hi, {user?.displayName || 'there'} 👋</Text>
             <Text style={styles.subtitle}>选择你的伴侣</Text>
           </View>
@@ -170,6 +179,8 @@ export default function CompanionsScreen() {
           <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
+
+      <SettingsDrawer visible={showSettingsDrawer} onClose={() => setShowSettingsDrawer(false)} />
     </LinearGradient>
   );
 }
@@ -189,10 +200,19 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 12,
+  },
+  menuButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerCenter: {
+    flex: 1,
+    marginLeft: 8,
   },
   greeting: {
     fontSize: 24,

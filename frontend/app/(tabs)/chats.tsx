@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme/config';
 import { useChatStore, ChatSession, Message } from '../../store/chatStore';
 import { chatService } from '../../services/chatService';
+import SettingsDrawer from '../../components/SettingsDrawer';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 
@@ -28,6 +29,7 @@ export default function ChatsScreen() {
   const { sessions, setSessions, deleteSession, messagesBySession } = useChatStore();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
 
   useEffect(() => {
     loadSessions();
@@ -94,7 +96,9 @@ export default function ChatsScreen() {
 
   const formatTime = (dateString: string) => {
     try {
-      return formatDistanceToNow(new Date(dateString), { addSuffix: true, locale: zhCN });
+      // Backend returns UTC time without timezone indicator, append Z to parse as UTC
+      const utcDate = dateString.endsWith('Z') ? dateString : dateString + 'Z';
+      return formatDistanceToNow(new Date(utcDate), { addSuffix: true, locale: zhCN });
     } catch {
       return '';
     }
@@ -149,10 +153,19 @@ export default function ChatsScreen() {
     <LinearGradient colors={theme.colors.background.gradient} style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.title}>消息</Text>
-          {sessions.length > 0 && (
-            <Text style={styles.subtitle}>{sessions.length} 个对话</Text>
-          )}
+          <TouchableOpacity 
+            style={styles.menuButton}
+            onPress={() => setShowSettingsDrawer(true)}
+          >
+            <Ionicons name="menu-outline" size={26} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={styles.title}>消息</Text>
+            {sessions.length > 0 && (
+              <Text style={styles.subtitle}>{sessions.length} 个对话</Text>
+            )}
+          </View>
+          <View style={styles.headerRight} />
         </View>
 
         <FlatList
@@ -167,6 +180,8 @@ export default function ChatsScreen() {
           showsVerticalScrollIndicator={false}
         />
       </SafeAreaView>
+
+      <SettingsDrawer visible={showSettingsDrawer} onClose={() => setShowSettingsDrawer(false)} />
     </LinearGradient>
   );
 }
@@ -175,8 +190,23 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   header: {
-    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
     paddingVertical: 12,
+  },
+  menuButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerCenter: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  headerRight: {
+    width: 40,
   },
   title: {
     fontSize: 24,

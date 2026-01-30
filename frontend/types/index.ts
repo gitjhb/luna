@@ -19,6 +19,42 @@ export interface Character {
   createdAt?: string;
 }
 
+// Extended character info with unlockable secrets (like Stardew Valley)
+export interface CharacterProfile extends Character {
+  // Basic info (always visible)
+  age?: number;
+  occupation?: string;
+  
+  // Personality secrets (unlock at different intimacy levels)
+  personalitySecrets: PersonalitySecret[];
+  
+  // Likes/Dislikes (unlock progressively)
+  likes: UnlockableInfo[];
+  dislikes: UnlockableInfo[];
+  
+  // Background story (unlock at higher levels)
+  backstory: UnlockableInfo[];
+  
+  // Special dialogue unlocks
+  specialDialogues: UnlockableInfo[];
+}
+
+export interface PersonalitySecret {
+  id: string;
+  title: string;           // e.g., "Hidden Talent"
+  content: string;         // The actual secret
+  unlockLevel: number;     // Level required to unlock
+  isUnlocked?: boolean;    // Computed based on user's intimacy level
+}
+
+export interface UnlockableInfo {
+  id: string;
+  content: string;
+  unlockLevel: number;
+  category?: string;       // e.g., "Food", "Hobby", "Memory"
+  isUnlocked?: boolean;
+}
+
 // ============================================================================
 // API Response Types
 // ============================================================================

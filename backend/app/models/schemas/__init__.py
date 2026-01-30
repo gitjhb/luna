@@ -46,6 +46,8 @@ class ChatMessage(BaseModel):
 class ChatCompletionRequest(BaseModel):
     session_id: UUID
     message: str = Field(..., min_length=1, max_length=4000)
+    spicy_mode: bool = False  # Enable adult content (Premium only)
+    intimacy_level: int = 1   # Current relationship level (1-100)
 
 
 class ChatCompletionResponse(BaseModel):

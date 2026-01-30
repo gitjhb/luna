@@ -29,7 +29,7 @@ class UserIntimacy(Base):
 
     # XP & Level
     total_xp = Column(Float, default=0.0, nullable=False)
-    current_level = Column(Integer, default=0, nullable=False)
+    current_level = Column(Integer, default=1, nullable=False)
     intimacy_stage = Column(String(32), default="strangers", nullable=False)
 
     # Daily XP tracking (resets every 24 hours)
