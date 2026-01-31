@@ -99,7 +99,7 @@ export interface SubscriptionPlan {
 
 export interface Transaction {
   transactionId: string;
-  transactionType: 'chat_deduction' | 'purchase' | 'daily_refresh' | 'bonus' | 'refund';
+  transactionType: 'chat_deduction' | 'purchase' | 'daily_refresh' | 'bonus' | 'refund' | 'gift' | 'deduction';
   amount: number;
   balanceBefore: number;
   balanceAfter: number;

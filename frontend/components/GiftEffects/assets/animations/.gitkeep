@@ -1,0 +1,28 @@
+# Lottie Animation Files
+
+Place your Lottie JSON animation files here.
+
+## Recommended animations:
+
+1. Download from https://lottiefiles.com/
+2. Name files to match GiftType:
+   - rose.json
+   - chocolate.json
+   - bear.json
+   - diamond.json
+   - crown.json
+   - castle.json
+
+3. Update GiftAnimation.tsx to import them:
+   ```js
+   const ANIMATION_SOURCES = {
+     rose: require('./assets/animations/rose.json'),
+     // ...
+   };
+   ```
+
+## Free animation suggestions:
+- https://lottiefiles.com/animations/hearts-zJrKzpE5yX
+- https://lottiefiles.com/animations/red-rose-2MXMaJRGbN
+- https://lottiefiles.com/animations/diamond-Z4CpD4WbKC
+- https://lottiefiles.com/animations/gift-box-vLIpDRb39G

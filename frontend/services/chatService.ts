@@ -21,6 +21,8 @@ interface SendMessageResponse {
   content: string;
   type?: 'text' | 'image';
   isLocked?: boolean;
+  contentRating?: 'safe' | 'flirty' | 'spicy' | 'explicit';
+  unlockPrompt?: string;
   imageUrl?: string;
   tokensUsed: number;
   creditsDeducted: number;
@@ -150,7 +152,9 @@ export const chatService = {
       role: 'assistant',
       content: response.content || response.message,
       type: response.type || 'text',
-      isLocked: response.is_locked || false,
+      isLocked: response.is_locked || response.isLocked || false,
+      contentRating: response.content_rating || response.contentRating || 'safe',
+      unlockPrompt: response.unlock_prompt || response.unlockPrompt,
       imageUrl: response.image_url,
       tokensUsed: response.tokens_used || 0,
       creditsDeducted: response.credits_deducted || 0,

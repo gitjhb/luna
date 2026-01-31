@@ -175,6 +175,7 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         
         # Check user subscription for memory features
         user = getattr(req.state, "user", None)
+        user_id = str(user.user_id) if user else "demo-user-123"
         is_premium = getattr(user, "is_subscribed", False) if user else False
         
         # Get spicy mode and intimacy level from request
@@ -197,6 +198,65 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         else:
             intimacy_instruction = "You have a deep bond. Be intimate, caring, and emotionally connected."
         
+        # =====================================================================
+        # 情绪系统 - 让角色有边界感
+        # =====================================================================
+        from app.services.emotion_service import emotion_service
+        
+        # 处理用户消息，更新情绪状态
+        emotion_result = await emotion_service.process_message(
+            user_id=user_id,
+            character_id=character_id,
+            message=request.message,
+            intimacy_level=intimacy_level,
+        )
+        
+        emotional_state = emotion_result["emotional_state"]
+        emotion_intensity = emotion_result.get("emotion_intensity", 0)
+        logger.info(f"Emotion: {emotional_state} (intensity: {emotion_intensity})")
+        
+        # 如果角色处于沉默状态，可能不回复
+        if emotional_state == "silent" and emotion_intensity > 70:
+            # 角色太受伤了，不想说话
+            silent_response = "..."
+            await chat_repo.add_message(
+                session_id=session_id,
+                role="assistant",
+                content=silent_response,
+                tokens_used=0,
+            )
+            return ChatCompletionResponse(
+                message_id=uuid4(),
+                content=silent_response,
+                tokens_used=0,
+                character_name=character_name,
+            )
+        
+        # 获取情绪 prompt
+        emotion_data = await emotion_service.get_emotion(user_id, character_id)
+        personality_data = await emotion_service.get_personality(character_id)
+        emotion_prompt = emotion_service.generate_emotion_prompt(emotion_data, personality_data)
+        
+        # Get gift memory for context
+        from app.services.gift_service import gift_service
+        gift_memory = ""
+        try:
+            gift_summary = await gift_service.get_gift_summary(user_id, character_id)
+            if gift_summary["total_gifts"] > 0:
+                gift_lines = []
+                gift_lines.append(f"用户一共送过你 {gift_summary['total_gifts']} 次礼物，总价值 {gift_summary['total_spent']} 金币。")
+                if gift_summary["top_gifts"]:
+                    top = gift_summary["top_gifts"][:3]
+                    gifts_str = "、".join([f"{g['icon']} {g['name_cn'] or g['name']}({g['count']}次)" for g in top])
+                    gift_lines.append(f"最常收到的礼物：{gifts_str}")
+                gift_memory = "\n".join(gift_lines)
+                logger.info(f"Gift memory loaded: {gift_summary['total_gifts']} gifts")
+        except Exception as e:
+            logger.warning(f"Failed to load gift memory: {e}")
+        
+        # Build system prompt with gift memory
+        gift_memory_section = f"\n\n[用户送礼记忆]\n{gift_memory}" if gift_memory else ""
+        
         system_prompt = f"""You are {character_name}, a friendly AI companion.
 Be warm, engaging, and conversational. Respond in the same language the user uses.
 Keep responses concise but meaningful.
@@ -205,7 +265,9 @@ Keep responses concise but meaningful.
 
 {intimacy_instruction}
 
-Current intimacy level: {intimacy_level}"""
+Current intimacy level: {intimacy_level}
+{emotion_prompt}
+{gift_memory_section}"""
         
         conversation.append({"role": "system", "content": system_prompt})
         
@@ -234,6 +296,10 @@ Current intimacy level: {intimacy_level}"""
         logger.info(f"Session ID: {session_id}")
         logger.info(f"Character: {character_name}")
         logger.info(f"Spicy Mode: {spicy_mode}, Intimacy: {intimacy_level}")
+        
+        # Set billing context for spicy mode (only spicy mode costs credits)
+        if hasattr(req.state, 'billing') and req.state.billing:
+            req.state.billing.is_spicy_mode = spicy_mode
         logger.info(f"Is Premium: {is_premium}")
         logger.info(f"")
         logger.info(f"--- CURRENT USER MESSAGE ---")

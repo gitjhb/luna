@@ -13,7 +13,7 @@ import { useUserStore } from '../store/userStore';
 import { ApiError } from '../types';
 
 // API Configuration
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.125:8000/api/v1';
 const API_TIMEOUT = 30000; // 30 seconds
 
 /**

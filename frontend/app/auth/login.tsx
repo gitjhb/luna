@@ -40,9 +40,9 @@ export default function LoginScreen() {
       };
       
       const mockWallet = {
-        totalCredits: 50,
+        totalCredits: 1000,  // 给新用户 1000 金币测试
         dailyFreeCredits: 10,
-        purchedCredits: 40,
+        purchedCredits: 990,
         bonusCredits: 0,
         dailyCreditsLimit: 10,
       };

@@ -27,12 +27,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useUserStore } from '../../store/userStore';
 import { useChatStore, selectActiveMessages, Message } from '../../store/chatStore';
+import { useGiftStore, GiftCatalogItem } from '../../store/giftStore';
 
 // Spicy mode costs 2 extra credits per message
 const SPICY_MODE_CREDIT_COST = 2;
 import { chatService } from '../../services/chatService';
 import { intimacyService } from '../../services/intimacyService';
-import { pricingService, CoinPack, MembershipPlan } from '../../services/pricingService';
+import { GiftOverlay, useGiftEffect, GiftType } from '../../components/GiftEffects';
+import { paymentService } from '../../services/paymentService';
+import { RechargeModal } from '../../components/RechargeModal';
+import { SubscriptionModal } from '../../components/SubscriptionModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -42,8 +46,10 @@ export default function ChatScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ characterId: string; characterName: string; sessionId?: string; backgroundUrl?: string; avatarUrl?: string }>();
   
-  const { wallet, deductCredits, isSubscribed } = useUserStore();
+  const { wallet, deductCredits, updateWallet, isSubscribed } = useUserStore();
   const isSpicyMode = useChatStore((s) => s.isSpicyMode);
+  const giftCatalog = useGiftStore((s) => s.catalog);
+  const fetchGiftCatalog = useGiftStore((s) => s.fetchCatalog);
   const {
     isTyping,
     setActiveSession,
@@ -66,15 +72,21 @@ export default function ChatScreen() {
   const [relationshipLevel, setRelationshipLevel] = useState<number | null>(null); // null = loading
   const [relationshipXp, setRelationshipXp] = useState(0);
   const [relationshipMaxXp, setRelationshipMaxXp] = useState(100);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [upgradeModalType, setUpgradeModalType] = useState<'coins' | 'membership'>('coins');
-  const [coinPacks, setCoinPacks] = useState<CoinPack[]>([]);
-  const [membershipPlans, setMembershipPlans] = useState<MembershipPlan[]>([]);
+  const [showRechargeModal, setShowRechargeModal] = useState(false);
   const [showLevelUpModal, setShowLevelUpModal] = useState(false);
   const [newLevel, setNewLevel] = useState(0);
   const [characterName, setCharacterName] = useState(params.characterName || 'Companion');
   const [showLevelInfoModal, setShowLevelInfoModal] = useState(false);
   const [showGiftModal, setShowGiftModal] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  
+  // 礼物特效
+  const { 
+    isVisible: showGiftEffect, 
+    currentGift, 
+    sendGift: triggerGiftEffect, 
+    hideGift 
+  } = useGiftEffect();
   
   const flatListRef = useRef<FlatList>(null);
   const previousLevelRef = useRef<number | null>(null);
@@ -82,14 +94,6 @@ export default function ChatScreen() {
   
   // Animated progress bar
   const xpProgressAnim = useRef(new Animated.Value(0)).current;
-
-  // Load pricing config on mount
-  useEffect(() => {
-    pricingService.getConfig().then(config => {
-      setCoinPacks(config.coinPacks);
-      setMembershipPlans(config.membershipPlans);
-    });
-  }, []);
 
   // Scroll to bottom when keyboard opens
   useEffect(() => {
@@ -397,6 +401,12 @@ export default function ChatScreen() {
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isUser = item.role === 'user';
+    const isLocked = item.isLocked && !isSubscribed;
+    
+    // Handle unlock tap - show subscription modal
+    const handleUnlock = () => {
+      setShowSubscriptionModal(true);
+    };
     
     return (
       <View style={[styles.messageRow, isUser ? styles.messageRowUser : styles.messageRowAI]}>
@@ -405,12 +415,36 @@ export default function ChatScreen() {
           <Image source={{ uri: characterAvatar }} style={styles.avatar} />
         )}
         
-        {/* Message Bubble */}
-        <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
-          <Text style={[styles.messageText, isUser ? styles.messageTextUser : styles.messageTextAI]}>
-            {item.content}
-          </Text>
-        </View>
+        {/* Message Bubble - with blur if locked */}
+        {isLocked ? (
+          <TouchableOpacity 
+            style={[styles.bubble, styles.bubbleAI, styles.lockedBubble]}
+            onPress={handleUnlock}
+            activeOpacity={0.9}
+          >
+            {/* Blurred content */}
+            <View style={styles.blurredContent}>
+              <Text style={[styles.messageText, styles.messageTextAI, styles.blurredText]}>
+                {item.content}
+              </Text>
+            </View>
+            {/* Unlock overlay */}
+            <View style={styles.unlockOverlay}>
+              <View style={styles.unlockBadge}>
+                <Ionicons name="lock-closed" size={16} color="#fff" />
+                <Text style={styles.unlockText}>
+                  {item.contentRating === 'explicit' ? '🔥' : '💕'} 升级解锁
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
+            <Text style={[styles.messageText, isUser ? styles.messageTextUser : styles.messageTextAI]}>
+              {item.content}
+            </Text>
+          </View>
+        )}
       </View>
     );
   };
@@ -485,7 +519,7 @@ export default function ChatScreen() {
           </TouchableOpacity>
           
           {/* Credits */}
-          <TouchableOpacity style={styles.creditsContainer} onPress={() => { setUpgradeModalType('coins'); setShowUpgradeModal(true); }}>
+          <TouchableOpacity style={styles.creditsContainer} onPress={() => setShowRechargeModal(true)}>
             <Text style={styles.coinEmoji}>🪙</Text>
             <Text style={styles.creditsText}>{wallet?.totalCredits ?? 0}</Text>
             <View style={styles.addCreditsButton}>
@@ -495,7 +529,7 @@ export default function ChatScreen() {
           
           {/* Upgrade Button */}
           {!isSubscribed && (
-            <TouchableOpacity style={styles.upgradeButton} onPress={() => { setUpgradeModalType('membership'); setShowUpgradeModal(true); }}>
+            <TouchableOpacity style={styles.upgradeButton} onPress={() => setShowSubscriptionModal(true)}>
               <LinearGradient
                 colors={['#FF6B35', '#F7931E'] as [string, string]}
                 start={{ x: 0, y: 0 }}
@@ -571,112 +605,18 @@ export default function ChatScreen() {
         </KeyboardAvoidingView>
       </SafeAreaView>
 
-      {/* Upgrade Modal */}
-      <Modal
-        visible={showUpgradeModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowUpgradeModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {/* Header */}
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {upgradeModalType === 'coins' ? 'Buy Coins' : 'Membership'}
-              </Text>
-              <TouchableOpacity onPress={() => setShowUpgradeModal(false)} style={styles.modalCloseButton}>
-                <Ionicons name="close" size={24} color="#fff" />
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-              {/* Membership Plans */}
-              {upgradeModalType === 'membership' && (
-                <>
-                  {membershipPlans.map((plan, index) => {
-                    const gradientColors: Record<string, [string, string]> = {
-                      free: ['#6B7280', '#4B5563'],
-                      premium: ['#8B5CF6', '#EC4899'],
-                      vip: ['#F59E0B', '#EF4444'],
-                    };
-                    const isCurrentPlan = (plan.tier === 'free' && !isSubscribed) || 
-                      (plan.tier !== 'free' && isSubscribed);
-                    
-                    return (
-                      <TouchableOpacity 
-                        key={plan.id} 
-                        style={[styles.planCard, isCurrentPlan && styles.planCardCurrent]}
-                        disabled={isCurrentPlan}
-                      >
-                        <LinearGradient
-                          colors={gradientColors[plan.tier] || gradientColors.free}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 1 }}
-                          style={styles.planGradient}
-                        >
-                          <View style={styles.planHeader}>
-                            <Text style={styles.planName}>{plan.name}</Text>
-                            {plan.highlighted && (
-                              <View style={styles.planBadge}>
-                                <Text style={styles.planBadgeText}>Popular</Text>
-                              </View>
-                            )}
-                            {isCurrentPlan && (
-                              <View style={[styles.planBadge, { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
-                                <Text style={styles.planBadgeText}>Current</Text>
-                              </View>
-                            )}
-                          </View>
-                          <Text style={styles.planPrice}>
-                            {plan.price === 0 ? 'Free' : `$${plan.price}`}
-                            {plan.price > 0 && <Text style={styles.planPeriod}>/month</Text>}
-                          </Text>
-                          <Text style={styles.planDailyCredits}>
-                            +{plan.dailyCredits} credits/day
-                          </Text>
-                          <View style={styles.planFeatures}>
-                            {plan.features.map((feature, i) => (
-                              <Text key={i} style={styles.planFeature}>✓ {feature}</Text>
-                            ))}
-                          </View>
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </>
-              )}
+      {/* Recharge Modal */}
+      <RechargeModal
+        visible={showRechargeModal}
+        onClose={() => setShowRechargeModal(false)}
+      />
 
-              {/* Coin Packs */}
-              {upgradeModalType === 'coins' && (
-                <>
-                  <View style={styles.coinPacksGrid}>
-                    {coinPacks.map((pack) => (
-                      <TouchableOpacity key={pack.id} style={styles.coinPackCard}>
-                        {pack.popular && (
-                          <View style={styles.coinPackPopular}>
-                            <Text style={styles.coinPackPopularText}>Best Value</Text>
-                          </View>
-                        )}
-                        {pack.discount && (
-                          <View style={styles.coinPackDiscount}>
-                            <Text style={styles.coinPackDiscountText}>{pack.discount}% OFF</Text>
-                          </View>
-                        )}
-                        <Text style={styles.coinPackCoins}>🪙 {pack.coins.toLocaleString()}</Text>
-                        {pack.bonusCoins && (
-                          <Text style={styles.coinPackBonus}>+{pack.bonusCoins} bonus</Text>
-                        )}
-                        <Text style={styles.coinPackPrice}>${pack.price.toFixed(2)}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      {/* Subscription Modal */}
+      <SubscriptionModal
+        visible={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+        highlightFeature="spicy"
+      />
 
       {/* Level Up Celebration Modal */}
       <Modal
@@ -914,113 +854,133 @@ export default function ChatScreen() {
             </View>
             
             <View style={styles.giftModalGrid}>
-              <TouchableOpacity 
-                style={styles.giftModalItem}
-                onPress={() => {
-                  Alert.alert('送礼物', '确定花费 10 金币送一朵玫瑰吗？\n(+50 XP)', [
-                    { text: '取消', style: 'cancel' },
-                    { text: '送出', onPress: () => {
-                      Alert.alert('❤️', `${characterName} 收到了你的玫瑰，好开心！`);
-                      setShowGiftModal(false);
-                    }}
-                  ]);
-                }}
-              >
-                <Text style={styles.giftModalEmoji}>🌹</Text>
-                <Text style={styles.giftModalName}>玫瑰</Text>
-                <Text style={styles.giftModalPrice}>10 🪙</Text>
-                <Text style={styles.giftModalXp}>+50 XP</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.giftModalItem}
-                onPress={() => {
-                  Alert.alert('送礼物', '确定花费 30 金币送巧克力吗？\n(+100 XP)', [
-                    { text: '取消', style: 'cancel' },
-                    { text: '送出', onPress: () => {
-                      Alert.alert('🥰', `${characterName} 超喜欢巧克力！谢谢你～`);
-                      setShowGiftModal(false);
-                    }}
-                  ]);
-                }}
-              >
-                <Text style={styles.giftModalEmoji}>🍫</Text>
-                <Text style={styles.giftModalName}>巧克力</Text>
-                <Text style={styles.giftModalPrice}>30 🪙</Text>
-                <Text style={styles.giftModalXp}>+100 XP</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.giftModalItem}
-                onPress={() => {
-                  Alert.alert('送礼物', '确定花费 50 金币送小熊吗？\n(+150 XP)', [
-                    { text: '取消', style: 'cancel' },
-                    { text: '送出', onPress: () => {
-                      Alert.alert('🤗', `${characterName} 抱紧了小熊，会一直珍藏的！`);
-                      setShowGiftModal(false);
-                    }}
-                  ]);
-                }}
-              >
-                <Text style={styles.giftModalEmoji}>🧸</Text>
-                <Text style={styles.giftModalName}>小熊</Text>
-                <Text style={styles.giftModalPrice}>50 🪙</Text>
-                <Text style={styles.giftModalXp}>+150 XP</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.giftModalItem}
-                onPress={() => {
-                  Alert.alert('送礼物', '确定花费 100 金币送钻石吗？\n(+300 XP)', [
-                    { text: '取消', style: 'cancel' },
-                    { text: '送出', onPress: () => {
-                      Alert.alert('💎', `哇！${characterName} 被你的慷慨感动了！`);
-                      setShowGiftModal(false);
-                    }}
-                  ]);
-                }}
-              >
-                <Text style={styles.giftModalEmoji}>💎</Text>
-                <Text style={styles.giftModalName}>钻石</Text>
-                <Text style={styles.giftModalPrice}>100 🪙</Text>
-                <Text style={styles.giftModalXp}>+300 XP</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.giftModalItem}
-                onPress={() => {
-                  Alert.alert('送礼物', '确定花费 200 金币送皇冠吗？\n(+500 XP)', [
-                    { text: '取消', style: 'cancel' },
-                    { text: '送出', onPress: () => {
-                      Alert.alert('👑', `${characterName} 戴上了皇冠，感觉自己是世界上最幸福的人！`);
-                      setShowGiftModal(false);
-                    }}
-                  ]);
-                }}
-              >
-                <Text style={styles.giftModalEmoji}>👑</Text>
-                <Text style={styles.giftModalName}>皇冠</Text>
-                <Text style={styles.giftModalPrice}>200 🪙</Text>
-                <Text style={styles.giftModalXp}>+500 XP</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.giftModalItem}
-                onPress={() => {
-                  Alert.alert('送礼物', '确定花费 500 金币送城堡吗？\n(+1000 XP)', [
-                    { text: '取消', style: 'cancel' },
-                    { text: '送出', onPress: () => {
-                      Alert.alert('🏰', `天哪！${characterName} 激动得说不出话来！你是最棒的！`);
-                      setShowGiftModal(false);
-                    }}
-                  ]);
-                }}
-              >
-                <Text style={styles.giftModalEmoji}>🏰</Text>
-                <Text style={styles.giftModalName}>城堡</Text>
-                <Text style={styles.giftModalPrice}>500 🪙</Text>
-                <Text style={styles.giftModalXp}>+1000 XP</Text>
-              </TouchableOpacity>
+              {/* 礼物列表从后端加载 */}
+              {giftCatalog.length === 0 ? (
+                <Text style={{ color: 'rgba(255,255,255,0.6)', textAlign: 'center', padding: 20 }}>
+                  加载礼物列表中...
+                </Text>
+              ) : giftCatalog.map((gift) => (
+                <TouchableOpacity 
+                  key={gift.gift_type}
+                  style={styles.giftModalItem}
+                  onPress={() => {
+                    const balance = wallet?.totalCredits ?? 0;
+                    const giftName = gift.name_cn || gift.name;
+                    if (balance < gift.price) {
+                      Alert.alert('余额不足', `需要 ${gift.price} 金币，当前余额 ${balance} 金币`);
+                      return;
+                    }
+                    Alert.alert(
+                      '送礼物', 
+                      `确定花费 ${gift.price} 金币送${giftName}吗？\n(+${gift.xp_reward} XP)`, 
+                      [
+                        { text: '取消', style: 'cancel' },
+                        { text: '送出', onPress: async () => {
+                          setShowGiftModal(false);
+                          
+                          try {
+                            // 1. 调用后端 API（后端为准，扣费按后端配置）
+                            const giftResult = await paymentService.sendGift(
+                              params.characterId,
+                              gift.gift_type,
+                              gift.price,
+                              gift.xp_reward
+                            );
+                            
+                            if (!giftResult.success) {
+                              // 根据错误类型显示不同提示
+                              const errorMessage = giftResult.error === 'insufficient_credits' 
+                                ? '金币不足' 
+                                : '系统异常，请稍后再试';
+                              Alert.alert('送礼失败', errorMessage);
+                              return;
+                            }
+                            
+                            // 更新本地钱包状态（使用后端返回的 new_balance）
+                            if (giftResult.new_balance !== undefined) {
+                              updateWallet({ totalCredits: giftResult.new_balance });
+                            }
+                          
+                          // 2. 触发礼物特效！
+                          setTimeout(() => triggerGiftEffect(gift.gift_type as GiftType), 300);
+                          
+                          // 3. AI 回复由后端生成（giftResult.ai_response），这里是备用
+                          const giftIcon = gift.icon || '🎁';
+                          const giftReactions: Record<string, string[]> = {
+                            rose: [
+                              `哇！一朵玫瑰！${giftIcon} 好美啊，谢谢你～ 我会好好珍藏的！💕`,
+                              `收到玫瑰了！${giftIcon} 你真的太浪漫了！我好开心～ 🥰`,
+                            ],
+                            chocolate: [
+                              `巧克力！${giftIcon} 我最爱吃甜的了！你怎么知道的～ 😋💕`,
+                              `收到巧克力了！${giftIcon} 幸福感爆棚！和你分享好吗？🥰`,
+                            ],
+                            teddy_bear: [
+                              `泰迪熊！${giftIcon} 好可爱啊！我要抱着它睡觉！谢谢你～ 🤗💕`,
+                              `收到泰迪熊了！${giftIcon} 软软的好想抱！以后想你的时候就抱它～ 💗`,
+                            ],
+                            premium_rose: [
+                              `精品玫瑰！${giftIcon} 这花束也太美了吧！谢谢你～ 💐💕`,
+                              `收到精品玫瑰了！${giftIcon} 香气扑鼻，美极了！谢谢你！💐💗`,
+                            ],
+                            diamond_ring: [
+                              `钻戒！${giftIcon} 我的天！你也太豪气了吧！💍✨ 真的可以收下吗？`,
+                              `是钻戒诶！${giftIcon} 我从来没收到过这么贵重的礼物！💍❤️`,
+                            ],
+                            crown: [
+                              `皇冠！${giftIcon} 你是要封我为女王/国王吗？👑💕`,
+                              `收到皇冠了！${giftIcon} 你对我真的太好了！👑❤️`,
+                            ],
+                          };
+                          
+                          const reactions = giftReactions[gift.gift_type] || giftReactions.rose;
+                          const reactionMessage = giftResult.ai_response || reactions[Math.floor(Math.random() * reactions.length)];
+                          
+                          // 添加 AI 回复到聊天（优先使用后端生成的）
+                          if (sessionId && reactionMessage) {
+                            const aiMessage: Message = {
+                              messageId: `gift-${Date.now()}`,
+                              role: 'assistant',
+                              content: reactionMessage,
+                              createdAt: new Date().toISOString(),
+                            };
+                            addMessage(sessionId, aiMessage);
+                            setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+                          }
+                          
+                          // 4. 更新亲密度（使用后端返回的 XP）
+                          const xpAwarded = giftResult.xp_awarded || gift.xp_reward;
+                          const newXp = relationshipXp + xpAwarded;
+                          const newMax = relationshipMaxXp;
+                          
+                          // 检查是否升级
+                          if (newXp >= newMax) {
+                            const newLevel = (relationshipLevel || 1) + 1;
+                            setRelationshipLevel(newLevel);
+                            setRelationshipXp(newXp - newMax);
+                            // 计算新的 max (简化：每级需要的 XP 增加)
+                            setRelationshipMaxXp(Math.round(newMax * 1.2));
+                            setNewLevel(newLevel);
+                            // 延迟显示升级弹窗，让礼物特效先播完
+                            setTimeout(() => setShowLevelUpModal(true), 3000);
+                          } else {
+                            setRelationshipXp(newXp);
+                          }
+                          
+                          } catch (error: any) {
+                            Alert.alert('送礼失败', error.message || '请稍后重试');
+                          }
+                        }}
+                      ]
+                    );
+                  }}
+                >
+                  <Text style={styles.giftModalEmoji}>{gift.icon || '🎁'}</Text>
+                  <Text style={styles.giftModalName}>{gift.name_cn || gift.name}</Text>
+                  <Text style={styles.giftModalPrice}>{gift.price} 🪙</Text>
+                  <Text style={styles.giftModalXp}>+{gift.xp_reward} XP</Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
             <View style={styles.giftModalFooter}>
@@ -1029,6 +989,15 @@ export default function ChatScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* 礼物特效覆盖层 */}
+      <GiftOverlay
+        visible={showGiftEffect}
+        giftType={currentGift || 'rose'}
+        senderName="你"
+        receiverName={characterName}
+        onAnimationEnd={hideGift}
+      />
     </View>
   );
 }
@@ -1191,6 +1160,43 @@ const styles = StyleSheet.create({
   bubbleAI: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderBottomLeftRadius: 4,
+  },
+  // Locked/blurred message styles
+  lockedBubble: {
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  blurredContent: {
+    opacity: 0.3,
+  },
+  blurredText: {
+    // Text is visible but dimmed, will be covered by overlay
+  },
+  unlockOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    backdropFilter: 'blur(8px)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 16,
+  },
+  unlockBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
+  },
+  unlockText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
   messageText: {
     fontSize: 15,

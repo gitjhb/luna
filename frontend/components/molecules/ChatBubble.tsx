@@ -13,6 +13,7 @@ import {
   Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { theme, getShadow } from '../../theme/config';
 
@@ -22,6 +23,8 @@ interface Message {
   content: string;
   type?: 'text' | 'image';
   isLocked?: boolean;
+  contentRating?: 'safe' | 'flirty' | 'spicy' | 'explicit';
+  unlockPrompt?: string;
   imageUrl?: string;
   createdAt: string;
 }
@@ -38,26 +41,38 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
   isSpicyMode = false,
 }) => {
   const isUser = message.role === 'user';
-  const accentColor = isSpicyMode ? theme.colors.spicy.main : theme.colors.primary.main;
+  const accentColor = isSpicyMode ? theme.colors.accent.pink : theme.colors.primary.main;
 
+  // Locked content - show blurred message with unlock overlay
   if (message.isLocked) {
+    const rating = message.contentRating || 'spicy';
+    const ratingEmoji = rating === 'explicit' ? '🔥' : rating === 'spicy' ? '💕' : '💬';
+    
     return (
       <View style={[styles.container, styles.containerAssistant]}>
         <TouchableOpacity
-          style={styles.lockedBubble}
+          style={styles.lockedWrapper}
           onPress={() => onUnlock?.(message.messageId)}
-          activeOpacity={0.8}
+          activeOpacity={0.9}
         >
-          <LinearGradient
-            colors={['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)']}
-            style={styles.lockedContent}
-          >
-            <View style={styles.lockedIcon}>
-              <Ionicons name="lock-closed" size={24} color={accentColor} />
+          {/* Blurred content underneath */}
+          <View style={[styles.bubble, styles.bubbleAssistant, styles.blurredBubble]}>
+            <Text style={[styles.textAssistant, styles.blurredText]}>
+              {message.content}
+            </Text>
+          </View>
+          
+          {/* Blur overlay */}
+          <BlurView intensity={25} tint="dark" style={styles.blurOverlay}>
+            <View style={styles.unlockContent}>
+              <View style={[styles.lockedIcon, { backgroundColor: `${accentColor}20` }]}>
+                <Ionicons name="lock-closed" size={20} color={accentColor} />
+              </View>
+              <Text style={styles.unlockText}>
+                {ratingEmoji} {message.unlockPrompt || '升级订阅解锁'}
+              </Text>
             </View>
-            <Text style={styles.lockedText}>Unlock this content</Text>
-            <Text style={styles.lockedSubtext}>Tap to reveal • 5 credits</Text>
-          </LinearGradient>
+          </BlurView>
         </TouchableOpacity>
       </View>
     );
@@ -132,37 +147,49 @@ const styles = StyleSheet.create({
     color: theme.colors.text.primary,
     lineHeight: theme.typography.fontSize.base * theme.typography.lineHeight.normal,
   },
-  lockedBubble: {
+  // Locked/blurred content styles
+  lockedWrapper: {
     maxWidth: '80%',
+    position: 'relative',
+  },
+  blurredBubble: {
+    // Content is visible but will be covered by blur
+  },
+  blurredText: {
+    // Text that will be blurred
+    opacity: 0.9,
+  },
+  blurOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     borderRadius: theme.borderRadius.xl,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderStyle: 'dashed',
-  },
-  lockedContent: {
-    paddingHorizontal: theme.spacing.xl,
-    paddingVertical: theme.spacing.lg,
-    alignItems: 'center',
-  },
-  lockedIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: `${theme.colors.primary.main}15`,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: theme.spacing.sm,
   },
-  lockedText: {
-    fontSize: theme.typography.fontSize.base,
-    color: theme.colors.text.primary,
-    fontWeight: '600',
+  unlockContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: theme.borderRadius.lg,
   },
-  lockedSubtext: {
+  lockedIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: theme.spacing.sm,
+  },
+  unlockText: {
     fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.text.tertiary,
-    marginTop: theme.spacing.xs,
+    color: theme.colors.text.inverse,
+    fontWeight: '600',
   },
   imageBubble: {
     maxWidth: '75%',

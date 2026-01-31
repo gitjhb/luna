@@ -23,7 +23,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme/config';
 import { useUserStore } from '../../store/userStore';
 import { walletService } from '../../services/walletService';
-import { pricingService, CoinPack } from '../../services/pricingService';
+import { RechargeModal } from '../../components/RechargeModal';
+import { SubscriptionModal } from '../../components/SubscriptionModal';
+import { TransactionHistoryModal } from '../../components/TransactionHistoryModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -68,7 +70,8 @@ export default function ProfileScreen() {
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [showInterestsPicker, setShowInterestsPicker] = useState(false);
   const [showRechargeModal, setShowRechargeModal] = useState(false);
-  const [coinPacks, setCoinPacks] = useState<CoinPack[]>([]);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [showTransactionHistory, setShowTransactionHistory] = useState(false);
   
   // User preferences stored locally (in production, sync with backend)
   const [userAvatar, setUserAvatar] = useState(user?.avatar || AVATAR_OPTIONS[0]);
@@ -80,12 +83,8 @@ export default function ProfileScreen() {
 
   const loadData = async () => {
     try {
-      const [balance, packs] = await Promise.all([
-        walletService.getBalance(),
-        pricingService.getCoinPacks(),
-      ]);
+      const balance = await walletService.getBalance();
       updateWallet(balance);
-      setCoinPacks(packs);
     } catch (error) {
       console.error('Failed to load profile data:', error);
     }
@@ -179,8 +178,12 @@ export default function ProfileScreen() {
               <Text style={styles.userEmail}>{user?.email || ''}</Text>
             </View>
 
-            {/* Membership Badge */}
-            <View style={[styles.membershipBadge, isSubscribed && styles.membershipBadgePremium]}>
+            {/* Membership Badge - Clickable */}
+            <TouchableOpacity 
+              style={[styles.membershipBadge, isSubscribed && styles.membershipBadgePremium]}
+              onPress={() => setShowSubscriptionModal(true)}
+              activeOpacity={0.7}
+            >
               <Ionicons 
                 name={isSubscribed ? 'diamond' : 'person'} 
                 size={14} 
@@ -189,7 +192,10 @@ export default function ProfileScreen() {
               <Text style={[styles.membershipText, isSubscribed && styles.membershipTextPremium]}>
                 {isSubscribed ? 'Premium' : 'Free'}
               </Text>
-            </View>
+              {!isSubscribed && (
+                <Ionicons name="chevron-forward" size={12} color={theme.colors.text.tertiary} />
+              )}
+            </TouchableOpacity>
           </View>
 
           {/* Credits Card */}
@@ -221,6 +227,15 @@ export default function ProfileScreen() {
                   <Text style={styles.creditsDetailValue}>{wallet?.purchedCredits || 0}</Text>
                 </View>
               </View>
+              {/* Transaction History Button */}
+              <TouchableOpacity 
+                style={styles.transactionHistoryButton}
+                onPress={() => setShowTransactionHistory(true)}
+              >
+                <Ionicons name="receipt-outline" size={16} color={theme.colors.text.secondary} />
+                <Text style={styles.transactionHistoryText}>查看账单记录</Text>
+                <Ionicons name="chevron-forward" size={16} color={theme.colors.text.tertiary} />
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -367,50 +382,22 @@ export default function ProfileScreen() {
       </Modal>
 
       {/* Recharge Modal */}
-      <Modal
+      <RechargeModal
         visible={showRechargeModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowRechargeModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Buy Coins</Text>
-              <TouchableOpacity onPress={() => setShowRechargeModal(false)}>
-                <Ionicons name="close" size={24} color="#fff" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={styles.rechargeScroll} showsVerticalScrollIndicator={false}>
-              <View style={styles.coinPacksGrid}>
-                {coinPacks.map((pack) => (
-                  <TouchableOpacity 
-                    key={pack.id} 
-                    style={styles.coinPackCard}
-                    onPress={() => Alert.alert('Purchase', `Buy ${pack.coins} coins for $${pack.price.toFixed(2)}?`)}
-                  >
-                    {pack.popular && (
-                      <View style={styles.coinPackPopular}>
-                        <Text style={styles.coinPackPopularText}>Best Value</Text>
-                      </View>
-                    )}
-                    {pack.discount && (
-                      <View style={styles.coinPackDiscount}>
-                        <Text style={styles.coinPackDiscountText}>{pack.discount}% OFF</Text>
-                      </View>
-                    )}
-                    <Text style={styles.coinPackCoins}>🪙 {pack.coins.toLocaleString()}</Text>
-                    {pack.bonusCoins && (
-                      <Text style={styles.coinPackBonus}>+{pack.bonusCoins} bonus</Text>
-                    )}
-                    <Text style={styles.coinPackPrice}>${pack.price.toFixed(2)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+        onClose={() => setShowRechargeModal(false)}
+      />
+
+      {/* Subscription Modal */}
+      <SubscriptionModal
+        visible={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+      />
+
+      {/* Transaction History Modal */}
+      <TransactionHistoryModal
+        visible={showTransactionHistory}
+        onClose={() => setShowTransactionHistory(false)}
+      />
     </LinearGradient>
   );
 }
@@ -605,6 +592,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  transactionHistoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    gap: 8,
+  },
+  transactionHistoryText: {
+    fontSize: 14,
+    color: theme.colors.text.secondary,
   },
   interestsCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
@@ -827,5 +828,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
     marginTop: 4,
+  },
+  freeCoinsButton: {
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    borderWidth: 1,
+    borderColor: '#10B981',
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginHorizontal: 20,
+    marginTop: 16,
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  freeCoinsText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#10B981',
   },
 });

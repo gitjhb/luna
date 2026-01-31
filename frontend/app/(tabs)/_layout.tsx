@@ -8,12 +8,29 @@ import { Tabs, useRouter, useSegments } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme/config';
 import { useChatStore } from '../../store/chatStore';
+import { useUserStore } from '../../store/userStore';
+import { walletService } from '../../services/walletService';
 
 export default function TabsLayout() {
   const router = useRouter();
   const segments = useSegments();
   const { sessions, messagesBySession } = useChatStore();
+  const { updateWallet } = useUserStore();
   const [hasInitialized, setHasInitialized] = useState(false);
+
+  // Sync wallet from backend on app start
+  useEffect(() => {
+    const syncWallet = async () => {
+      try {
+        const balance = await walletService.getBalance();
+        updateWallet(balance);
+        console.log('Wallet synced:', balance.totalCredits);
+      } catch (error) {
+        console.error('Failed to sync wallet:', error);
+      }
+    };
+    syncWallet();
+  }, []);
 
   // Calculate unread messages (simplified - can be enhanced with proper unread tracking)
   const unreadCount = sessions.reduce((count, session) => {

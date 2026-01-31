@@ -32,6 +32,7 @@ class TransactionType(str, enum.Enum):
     REFUND = "refund"
     BONUS = "bonus"
     DAILY_REFRESH = "daily_refresh"
+    GIFT = "gift"  # 送礼物消费
 
 
 class User(Base):
@@ -132,9 +133,9 @@ class TransactionHistory(Base):
     amount = Column(Float, nullable=False)  # Positive for additions, negative for deductions
     balance_after = Column(Float, nullable=False)  # Balance after transaction
     
-    # Description and metadata
+    # Description and extra data
     description = Column(String(512), nullable=True)
-    metadata = Column(JSON, nullable=True)  # Additional data (tokens used, mode, etc.)
+    extra_data = Column(JSON, nullable=True)  # Additional data (tokens used, mode, etc.)
     
     # Payment info (for purchases)
     payment_provider = Column(String(64), nullable=True)  # "stripe", "apple", "google"

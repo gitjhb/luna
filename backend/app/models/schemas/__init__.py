@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 class UserContext(BaseModel):
     """Authenticated user context (attached to request.state)"""
-    user_id: UUID
+    user_id: str  # String ID for flexibility (can be UUID or simple ID)
     email: Optional[str] = None
     subscription_tier: str = "free"  # free, premium, vip
     is_subscribed: bool = False
@@ -48,6 +48,7 @@ class ChatCompletionRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
     spicy_mode: bool = False  # Enable adult content (Premium only)
     intimacy_level: int = 1   # Current relationship level (1-100)
+    scenario_id: Optional[str] = None  # Scene context injection (e.g., "cafe_paris")
 
 
 class ChatCompletionResponse(BaseModel):
@@ -55,6 +56,9 @@ class ChatCompletionResponse(BaseModel):
     content: str
     tokens_used: int
     character_name: str
+    is_locked: bool = False  # True if content is hidden behind paywall
+    content_rating: str = "safe"  # safe, flirty, spicy, explicit
+    unlock_prompt: Optional[str] = None  # Message to show if locked
 
 
 class CreateSessionRequest(BaseModel):

@@ -53,7 +53,11 @@ async def init_db():
 
     try:
         from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-        from app.models.database.chat_models import Base
+        # Import all model Bases to create all tables
+        from app.models.database.chat_models import Base as ChatBase
+        from app.models.database.billing_models import Base as BillingBase
+        # Import models to register them with Base.metadata
+        from app.models.database import intimacy_models, gift_models, payment_models, emotion_models
 
         database_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/app.db")
         
@@ -79,9 +83,10 @@ async def init_db():
             expire_on_commit=False,
         )
 
-        # Create all tables
+        # Create all tables from both model bases
         async with _engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(ChatBase.metadata.create_all)
+            await conn.run_sync(BillingBase.metadata.create_all)
         
         logger.info("Database connection initialized and tables created")
 
@@ -105,7 +110,13 @@ async def get_db() -> AsyncGenerator:
     Get database connection/session.
     Returns mock in development mode.
     """
-    if MOCK_MODE or _session_factory is None:
+    logger.debug(f"get_db called: MOCK_MODE={MOCK_MODE}, _session_factory={_session_factory}")
+    if MOCK_MODE:
+        logger.warning("Using MockDB because MOCK_MODE is True")
+        yield MockDB()
+        return
+    if _session_factory is None:
+        logger.error("Using MockDB because _session_factory is None - init_db() may not have been called!")
         yield MockDB()
         return
 

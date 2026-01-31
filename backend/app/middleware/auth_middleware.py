@@ -4,7 +4,6 @@ Extracts and validates auth tokens, attaches user context to request.state
 """
 
 from typing import Optional
-from uuid import UUID, uuid4
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
@@ -12,9 +11,9 @@ import os
 
 from app.models.schemas import UserContext
 
-# Consistent demo user ID for mock mode (UUID v7 format)
-# UUID v7: timestamp-based with version=7, variant=10
-DEMO_USER_ID = UUID("0193e5a0-0000-7000-8000-000000000001")
+# Consistent demo user ID for mock mode
+# Use simple string ID that matches API fallbacks
+DEMO_USER_ID = "demo-user-123"
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -57,11 +56,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Create user context
         if self.mock_mode:
             # Mock mode: create demo user with consistent ID
+            # Get actual subscription status from payment service
+            from app.services.payment_service import payment_service
+            subscription = await payment_service.get_subscription(DEMO_USER_ID)
+            subscription_tier = subscription.get("tier", "free")
+            is_subscribed = subscription_tier != "free"
+            
             request.state.user = UserContext(
                 user_id=DEMO_USER_ID,
                 email="demo@example.com",
-                subscription_tier="free",
-                is_subscribed=False,
+                subscription_tier=subscription_tier,
+                is_subscribed=is_subscribed,
             )
         elif token:
             # Production: validate token

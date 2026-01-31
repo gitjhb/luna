@@ -2,7 +2,7 @@
  * Settings Screen
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { useRouter } from 'expo-router';
 import { theme } from '../../theme/config';
 import { useUserStore } from '../../store/userStore';
 import { useChatStore } from '../../store/chatStore';
+import { SubscriptionModal } from '../../components/SubscriptionModal';
 
 interface SettingItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -60,6 +61,16 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { user, logout, isSubscribed } = useUserStore();
   const { isSpicyMode, setSpicyMode } = useChatStore();
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+
+  const handleSpicyModeToggle = (value: boolean) => {
+    if (value && !isSubscribed) {
+      // Show subscription modal if trying to enable without subscription
+      setShowSubscriptionModal(true);
+    } else {
+      setSpicyMode(value);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
@@ -127,8 +138,8 @@ export default function SettingsScreen() {
             <SettingItem
               icon="diamond-outline"
               title="Subscription"
-              subtitle={isSubscribed ? 'Premium Member' : 'Free Plan'}
-              onPress={() => {}}
+              subtitle={isSubscribed ? 'Premium Member' : 'Free Plan - 点击升级'}
+              onPress={() => setShowSubscriptionModal(true)}
             />
           </SettingSection>
 
@@ -137,12 +148,12 @@ export default function SettingsScreen() {
             <SettingItem
               icon="flame-outline"
               title="Spicy Mode"
-              subtitle={isSubscribed ? 'Unlock intimate content' : 'Premium only'}
+              subtitle={isSubscribed ? 'Unlock intimate content' : '需要订阅 Premium'}
+              onPress={!isSubscribed ? () => setShowSubscriptionModal(true) : undefined}
               rightElement={
                 <Switch
                   value={isSpicyMode}
-                  onValueChange={setSpicyMode}
-                  disabled={!isSubscribed}
+                  onValueChange={handleSpicyModeToggle}
                   trackColor={{ false: '#3e3e3e', true: theme.colors.primary.main }}
                   thumbColor={isSpicyMode ? '#fff' : '#f4f3f4'}
                 />
@@ -227,6 +238,19 @@ export default function SettingsScreen() {
           </View>
         </ScrollView>
       </SafeAreaView>
+
+      {/* Subscription Modal */}
+      <SubscriptionModal
+        visible={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+        highlightFeature="spicy"
+        onSubscribeSuccess={(tier) => {
+          // After successful subscription, enable spicy mode if that was the intent
+          if (tier !== 'free') {
+            setSpicyMode(true);
+          }
+        }}
+      />
     </LinearGradient>
   );
 }

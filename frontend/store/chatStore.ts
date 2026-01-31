@@ -15,6 +15,8 @@ export interface Message {
   content: string;
   type?: 'text' | 'image';
   isLocked?: boolean;      // For locked/blurred content
+  contentRating?: 'safe' | 'flirty' | 'spicy' | 'explicit';
+  unlockPrompt?: string;
   imageUrl?: string;
   tokensUsed?: number;
   creditsDeducted?: number;

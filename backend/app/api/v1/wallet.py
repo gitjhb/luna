@@ -2,7 +2,7 @@
 Wallet / Billing API Routes
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from uuid import uuid4
 from datetime import datetime
 from typing import List
@@ -12,35 +12,58 @@ from app.models.schemas import (
     PurchaseRequest, PurchaseResponse,
     SubscriptionInfo
 )
+from app.services.payment_service import payment_service
 
 router = APIRouter(prefix="/wallet")
 
-# Mock wallet data (per-user in production)
-_mock_wallet = {
-    "total_credits": 50.0,
-    "daily_free_credits": 10.0,
-    "purchased_credits": 40.0,
-    "bonus_credits": 0.0,
-    "subscription_tier": "free",
-    "daily_limit": 10.0,
-}
-
-_mock_transactions: List[dict] = []
-
 
 @router.get("/balance", response_model=WalletBalance)
-async def get_balance():
+async def get_balance(req: Request):
     """Get current wallet balance"""
-    return WalletBalance(**_mock_wallet)
+    user = getattr(req.state, "user", None)
+    user_id = str(user.user_id) if user else "demo-user-123"
+    
+    wallet = await payment_service.get_wallet(user_id)
+    subscription = await payment_service.get_subscription(user_id)
+    
+    return WalletBalance(
+        total_credits=wallet.get("total_credits", 0),
+        daily_free_credits=wallet.get("daily_free_credits", 10),
+        purchased_credits=wallet.get("purchased_credits", 0),
+        bonus_credits=wallet.get("bonus_credits", 0),
+        subscription_tier=subscription.get("tier", "free"),
+        daily_limit=wallet.get("daily_free_credits", 10),
+    )
 
 
 @router.get("/transactions", response_model=List[TransactionRecord])
-async def get_transactions(limit: int = 20, offset: int = 0):
+async def get_transactions(limit: int = 20, offset: int = 0, req: Request = None):
     """Get transaction history"""
-    return [
-        TransactionRecord(**t)
-        for t in _mock_transactions[offset : offset + limit]
-    ]
+    user = getattr(req.state, "user", None) if req else None
+    user_id = str(user.user_id) if user else "demo-user-123"
+    
+    transactions = await payment_service.get_transactions(user_id, limit, offset)
+    result = []
+    for t in transactions:
+        # Handle created_at - could be datetime, string, or None
+        created_at = t.get("created_at")
+        if created_at is None:
+            created_at = datetime.utcnow()
+        elif isinstance(created_at, str):
+            try:
+                created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            except:
+                created_at = datetime.utcnow()
+        
+        result.append(TransactionRecord(
+            transaction_id=t.get("transaction_id") or t.get("id") or str(uuid4()),
+            transaction_type=t.get("type") or t.get("transaction_type") or "unknown",
+            amount=t.get("amount", 0),
+            balance_after=t.get("balance_after", 0),
+            description=t.get("description", ""),
+            created_at=created_at,
+        ))
+    return result
 
 
 @router.post("/purchase", response_model=PurchaseResponse)

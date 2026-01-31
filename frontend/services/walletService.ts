@@ -38,6 +38,17 @@ const mapPlan = (data: any): SubscriptionPlan => ({
   popular: data.popular || data.tier === 'premium',
 });
 
+// Map backend transaction to frontend format (snake_case → camelCase)
+const mapTransaction = (data: any): Transaction => ({
+  transactionId: data.transaction_id || data.transactionId || data.id,
+  transactionType: data.transaction_type || data.transactionType || 'deduction',
+  amount: data.amount ?? data.credits ?? 0,
+  balanceBefore: data.balance_before ?? data.balanceBefore ?? 0,
+  balanceAfter: data.balance_after ?? data.balanceAfter ?? 0,
+  description: data.description || '',
+  createdAt: data.created_at || data.createdAt || new Date().toISOString(),
+});
+
 export const walletService = {
   /**
    * Get wallet balance
@@ -48,7 +59,7 @@ export const walletService = {
       return mockApi.responses.login.wallet;
     }
     
-    const data = await api.get<any>('/wallet/balance');
+    const data = await api.get<any>('/payment/wallet');
     return {
       totalCredits: data.total_credits ?? data.totalCredits ?? 0,
       dailyFreeCredits: data.daily_free_credits ?? data.dailyFreeCredits ?? 0,
@@ -77,7 +88,8 @@ export const walletService = {
       ];
     }
     
-    return api.get<Transaction[]>('/wallet/transactions', { limit, offset });
+    const data = await api.get<any[]>('/wallet/transactions', { limit, offset });
+    return data.map(mapTransaction);
   },
   
   /**
