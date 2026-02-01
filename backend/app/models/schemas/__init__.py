@@ -68,6 +68,7 @@ class ChatCompletionResponse(BaseModel):
     is_locked: bool = False  # True if content is hidden behind paywall
     content_rating: str = "safe"  # safe, flirty, spicy, explicit
     unlock_prompt: Optional[str] = None  # Message to show if locked
+    extra_data: Optional[dict] = None  # Debug info: L1 perception, game engine state
 
 
 class CreateSessionRequest(BaseModel):

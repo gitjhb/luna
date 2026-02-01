@@ -13,6 +13,28 @@ interface SendMessageRequest {
   intimacyLevel?: number;
 }
 
+// Debug info from L1 perception + game engine
+export interface GameDebugInfo {
+  check_passed: boolean;
+  refusal_reason: string | null;
+  emotion: string;
+  intimacy: number;
+  events: string[];
+  new_event: string | null;
+  intent: string;
+}
+
+export interface ExtraData {
+  game?: GameDebugInfo;
+  l1?: {
+    safety_flag: string;
+    intent: string;
+    difficulty_rating: number;
+    sentiment: number;
+    is_nsfw: boolean;
+  };
+}
+
 interface SendMessageResponse {
   messageId: string;
   role: 'assistant';
@@ -25,6 +47,7 @@ interface SendMessageResponse {
   tokensUsed: number;
   creditsDeducted: number;
   createdAt: string;
+  extraData?: ExtraData;  // Debug info
 }
 
 // Map backend session to frontend format
@@ -122,6 +145,7 @@ export const chatService = {
       tokensUsed: response.tokens_used || 0,
       creditsDeducted: response.credits_deducted || 0,
       createdAt: response.created_at || new Date().toISOString(),
+      extraData: response.extra_data || response.extraData,
     };
   },
   

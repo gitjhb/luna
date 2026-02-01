@@ -125,6 +125,10 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
     import time
     request_id = f"{int(time.time()*1000)}"
     
+    # Initialize debug variables
+    l1_result = None
+    game_result = None
+    
     logger.info(f"")
     logger.info(f"🚀 [{request_id}] NEW REQUEST RECEIVED")
     logger.info(f"   Session: {request.session_id}")
@@ -406,9 +410,21 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
     except Exception as e:
         logger.warning(f"Failed to update stats: {e}")
 
-    # 构建 extra_data
+    # 构建 extra_data (for debug panel)
     extra_data = {}
-    if game_result:
+    
+    # L1 Perception results
+    if l1_result is not None:
+        extra_data["l1"] = {
+            "safety_flag": l1_result.safety_flag,
+            "intent": l1_result.intent,
+            "difficulty_rating": l1_result.difficulty_rating,
+            "sentiment": round(l1_result.sentiment, 2),
+            "is_nsfw": l1_result.is_nsfw,
+        }
+    
+    # Game Engine results
+    if game_result is not None:
         extra_data["game"] = {
             "check_passed": game_result.check_passed,
             "refusal_reason": game_result.refusal_reason,

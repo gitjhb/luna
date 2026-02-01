@@ -9,6 +9,28 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Debug info from L1 perception + game engine
+export interface GameDebugInfo {
+  check_passed: boolean;
+  refusal_reason: string | null;
+  emotion: string;
+  intimacy: number;
+  events: string[];
+  new_event: string | null;
+  intent: string;
+}
+
+export interface ExtraData {
+  game?: GameDebugInfo;
+  l1?: {
+    safety_flag: string;
+    intent: string;
+    difficulty_rating: number;
+    sentiment: number;
+    is_nsfw: boolean;
+  };
+}
+
 export interface Message {
   messageId: string;
   role: 'user' | 'assistant' | 'system';
@@ -21,6 +43,7 @@ export interface Message {
   tokensUsed?: number;
   creditsDeducted?: number;
   createdAt: string;
+  extraData?: ExtraData;   // Debug info from backend
 }
 
 export interface ChatSession {

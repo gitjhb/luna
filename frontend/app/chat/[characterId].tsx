@@ -48,6 +48,8 @@ import MessageBubble from '../../components/MessageBubble';
 import { ToastProvider, useToast } from '../../components/Toast';
 import { useEmotionTheme } from '../../hooks/useEmotionTheme';
 import { EmotionEffectsLayer, EmotionIndicator } from '../../components/EmotionEffects';
+import { DebugButton } from '../../components/DebugPanel';
+import { ExtraData } from '../../store/chatStore';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -93,6 +95,8 @@ export default function ChatScreen() {
   const [showCharacterInfo, setShowCharacterInfo] = useState(false);
   const [emotionScore, setEmotionScore] = useState(0);
   const [emotionState, setEmotionState] = useState('neutral');
+  const [lastExtraData, setLastExtraData] = useState<ExtraData | null>(null);  // Debug info
+  const [lastTokensUsed, setLastTokensUsed] = useState<number>(0);
   
   // 🎨 动态主题 - 根据情绪状态自动切换
   const {
@@ -345,7 +349,16 @@ export default function ChatScreen() {
         isLocked: response.isLocked,
         imageUrl: response.imageUrl,
         createdAt: response.createdAt,
+        extraData: response.extraData,
       });
+      
+      // Update debug info for DebugPanel
+      if (response.extraData) {
+        setLastExtraData(response.extraData);
+      }
+      if (response.tokensUsed) {
+        setLastTokensUsed(response.tokensUsed);
+      }
       
       // Update session's lastMessageAt for accurate time display in chat list
       updateSession(sessionId, { lastMessageAt: new Date().toISOString() });
@@ -748,6 +761,18 @@ export default function ChatScreen() {
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
+        
+        {/* Debug Panel Button - only in development */}
+        {__DEV__ && (
+          <DebugButton
+            extraData={lastExtraData}
+            emotionScore={emotionScore}
+            emotionState={emotionState}
+            intimacyLevel={relationshipLevel || 1}
+            isSubscribed={isSubscribed}
+            tokensUsed={lastTokensUsed}
+          />
+        )}
       </SafeAreaView>
 
       {/* Recharge Modal */}

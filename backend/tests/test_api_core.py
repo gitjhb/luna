@@ -174,9 +174,9 @@ class TestIntimacyAPI:
     async def test_award_xp(self):
         """测试奖励XP"""
         async with httpx.AsyncClient() as client:
+            # Endpoint 格式: /intimacy/{character_id}/award/{action_type}
             response = await client.post(
-                f"{BASE_URL}/intimacy/{TEST_CHARACTER_ID}/award",
-                json={"action_type": "message"}
+                f"{BASE_URL}/intimacy/{TEST_CHARACTER_ID}/award/message"
             )
             assert response.status_code == 200
             data = response.json()
@@ -194,8 +194,10 @@ class TestChatAPI:
             response = await client.get(f"{BASE_URL}/characters")
             assert response.status_code == 200
             data = response.json()
-            assert isinstance(data, list)
-            assert len(data) > 0
+            # API 返回 {"characters": [...], "total": N} 格式
+            assert "characters" in data
+            assert isinstance(data["characters"], list)
+            assert len(data["characters"]) > 0
     
     @pytest.mark.asyncio
     async def test_create_session(self):
