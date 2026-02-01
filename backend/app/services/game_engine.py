@@ -179,8 +179,8 @@ class GameEngine:
                 events=user_state.events
             )
         
-        # 4. 情绪物理学 (Y轴更新)
-        user_state = self._update_emotion(user_state, l1_result)
+        # 4. 情绪物理学 (Y轴更新) - 使用 PhysicsEngine v2.0
+        user_state = self._update_emotion(user_state, l1_result, character_id)
         
         # 5. 核心冲突判定
         check_passed, refusal_reason, total_power = self._check_power(
@@ -221,29 +221,40 @@ class GameEngine:
             new_event=new_event
         )
     
-    def _update_emotion(self, user_state: UserState, l1_result: L1Result) -> UserState:
+    def _update_emotion(self, user_state: UserState, l1_result: L1Result, character_id: str) -> UserState:
         """
-        情绪物理学 (Y轴更新)
+        情绪物理学 (Y轴更新) - 使用 PhysicsEngine v2.0
+        
+        基于"阻尼滑块"模型：
+        - 衰减: 每轮向 0 回归 (decay_factor = 0.9)
+        - 推力: sentiment * 10 + intent_mod
+        - 伤害加倍: 负面情绪 x2
+        - 角色敏感度: dependency 系数
         """
-        # 情绪衰减: 每轮自动向 0 回归
-        user_state.emotion = int(user_state.emotion * self.EMOTION_DECAY)
+        from app.services.physics_engine import PhysicsEngine, CharacterZAxis
         
-        # 根据用户态度更新情绪
-        sentiment = l1_result.sentiment  # -1.0 to 1.0
+        # 获取角色 Z 轴配置
+        char_config = CharacterZAxis.from_character_id(character_id)
         
-        if sentiment > 0:
-            # 正面情绪: +5 到 +10
-            delta = int(5 + (sentiment * 5))
-        else:
-            # 负面情绪: -10 到 0 (骂人降得快)
-            delta = int(sentiment * 10)
+        # 构建 L1 结果字典 (PhysicsEngine 需要的格式)
+        l1_dict = {
+            'sentiment_score': l1_result.sentiment_score if hasattr(l1_result, 'sentiment_score') else l1_result.sentiment,
+            'intent_category': l1_result.intent_category if hasattr(l1_result, 'intent_category') else l1_result.intent,
+        }
         
-        user_state.emotion += delta
+        # 构建用户状态字典
+        state_dict = {
+            'emotion': user_state.emotion,
+            'last_intents': user_state.last_intents,
+        }
         
-        # 限制 Y 轴范围
-        user_state.emotion = max(-100, min(100, user_state.emotion))
+        # 使用 PhysicsEngine 计算新情绪值
+        new_emotion = PhysicsEngine.update_state(state_dict, l1_dict, char_config)
         
-        logger.debug(f"Emotion updated: delta={delta}, new={user_state.emotion}")
+        old_emotion = user_state.emotion
+        user_state.emotion = new_emotion
+        
+        logger.info(f"Emotion updated via PhysicsEngine: {old_emotion} -> {new_emotion}")
         return user_state
     
     def _check_power(

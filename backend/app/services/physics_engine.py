@@ -270,6 +270,42 @@ class PhysicsEngine:
         new_emotion = max(cls.EMOTION_MIN, min(cls.EMOTION_MAX, int(new_emotion)))
         
         return new_emotion
+    
+    @classmethod
+    def update_state(
+        cls,
+        user_state: Dict[str, Any],
+        l1_result: Dict[str, Any],
+        char_config: CharacterZAxis
+    ) -> int:
+        """
+        更新用户状态的主循环 (每轮对话调用一次)
+        
+        Args:
+            user_state: 用户状态 dict，包含 'emotion' 和 'last_intents'
+            l1_result: L1 分析结果
+            char_config: 角色 Z 轴配置
+            
+        Returns:
+            新的情绪值
+        """
+        current_y = user_state.get('emotion', 0)
+        last_intents = user_state.get('last_intents', [])
+        
+        # 1. 计算增量
+        delta = cls.calculate_emotion_delta(
+            current_emotion=current_y,
+            l1_result=l1_result,
+            char_config=char_config,
+            recent_intents=last_intents
+        )
+        
+        # 2. 应用衰减 + 增量 + 钳位
+        new_y = cls.update_emotion(current_y, delta)
+        
+        logger.info(f"PhysicsEngine.update_state: {current_y} -> {new_y} (delta={delta})")
+        
+        return new_y
 
 
 # =============================================================================
