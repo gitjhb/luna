@@ -6,7 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Tabs, useRouter, useSegments } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../../theme/config';
+import { useTheme } from '../../theme/config';
 import { useChatStore } from '../../store/chatStore';
 import { useUserStore } from '../../store/userStore';
 import { walletService } from '../../services/walletService';
@@ -14,6 +14,7 @@ import { walletService } from '../../services/walletService';
 export default function TabsLayout() {
   const router = useRouter();
   const segments = useSegments();
+  const { theme } = useTheme();
   const { sessions, messagesBySession } = useChatStore();
   const { updateWallet } = useUserStore();
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -77,13 +78,31 @@ export default function TabsLayout() {
     </View>
   );
 
+  // Dynamic tab bar styles based on theme
+  const tabBarStyle = {
+    backgroundColor: theme.colors.background.secondary,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.colors.border,
+    height: Platform.OS === 'ios' ? 83 : 60,
+    paddingTop: 6,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 6,
+    // Cyberpunk glow effect
+    ...(theme.effects?.borderGlow && {
+      borderTopColor: theme.colors.glow,
+      shadowColor: theme.colors.glow,
+      shadowOffset: { width: 0, height: -2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+    }),
+  };
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: theme.colors.primary.main,
         tabBarInactiveTintColor: theme.colors.text.tertiary,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: tabBarStyle,
         tabBarLabelStyle: styles.tabBarLabel,
         tabBarItemStyle: styles.tabBarItem,
       }}
@@ -144,14 +163,6 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
-  tabBar: {
-    backgroundColor: theme.colors.background.secondary,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-    height: Platform.OS === 'ios' ? 83 : 60,
-    paddingTop: 6,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 6,
-  },
   tabBarLabel: {
     fontSize: 10,
     fontWeight: '400',

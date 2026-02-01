@@ -32,6 +32,7 @@ import Animated, {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '../theme/config';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -68,6 +69,8 @@ export default function MessageBubble({
   onReply,
   showToast,
 }: MessageBubbleProps) {
+  const { theme } = useTheme();
+  const isCyberpunk = theme.id === 'cyberpunk-2077';
   const [showMenu, setShowMenu] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const [selectedReaction, setSelectedReaction] = useState<string | null>(null);
@@ -204,18 +207,70 @@ export default function MessageBubble({
     );
   }
   
+  // Dynamic bubble styles based on theme
+  const bubbleUserStyle = isCyberpunk ? {
+    backgroundColor: 'rgba(0, 240, 255, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 240, 255, 0.3)',
+    borderRadius: theme.borderRadius.md,
+    shadowColor: '#00F0FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  } : {
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+  };
+
+  const bubbleAIStyle = isCyberpunk ? {
+    backgroundColor: 'rgba(255, 42, 109, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 42, 109, 0.25)',
+    borderRadius: theme.borderRadius.md,
+    shadowColor: '#FF2A6D',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  } : {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  };
+
+  const textUserStyle = isCyberpunk ? {
+    color: '#00F0FF',
+    textShadowColor: 'rgba(0, 240, 255, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
+  } : {
+    color: '#fff',
+  };
+
+  const textAIStyle = isCyberpunk ? {
+    color: 'rgba(255, 255, 255, 0.95)',
+  } : {
+    color: 'rgba(255, 255, 255, 0.92)',
+  };
+
   return (
     <>
       <GestureDetector gesture={composedGestures}>
         <Animated.View style={[bubbleAnimatedStyle, styles.bubbleContainer]}>
-          <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
-            <Text style={[styles.messageText, isUser ? styles.messageTextUser : styles.messageTextAI]}>
+          <View style={[
+            styles.bubble, 
+            isUser ? [styles.bubbleUser, bubbleUserStyle] : [styles.bubbleAI, bubbleAIStyle]
+          ]}>
+            <Text style={[
+              styles.messageText, 
+              isUser ? [styles.messageTextUser, textUserStyle] : [styles.messageTextAI, textAIStyle]
+            ]}>
               {content}
             </Text>
             
             {/* Selected reaction indicator */}
             {selectedReaction && (
-              <Animated.View style={[styles.reactionBadge, floatingReactionStyle]}>
+              <Animated.View style={[
+                styles.reactionBadge, 
+                floatingReactionStyle,
+                { borderColor: theme.colors.background.primary }
+              ]}>
                 <Text style={styles.reactionBadgeText}>{selectedReaction}</Text>
               </Animated.View>
             )}
@@ -231,13 +286,34 @@ export default function MessageBubble({
         onRequestClose={closeMenu}
       >
         <Pressable style={styles.menuOverlay} onPress={closeMenu}>
-          <Animated.View style={[styles.menuContainer, menuAnimatedStyle]}>
+          <Animated.View style={[
+            styles.menuContainer, 
+            menuAnimatedStyle,
+            { 
+              backgroundColor: theme.colors.background.secondary,
+              borderRadius: theme.borderRadius.xl,
+              ...(isCyberpunk && {
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                shadowColor: theme.colors.glow,
+                shadowOpacity: 0.4,
+                shadowRadius: 15,
+              })
+            }
+          ]}>
             {/* Reaction Bar */}
-            <View style={styles.reactionBar}>
+            <View style={[styles.reactionBar, { borderBottomColor: theme.colors.border }]}>
               {REACTIONS.map((reaction) => (
                 <TouchableOpacity
                   key={reaction.name}
-                  style={styles.reactionButton}
+                  style={[
+                    styles.reactionButton,
+                    isCyberpunk && {
+                      backgroundColor: 'rgba(0, 240, 255, 0.1)',
+                      borderWidth: 1,
+                      borderColor: 'rgba(0, 240, 255, 0.2)',
+                    }
+                  ]}
                   onPress={() => handleReaction(reaction)}
                   activeOpacity={0.7}
                 >
@@ -248,34 +324,43 @@ export default function MessageBubble({
             
             {/* Menu Actions */}
             <View style={styles.menuActions}>
-              <TouchableOpacity style={styles.menuItem} onPress={handleCopy}>
-                <Ionicons name="copy-outline" size={20} color="#fff" />
-                <Text style={styles.menuItemText}>复制</Text>
+              <TouchableOpacity style={[
+                styles.menuItem,
+                isCyberpunk && { backgroundColor: 'rgba(0, 240, 255, 0.08)' }
+              ]} onPress={handleCopy}>
+                <Ionicons name="copy-outline" size={20} color={isCyberpunk ? theme.colors.primary.main : '#fff'} />
+                <Text style={[styles.menuItemText, isCyberpunk && { color: theme.colors.primary.main }]}>复制</Text>
               </TouchableOpacity>
               
               {!isUser && onReply && (
-                <TouchableOpacity style={styles.menuItem} onPress={handleReply}>
-                  <Ionicons name="arrow-undo-outline" size={20} color="#fff" />
-                  <Text style={styles.menuItemText}>回复</Text>
+                <TouchableOpacity style={[
+                  styles.menuItem,
+                  isCyberpunk && { backgroundColor: 'rgba(0, 240, 255, 0.08)' }
+                ]} onPress={handleReply}>
+                  <Ionicons name="arrow-undo-outline" size={20} color={isCyberpunk ? theme.colors.primary.main : '#fff'} />
+                  <Text style={[styles.menuItemText, isCyberpunk && { color: theme.colors.primary.main }]}>回复</Text>
                 </TouchableOpacity>
               )}
               
               {!isUser && (
                 <TouchableOpacity 
-                  style={styles.menuItem} 
+                  style={[
+                    styles.menuItem,
+                    isCyberpunk && { backgroundColor: 'rgba(255, 42, 109, 0.12)' }
+                  ]} 
                   onPress={() => {
                     handleReaction({ emoji: '❤️', name: 'love', xpBonus: 2 });
                   }}
                 >
-                  <Ionicons name="heart-outline" size={20} color="#EC4899" />
-                  <Text style={[styles.menuItemText, { color: '#EC4899' }]}>喜欢</Text>
+                  <Ionicons name="heart-outline" size={20} color={theme.colors.accent.pink} />
+                  <Text style={[styles.menuItemText, { color: theme.colors.accent.pink }]}>喜欢</Text>
                 </TouchableOpacity>
               )}
             </View>
             
             {/* Preview of message */}
-            <View style={styles.previewContainer}>
-              <Text style={styles.previewText} numberOfLines={2}>
+            <View style={[styles.previewContainer, { borderTopColor: theme.colors.border }]}>
+              <Text style={[styles.previewText, { color: theme.colors.text.tertiary }]} numberOfLines={2}>
                 {content}
               </Text>
             </View>
@@ -297,23 +382,17 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   bubbleUser: {
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
     borderBottomRightRadius: 4,
   },
   bubbleAI: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderBottomLeftRadius: 4,
   },
   messageText: {
     fontSize: 15,
     lineHeight: 21,
   },
-  messageTextUser: {
-    color: '#fff',
-  },
-  messageTextAI: {
-    color: 'rgba(255, 255, 255, 0.92)',
-  },
+  messageTextUser: {},
+  messageTextAI: {},
   // Locked styles
   lockedBubble: {
     position: 'relative',
@@ -359,7 +438,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderWidth: 2,
-    borderColor: '#1a1025',
   },
   reactionBadgeText: {
     fontSize: 14,
@@ -367,13 +445,11 @@ const styles = StyleSheet.create({
   // Menu overlay
   menuOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   menuContainer: {
-    backgroundColor: '#2a1a3a',
-    borderRadius: 20,
     padding: 16,
     width: SCREEN_WIDTH * 0.85,
     maxWidth: 360,
@@ -389,7 +465,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
     marginBottom: 12,
   },
   reactionButton: {
@@ -429,10 +504,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
   },
   previewText: {
-    color: 'rgba(255,255,255,0.5)',
     fontSize: 13,
     fontStyle: 'italic',
   },

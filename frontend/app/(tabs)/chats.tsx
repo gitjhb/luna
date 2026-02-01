@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../../theme/config';
+import { useTheme } from '../../theme/config';
 import { useChatStore, ChatSession, Message } from '../../store/chatStore';
 import { chatService } from '../../services/chatService';
 import SettingsDrawer from '../../components/SettingsDrawer';
@@ -27,6 +27,7 @@ import { zhCN } from 'date-fns/locale';
 
 export default function ChatsScreen() {
   const router = useRouter();
+  const { theme } = useTheme();
   const { sessions, setSessions, deleteSession, messagesBySession } = useChatStore();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -143,7 +144,7 @@ export default function ChatsScreen() {
       <Text style={styles.emptyTitle}>暂无对话</Text>
       <Text style={styles.emptySubtext}>去发现页面开始聊天吧</Text>
       <TouchableOpacity style={styles.startButton} onPress={() => router.push('/(tabs)')}>
-        <LinearGradient colors={theme.colors.primary.gradient} style={styles.startButtonGradient}>
+        <LinearGradient colors={[...theme.colors.primary.gradient]} style={styles.startButtonGradient}>
           <Text style={styles.startButtonText}>去发现</Text>
         </LinearGradient>
       </TouchableOpacity>
@@ -151,7 +152,7 @@ export default function ChatsScreen() {
   );
 
   return (
-    <LinearGradient colors={theme.colors.background.gradient} style={styles.container}>
+    <LinearGradient colors={[...theme.colors.background.gradient]} style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity 
@@ -216,7 +217,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 13,
-    color: theme.colors.text.secondary,
+    color: 'rgba(255, 255, 255, 0.7)',
     marginTop: 2,
   },
   listContainer: {
@@ -237,7 +238,7 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     marginRight: 14,
-    backgroundColor: theme.colors.background.tertiary,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   sessionInfo: { flex: 1 },
   sessionHeader: {
@@ -252,11 +253,11 @@ const styles = StyleSheet.create({
   },
   timestamp: {
     fontSize: 12,
-    color: theme.colors.text.tertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
   },
   sessionTitle: {
     fontSize: 14,
-    color: theme.colors.text.secondary,
+    color: 'rgba(255, 255, 255, 0.7)',
     marginTop: 4,
   },
   emptyState: {
@@ -277,11 +278,11 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: theme.colors.text.secondary,
+    color: 'rgba(255, 255, 255, 0.7)',
   },
   emptySubtext: {
     fontSize: 14,
-    color: theme.colors.text.tertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
     marginTop: 6,
     marginBottom: 24,
   },

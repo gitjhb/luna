@@ -6,7 +6,8 @@
  */
 
 // Re-export everything from themes.ts
-export { ThemeConfig, purpleSeduction, cyberpunk2077, themes, themeList, defaultThemeId } from './themes';
+export type { ThemeConfig } from './themes';
+export { purpleSeduction, cyberpunk2077, themes, themeList, defaultThemeId } from './themes';
 
 // Re-export theme context
 export { ThemeProvider, useTheme } from './ThemeContext';

@@ -19,7 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { theme, getShadow } from '../../theme/config';
+import { getShadow, useTheme } from '../../theme/config';
 import { useUserStore } from '../../store/userStore';
 import { Character } from '../../types';
 import { characterService } from '../../services/characterService';
@@ -32,6 +32,7 @@ const CARD_WIDTH = SCREEN_WIDTH - 48;
 
 export default function CompanionsScreen() {
   const router = useRouter();
+  const { theme } = useTheme();
   const { user, wallet } = useUserStore();
   
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -81,14 +82,14 @@ export default function CompanionsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: theme.colors.background.primary }]}>
         <ActivityIndicator size="large" color={theme.colors.primary.main} />
       </View>
     );
   }
 
   return (
-    <LinearGradient colors={theme.colors.background.gradient} style={styles.container}>
+    <LinearGradient colors={[...theme.colors.background.gradient]} style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
         <View style={styles.header}>
@@ -201,7 +202,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: theme.colors.background.primary,
+    // backgroundColor set via inline style for theme support
   },
   header: {
     flexDirection: 'row',
@@ -226,7 +227,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 15,
-    color: theme.colors.text.secondary,
+    color: 'rgba(255, 255, 255, 0.7)',
     marginTop: 2,
   },
   creditsBadge: {
@@ -241,7 +242,7 @@ const styles = StyleSheet.create({
   creditsText: {
     fontSize: 15,
     fontWeight: '600',
-    color: theme.colors.primary.main,
+    color: '#EC4899',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -268,7 +269,7 @@ const styles = StyleSheet.create({
     height: 380,
     borderRadius: 24,
     overflow: 'hidden',
-    backgroundColor: theme.colors.background.secondary,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     ...getShadow('lg'),
   },
   characterImage: {
@@ -308,7 +309,7 @@ const styles = StyleSheet.create({
   },
   characterDesc: {
     fontSize: 14,
-    color: theme.colors.text.secondary,
+    color: 'rgba(255, 255, 255, 0.7)',
     lineHeight: 20,
     marginBottom: 12,
   },
@@ -325,7 +326,7 @@ const styles = StyleSheet.create({
   },
   tagText: {
     fontSize: 12,
-    color: theme.colors.text.secondary,
+    color: 'rgba(255, 255, 255, 0.7)',
   },
   chatButton: {
     borderRadius: 20,

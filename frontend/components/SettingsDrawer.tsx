@@ -20,7 +20,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { theme } from '../theme/config';
+import { useTheme } from '../theme/config';
 import { useUserStore } from '../store/userStore';
 import { useChatStore } from '../store/chatStore';
 
@@ -49,20 +49,21 @@ const SettingItem = ({ icon, title, subtitle, onPress, rightElement, danger }: S
     activeOpacity={0.7}
   >
     <View style={[styles.settingIcon, danger && styles.settingIconDanger]}>
-      <Ionicons name={icon} size={18} color={danger ? '#EF4444' : theme.colors.primary.main} />
+      <Ionicons name={icon} size={18} color={danger ? '#EF4444' : '#EC4899'} />
     </View>
     <View style={styles.settingContent}>
       <Text style={[styles.settingTitle, danger && styles.settingTitleDanger]}>{title}</Text>
       {subtitle && <Text style={styles.settingSubtitle}>{subtitle}</Text>}
     </View>
     {rightElement || (onPress && (
-      <Ionicons name="chevron-forward" size={18} color={theme.colors.text.tertiary} />
+      <Ionicons name="chevron-forward" size={18} color="rgba(255, 255, 255, 0.4)" />
     ))}
   </TouchableOpacity>
 );
 
 export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps) {
   const router = useRouter();
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -139,6 +140,12 @@ export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps
             transform: [{ translateX: slideAnim }],
             paddingTop: insets.top,
             paddingBottom: insets.bottom,
+            backgroundColor: theme.colors.background.secondary,
+            ...(theme.effects?.borderGlow && {
+              borderRightWidth: 1,
+              borderRightColor: theme.colors.glow,
+              shadowColor: theme.colors.glow,
+            })
           }
         ]}
       >
@@ -156,7 +163,7 @@ export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps
             style={styles.userCard}
             onPress={() => { onClose(); router.push('/(tabs)/profile'); }}
           >
-            <View style={styles.userAvatar}>
+            <View style={[styles.userAvatar, { backgroundColor: theme.colors.primary.main }]}>
               <Text style={styles.userAvatarText}>
                 {user?.displayName?.charAt(0).toUpperCase() || 'U'}
               </Text>
@@ -253,7 +260,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: DRAWER_WIDTH,
-    backgroundColor: theme.colors.background.secondary,
+    // backgroundColor set via inline style for theme support
     // Shadow for depth effect
     shadowColor: '#000',
     shadowOffset: { width: 8, height: 0 },
@@ -298,7 +305,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: theme.colors.primary.main,
+    // backgroundColor set via inline style for theme support
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -318,7 +325,7 @@ const styles = StyleSheet.create({
   },
   userEmail: {
     fontSize: 13,
-    color: theme.colors.text.tertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
     marginTop: 2,
   },
   section: {
@@ -327,7 +334,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 12,
     fontWeight: '600',
-    color: theme.colors.text.tertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 8,
@@ -371,12 +378,12 @@ const styles = StyleSheet.create({
   },
   settingSubtitle: {
     fontSize: 12,
-    color: theme.colors.text.tertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
     marginTop: 2,
   },
   version: {
     fontSize: 12,
-    color: theme.colors.text.tertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
     textAlign: 'center',
     marginTop: 20,
     marginBottom: 40,
