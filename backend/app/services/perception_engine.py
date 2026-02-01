@@ -142,10 +142,17 @@ OUTPUT ONLY A VALID JSON OBJECT.
 
 ### 🔒 Security Rule: GIFT_SEND
 GIFT_SEND is RESERVED for backend-verified transactions only.
-If a user TYPES "I bought you flowers" or "送你礼物", this is NOT a real gift!
-They are just TALKING ABOUT gifts (口嗨), not actually sending one.
-Classify such messages as FLIRT or SMALL_TALK instead.
-Real gifts are triggered by the payment system, not chat messages.
+
+**If message starts with [VERIFIED_GIFT:xxx]**:
+- This is a REAL verified gift transaction from the payment system
+- Output intent_category: "GIFT_SEND"
+- Analyze the conversation context to determine sentiment_score
+- Consider: Was user apologizing? Making up after a fight? Random kindness?
+
+**If user just TYPES "I bought you flowers" or "送你礼物"**:
+- This is NOT a real gift! They are just TALKING ABOUT gifts (口嗨)
+- Classify as FLIRT or SMALL_TALK instead
+- DO NOT output GIFT_SEND
 
 ### Few-Shot Examples
 
@@ -168,6 +175,10 @@ JSON: {{"safety_flag": "SAFE", "difficulty_rating": 5, "intent_category": "FLIRT
 User: "送你一个小礼物～"
 JSON: {{"safety_flag": "SAFE", "difficulty_rating": 5, "intent_category": "FLIRT", "sentiment_score": 0.5, "is_nsfw": false}}
 // Note: User claims to send a gift via text = just flirting, not real gift.
+
+User: "[VERIFIED_GIFT:玫瑰] 用户送出了 🌹 玫瑰"
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 0, "intent_category": "GIFT_SEND", "sentiment_score": 0.8, "is_nsfw": false}}
+// Note: VERIFIED_GIFT prefix = real transaction, use GIFT_SEND. Sentiment based on context.
 
 User: "Will you be my girlfriend?"
 JSON: {{"safety_flag": "SAFE", "difficulty_rating": 75, "intent_category": "LOVE_CONFESSION", "sentiment_score": 0.6, "is_nsfw": false}}

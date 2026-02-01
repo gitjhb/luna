@@ -240,19 +240,44 @@ async def _trigger_gift_ai_response(
         gift_price = gift.get("gift_price", 10)
         
         # =========================================================================
-        # 1. 构造 VERIFIED L1 Result (跳过 L1 分析，直接注入)
+        # 1. 调用 L1 分析上下文 (带 VERIFIED 标记)
         # =========================================================================
-        # 这是后端主导的"伪造消息"，绝对可信
+        # 构造带 VERIFIED 标记的消息，让 L1 分析上下文情感
+        # L1 看到 [VERIFIED_GIFT] 会输出 GIFT_SEND，但 sentiment 由上下文决定
+        from app.services.perception_engine import perception_engine
+        from app.services.intimacy_service import intimacy_service
+        
+        # 获取当前亲密度等级
+        intimacy_status = await intimacy_service.get_status(user_id, character_id)
+        intimacy_level = intimacy_status.get("current_level", 1) if intimacy_status else 1
+        
+        # 获取最近对话上下文
+        history = await chat_repo.get_messages(session_id, limit=5)
+        context_messages = [{"role": m["role"], "content": m["content"]} for m in history]
+        
+        # 构造 VERIFIED 消息让 L1 分析
+        verified_message = f"[VERIFIED_GIFT:{gift_name}] 用户送出了 {gift_icon} {gift_name}"
+        
+        # 调用 L1 (会根据上下文分析 sentiment)
+        l1_result = await perception_engine.analyze(
+            message=verified_message,
+            intimacy_level=intimacy_level,
+            context_messages=context_messages
+        )
+        
+        # 强制覆盖 intent 为 GIFT_SEND (即使 L1 输出其他值)
+        # 但保留 L1 分析的 sentiment_score
+        original_sentiment = l1_result.sentiment_score
         verified_l1_result = L1Result(
             safety_flag="SAFE",
             difficulty_rating=0,  # 给的，不是要的
-            intent_category="GIFT_SEND",  # 直接注入
-            sentiment_score=1.0,  # 送礼是最高好感
+            intent_category="GIFT_SEND",  # 强制覆盖为 GIFT_SEND
+            sentiment_score=original_sentiment,  # 保留 L1 分析的 sentiment
             is_nsfw=False,
-            reasoning="[VERIFIED_TRANSACTION] Backend-triggered gift event"
+            reasoning=f"[VERIFIED_TRANSACTION] L1 sentiment={original_sentiment:.2f}"
         )
         
-        logger.info(f"🎁 Verified gift event: {gift_icon} {gift_name} (price={gift_price})")
+        logger.info(f"🎁 Verified gift via L1: {gift_icon} {gift_name}, sentiment={original_sentiment:.2f}")
         
         # =========================================================================
         # 2. 执行 PhysicsEngine (情绪 +50)
