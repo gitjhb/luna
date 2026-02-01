@@ -1,7 +1,19 @@
 """
-xAI Grok API Service Wrapper
+LLM Service Compatibility Layer
+===============================
+
+⚠️  DEPRECATED: This file is kept for backward compatibility.
+    New code should import from app.services.llm instead:
+    
+    from app.services.llm import grok_chat, grok_image, openai_embedding
+
+Architecture:
+- Chat: Grok grok-4-1-fast-non-reasoning ($0.2/M tokens)
+- Image: Grok grok-2-image ($0.07/image)
+- Embedding: OpenAI text-embedding-3-small ($0.02/M tokens) - ONLY OpenAI use!
 """
 
+import logging
 from typing import List, Dict, Optional, AsyncGenerator
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -9,12 +21,18 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from app.core.exceptions import LLMServiceError
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# GrokService - Main Chat (backward compatible)
+# =============================================================================
 
 class GrokService:
     """
-    Wrapper for xAI Grok API.
+    Grok Chat API Service (backward compatible wrapper)
     
-    Documentation: https://docs.x.ai/api
+    ⚠️  Consider using: from app.services.llm import grok_chat
     """
     
     def __init__(self):
@@ -23,8 +41,10 @@ class GrokService:
             raise ValueError("XAI_API_KEY not set in settings")
         
         self.base_url = settings.XAI_BASE_URL
-        self.model = settings.XAI_MODEL
+        self.model = settings.XAI_MODEL  # grok-4-1-fast-non-reasoning
         self.timeout = 60.0
+        
+        logger.debug(f"GrokService initialized with model: {self.model}")
     
     @retry(
         stop=stop_after_attempt(3),
@@ -40,24 +60,7 @@ class GrokService:
         presence_penalty: float = 0.0,
         stream: bool = False
     ) -> Dict:
-        """
-        Call Grok chat completion API.
-        
-        Args:
-            messages: List of message dicts with 'role' and 'content'
-            temperature: Sampling temperature (0-2)
-            max_tokens: Maximum tokens to generate
-            top_p: Nucleus sampling parameter
-            frequency_penalty: Penalize frequent tokens (-2 to 2)
-            presence_penalty: Penalize present tokens (-2 to 2)
-            stream: Enable streaming (not implemented yet)
-        
-        Returns:
-            API response dict
-        
-        Raises:
-            LLMServiceError: If API call fails
-        """
+        """Call Grok chat completion API."""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -68,7 +71,6 @@ class GrokService:
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
-            # Note: Grok doesn't support frequency_penalty, presence_penalty, top_p
             "stream": stream
         }
         
@@ -81,9 +83,8 @@ class GrokService:
                 )
                 
                 if response.status_code != 200:
-                    error_detail = response.text
                     raise LLMServiceError(
-                        f"Grok API error: {error_detail}",
+                        f"Grok API error: {response.text}",
                         status_code=response.status_code
                     )
                 
@@ -100,12 +101,7 @@ class GrokService:
         temperature: float = 0.8,
         max_tokens: int = 500
     ) -> AsyncGenerator[str, None]:
-        """
-        Stream chat completion (for real-time responses).
-        
-        Yields:
-            Content chunks as they arrive
-        """
+        """Stream chat completion."""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -135,7 +131,6 @@ class GrokService:
                     
                     async for chunk in response.aiter_text():
                         if chunk.strip():
-                            # Parse SSE format
                             if chunk.startswith("data: "):
                                 data = chunk[6:]
                                 if data.strip() == "[DONE]":
@@ -146,43 +141,26 @@ class GrokService:
             raise LLMServiceError("Grok API timeout")
         except httpx.RequestError as e:
             raise LLMServiceError(f"Grok API request failed: {str(e)}")
-    
-    async def get_embeddings(self, texts: List[str]) -> List[List[float]]:
-        """
-        Get embeddings for texts.
-        Note: xAI may not have a dedicated embedding endpoint.
-        Fallback to OpenAI or use a separate embedding service.
-        
-        Args:
-            texts: List of text strings to embed
-        
-        Returns:
-            List of embedding vectors
-        """
-        # TODO: Implement if xAI provides embedding endpoint
-        # For now, use OpenAI's embedding API
-        raise NotImplementedError(
-            "Grok doesn't provide embeddings. Use OpenAI text-embedding-3-small instead."
-        )
-    
-    def estimate_tokens(self, text: str) -> int:
-        """
-        Rough token estimation.
-        Rule of thumb: 1 token ≈ 4 characters.
-        """
-        return max(1, len(text) // 4)
 
+
+# =============================================================================
+# OpenAIEmbeddingService - ONLY OpenAI use in this project!
+# =============================================================================
 
 class OpenAIEmbeddingService:
     """
-    OpenAI embedding service for RAG.
-    Using text-embedding-3-small (1536 dimensions).
+    OpenAI Embedding Service for memory/RAG.
+    
+    ⚠️  THIS IS THE ONLY LEGITIMATE USE OF OPENAI API!
+        Do not add chat/completion methods here.
+    
+    Model: text-embedding-3-small ($0.02/M tokens)
     """
     
     def __init__(self):
         self.api_key = settings.OPENAI_API_KEY
         if not self.api_key:
-            raise ValueError("OPENAI_API_KEY not set in settings")
+            logger.warning("OPENAI_API_KEY not set - embeddings will fail")
         
         self.base_url = settings.OPENAI_BASE_URL
         self.model = settings.OPENAI_EMBEDDING_MODEL
@@ -193,15 +171,10 @@ class OpenAIEmbeddingService:
         wait=wait_exponential(multiplier=1, min=1, max=5)
     )
     async def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        """
-        Get embeddings for multiple texts.
-        
-        Args:
-            texts: List of text strings
-        
-        Returns:
-            List of embedding vectors (1536 dimensions each)
-        """
+        """Get embeddings for multiple texts."""
+        if not self.api_key:
+            raise LLMServiceError("OPENAI_API_KEY not configured")
+            
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -236,36 +209,38 @@ class OpenAIEmbeddingService:
             raise LLMServiceError(f"OpenAI embedding request failed: {str(e)}")
     
     async def embed_single(self, text: str) -> List[float]:
-        """
-        Get embedding for a single text.
-        
-        Args:
-            text: Text string
-        
-        Returns:
-            Embedding vector (1536 dimensions)
-        """
+        """Get embedding for a single text."""
         embeddings = await self.embed_texts([text])
         return embeddings[0]
 
 
+# =============================================================================
+# MiniLLMService - Now uses Grok instead of OpenAI!
+# =============================================================================
+
 class MiniLLMService:
     """
-    轻量级 LLM 服务 - 用于快速情绪分析
-    使用 GPT-4o-mini，成本低、速度快
+    快速轻量 LLM 服务 - 用于情绪分析等任务
+    
+    ⚠️  CHANGED: Now uses Grok instead of OpenAI GPT-4o-mini
+        Model: grok-4-1-fast-non-reasoning ($0.2/M tokens)
+        
+    This keeps costs on Grok and reserves OpenAI for embeddings only.
     """
     
     def __init__(self):
-        self.api_key = settings.OPENAI_API_KEY
+        self.api_key = settings.XAI_API_KEY
         if not self.api_key:
-            raise ValueError("OPENAI_API_KEY not set for MiniLLM")
+            raise ValueError("XAI_API_KEY not set for MiniLLM (now using Grok)")
         
-        self.base_url = settings.OPENAI_BASE_URL
-        self.model = "gpt-4o-mini"  # 快速便宜的模型
-        self.timeout = 15.0  # 更短的超时
+        self.base_url = settings.XAI_BASE_URL
+        self.model = settings.XAI_MODEL  # grok-4-1-fast-non-reasoning
+        self.timeout = 15.0
+        
+        logger.info(f"MiniLLMService initialized with Grok model: {self.model}")
     
     @retry(
-        stop=stop_after_attempt(2),  # 只重试一次
+        stop=stop_after_attempt(2),
         wait=wait_exponential(multiplier=1, min=1, max=3)
     )
     async def analyze(
@@ -278,14 +253,7 @@ class MiniLLMService:
         """
         快速分析 - 用于情绪检测等轻量任务
         
-        Args:
-            system_prompt: 系统指令
-            user_message: 用户消息
-            temperature: 温度（低=更确定）
-            max_tokens: 最大输出
-        
-        Returns:
-            LLM 响应文本
+        Now uses Grok API instead of OpenAI.
         """
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -312,7 +280,7 @@ class MiniLLMService:
                 
                 if response.status_code != 200:
                     raise LLMServiceError(
-                        f"MiniLLM error: {response.text}",
+                        f"MiniLLM (Grok) error: {response.text}",
                         status_code=response.status_code
                     )
                 
@@ -320,10 +288,13 @@ class MiniLLMService:
                 return data["choices"][0]["message"]["content"]
         
         except httpx.TimeoutException:
-            raise LLMServiceError("MiniLLM timeout")
+            raise LLMServiceError("MiniLLM (Grok) timeout")
         except httpx.RequestError as e:
-            raise LLMServiceError(f"MiniLLM request failed: {str(e)}")
+            raise LLMServiceError(f"MiniLLM (Grok) request failed: {str(e)}")
 
 
-# 单例
+# =============================================================================
+# Singletons (backward compatible)
+# =============================================================================
+
 mini_llm = MiniLLMService()

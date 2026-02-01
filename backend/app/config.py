@@ -47,13 +47,20 @@ class Settings(BaseSettings):
     CHROMADB_PERSIST_DIR: str = Field(default="./data/chromadb")
     
     # ========== LLM APIs ==========
+    # Grok - Chat & Image (main provider)
     XAI_API_KEY: str = Field(default="")
     XAI_BASE_URL: str = Field(default="https://api.x.ai/v1")
-    XAI_MODEL: str = Field(default="grok-beta")
+    XAI_MODEL: str = Field(default="grok-4-1-fast-non-reasoning")  # $0.2/M tokens
+    XAI_IMAGE_MODEL: str = Field(default="grok-2-image")  # $0.07/image
     
+    # OpenAI - ONLY for embeddings! Do not use for chat.
+    # See: app/services/llm/openai_embedding.py
     OPENAI_API_KEY: str = Field(default="")
     OPENAI_BASE_URL: str = Field(default="https://api.openai.com/v1")
-    OPENAI_EMBEDDING_MODEL: str = Field(default="text-embedding-3-small")
+    OPENAI_EMBEDDING_MODEL: str = Field(default="text-embedding-3-small")  # $0.02/M tokens
+    
+    # ========== Database Backend ==========
+    DB_BACKEND: str = Field(default="sqlite")  # sqlite | supabase
     
     # ========== Voice (豆包 TTS) ==========
     DOUBAO_APP_ID: str = Field(default="")
