@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { theme } from '../../theme/config';
+import { theme, useTheme, themeList } from '../../theme/config';
 import { useUserStore } from '../../store/userStore';
 import { useChatStore } from '../../store/chatStore';
 import { SubscriptionModal } from '../../components/SubscriptionModal';
@@ -60,6 +60,38 @@ const SettingSection = ({ title, children }: { title: string; children: React.Re
     <View style={styles.sectionContent}>{children}</View>
   </View>
 );
+
+// Theme Selector Component
+const ThemeSelector = () => {
+  const { themeId, setTheme, theme: currentTheme } = useTheme();
+  
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>主题风格</Text>
+      <View style={styles.themeGrid}>
+        {themeList.map((t) => (
+          <TouchableOpacity
+            key={t.id}
+            style={[
+              styles.themeCard,
+              themeId === t.id && styles.themeCardActive,
+              { borderColor: themeId === t.id ? currentTheme.colors.primary.main : 'rgba(255,255,255,0.1)' }
+            ]}
+            onPress={() => setTheme(t.id)}
+          >
+            <Text style={styles.themeIcon}>{t.icon}</Text>
+            <Text style={styles.themeName}>{t.nameCn}</Text>
+            {themeId === t.id && (
+              <View style={[styles.themeCheck, { backgroundColor: currentTheme.colors.primary.main }]}>
+                <Ionicons name="checkmark" size={12} color="#fff" />
+              </View>
+            )}
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+};
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -267,6 +299,9 @@ export default function SettingsScreen() {
             />
           </SettingSection>
 
+          {/* Theme Section */}
+          <ThemeSelector />
+
           {/* Storage Section */}
           <SettingSection title="Storage">
             <SettingItem
@@ -439,5 +474,44 @@ const styles = StyleSheet.create({
   interestsContainer: {
     padding: 0,
     margin: 0,
+  },
+  // Theme selector styles
+  themeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  themeCard: {
+    flex: 1,
+    minWidth: 140,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    position: 'relative',
+  },
+  themeCardActive: {
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+  },
+  themeIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  themeName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  themeCheck: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
