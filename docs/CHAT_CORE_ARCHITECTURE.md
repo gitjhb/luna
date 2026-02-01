@@ -477,8 +477,121 @@ def build_l2_prompt(
 
 ---
 
+## 架构决策
+
+### 决策 1: Intimacy 双层映射
+
+**前端/数据库 (Display Layer)**：
+- 继续存 `total_xp` (例如 5000 xp) 和 `level` (Lv. 20)
+- 这是给用户看的成就感数值
+
+**计算层 (Physics Layer)**：
+- 将 XP 映射为 0-100 的 X 系数
+- 用于 Power 公式计算
+
+```python
+def xp_to_intimacy_x(total_xp: int) -> float:
+    """
+    将 XP 映射到 0-100 的亲密度系数
+    使用对数曲线，前期涨得快，后期平缓
+    """
+    import math
+    # 假设 10000 XP 对应满级 100
+    if total_xp <= 0:
+        return 0
+    x = min(100, math.log10(total_xp + 1) * 30)
+    return round(x, 1)
+```
+
+### 决策 2: Events 存 JSON
+
+**理由**：
+- 读写极快：`user.events.append("first_date")` 直接更新
+- Prompt 构建方便：JSON 数组直接转字符串塞进 Context
+- PostgreSQL/MySQL 8.0+ 对 JSON 查询支持很好
+
+**SQL**：
+```sql
+ALTER TABLE user_intimacy ADD COLUMN events JSON DEFAULT '[]';
+```
+
+### 决策 3: 角色 Z轴 写在代码配置
+
+**理由**：
+- 角色是 PGC (官方设定)，数量少
+- 数值需要精心调优 (Balance Tuning)
+- 不会频繁变动
+
+**配置结构** (`character_config.py`):
+
+```python
+CHARACTER_DB = {
+    "luna": {
+        "name": "Luna",
+        "system_prompt_base": "You are Luna...",
+        "z_axis": {
+            "pure_val": 30,    # 纯洁度
+            "chaos_val": -10,  # 混乱度
+            "pride_val": 10,   # 自尊心
+            "greed_val": 10    # 贪婪度
+        },
+        "thresholds": {
+            "nsfw_trigger": 60,
+            "spicy_mode_level": 20
+        }
+    },
+    "nana": {
+        # ... Nana 的配置
+    }
+}
+
+def get_character_config(char_id: str) -> dict:
+    return CHARACTER_DB.get(char_id)
+```
+
+---
+
+## 数据库变更清单
+
+```sql
+-- 1. 添加 events 字段存储事件锁
+ALTER TABLE user_intimacy ADD COLUMN events JSON DEFAULT '[]';
+
+-- 示例值: ["first_chat", "name_reveal", "first_date"]
+```
+
+---
+
+## 核心流程伪代码
+
+```python
+async def chat_handler(user_id, char_id, message):
+    # Step 1: L1 感知层
+    l1_result = await perception_engine.analyze(message, intimacy_level)
+    
+    # 安全熔断
+    if l1_result['safety_flag'] == 'BLOCK':
+        return "系统拦截: 内容违规"
+    
+    # Step 2: 中间件逻辑层
+    # 这一步会读取DB，计算，并更新DB中的 emotion/intimacy
+    game_result = await game_engine.process(user_id, char_id, l1_result)
+    
+    # Step 3: L2 执行层
+    final_response = await grok.generate(
+        system_prompt=build_dynamic_prompt(game_result),  # 动态构建
+        user_message=message,
+        temperature=0.8
+    )
+    
+    return final_response
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | 1.0 | 2026-02-01 | 初始规格文档 |
+| 1.1 | 2026-02-01 | 添加架构决策：双层映射、JSON存储、代码配置 |
