@@ -396,6 +396,20 @@ class SubscriptionService:
             logger.error(f"Failed to get subscription record: {e}")
             return None
     
+    def _parse_datetime(self, value) -> Optional[datetime]:
+        """Parse datetime from various formats"""
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            # Handle ISO format strings
+            try:
+                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+        return None
+    
     async def _save_subscription_record(self, user_id: str, data: dict):
         """保存订阅记录到数据库或 mock 存储"""
         if MOCK_MODE:
@@ -419,8 +433,9 @@ class SubscriptionService:
                     db.add(sub)
                 
                 sub.tier = data.get("tier", "free")
-                sub.started_at = data.get("started_at")
-                sub.expires_at = data.get("expires_at")
+                # Convert datetime strings back to datetime objects for SQLite
+                sub.started_at = self._parse_datetime(data.get("started_at"))
+                sub.expires_at = self._parse_datetime(data.get("expires_at"))
                 sub.auto_renew = data.get("auto_renew", False)
                 sub.payment_provider = data.get("payment_provider")
                 sub.provider_subscription_id = data.get("provider_subscription_id")

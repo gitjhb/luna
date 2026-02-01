@@ -616,7 +616,7 @@ class IntimacyService:
                 )
                 db.add(action_log)
                 await db.commit()
-                logger.info(f"Intimacy saved to DB: {user_id}/{character_id} xp={intimacy['total_xp']} level={intimacy['current_level']}")
+                logger.info(f"Intimacy saved to DB: {user_id}/{character_id} xp={intimacy['total_xp']} (Δ+{xp_to_award}) level={intimacy['current_level']}")
 
         # Check for level up and new unlocks
         level_up = new_level > level_before

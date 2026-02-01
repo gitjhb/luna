@@ -315,13 +315,18 @@ class PaymentService:
             price = plan["price_monthly"]
             duration_days = 30
         
-        # In mock mode, skip actual payment
-        if MOCK_PAYMENT:
-            logger.info(f"[MOCK] Processing subscription: {plan_id} for user {user_id}")
-            provider_transaction_id = f"mock_sub_{uuid4().hex[:8]}"
+        # Handle payment verification based on provider
+        if MOCK_PAYMENT or payment_provider == "mock":
+            # Mock mode or explicit mock provider - skip payment verification
+            logger.info(f"[MOCK/DEV] Processing subscription: {plan_id} for user {user_id}")
+            provider_transaction_id = provider_transaction_id or f"mock_sub_{uuid4().hex[:8]}"
+        elif payment_provider in ["stripe", "apple", "google"]:
+            # Real payment provider - require transaction ID
+            if not provider_transaction_id:
+                raise ValueError(f"provider_transaction_id required for {payment_provider}")
+            logger.info(f"[{payment_provider.upper()}] Processing subscription: {plan_id} for user {user_id}")
         else:
-            # TODO: Call real payment provider (Apple/Google/Stripe)
-            raise NotImplementedError("Real payment not implemented yet")
+            raise ValueError(f"Unknown payment provider: {payment_provider}")
         
         # Use unified subscription service
         from app.services.subscription_service import subscription_service

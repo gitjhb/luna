@@ -162,6 +162,7 @@ class GameEngine:
         # 2. 加载角色配置
         z_axis = get_character_z_axis(character_id)
         thresholds = get_character_thresholds(character_id)
+        logger.info(f"📊 Z-Axis Config: pure={z_axis.pure_val}, pride={z_axis.pride_val}, chaos={z_axis.chaos_val}, greed={z_axis.greed_val}, jealousy={z_axis.jealousy_val}")
         
         # 3. 安全熔断
         if l1_result.safety_flag == "BLOCK":
@@ -289,15 +290,26 @@ class GameEngine:
         
         total_power = power_x + power_y + power_z
         
+        # 详细日志：Power 计算分解
+        logger.info(f"📊 Power Calc: X={user_state.intimacy_x:.1f}×{self.POWER_X_COEF}={power_x:.1f} | "
+                    f"Y={user_state.emotion}×{self.POWER_Y_POS_COEF if user_state.emotion > 0 else self.POWER_Y_NEG_COEF}={power_y:.1f} | "
+                    f"Z(ctx)={power_z:.1f} → base={total_power:.1f}")
+        
         # --- Z轴性格修正 ---
+        z_penalty = 0.0
         
         # 如果请求是 NSFW，减去纯洁值
         if l1_result.is_nsfw:
             total_power -= z_axis.pure_val
+            z_penalty += z_axis.pure_val
         
         # 如果是侮辱，根据自尊心加重情绪惩罚
         if l1_result.intent == "INSULT":
             total_power -= z_axis.pride_val * 0.5
+            z_penalty += z_axis.pride_val * 0.5
+        
+        if z_penalty > 0:
+            logger.info(f"📊 Z-Axis Penalty: pure={z_axis.pure_val}, pride={z_axis.pride_val} → penalty={z_penalty:.1f}, final_power={total_power:.1f}")
         
         # --- 判定结果 ---
         
@@ -392,7 +404,7 @@ class GameEngine:
             from app.services.emotion_engine_v2 import emotion_engine
             
             # 获取亲密度
-            intimacy_data = await intimacy_service.get_intimacy(user_id, character_id)
+            intimacy_data = await intimacy_service.get_or_create_intimacy(user_id, character_id)
             
             # 获取情绪
             emotion_score = await emotion_engine.get_score(user_id, character_id)
@@ -417,14 +429,20 @@ class GameEngine:
             except Exception as e:
                 logger.warning(f"Failed to load events from DB: {e}")
             
-            return UserState(
+            xp = int(intimacy_data.get("total_xp", 0))
+            level = intimacy_data.get("current_level", 1)
+            emotion = int(emotion_score)
+            
+            state = UserState(
                 user_id=user_id,
                 character_id=character_id,
-                xp=int(intimacy_data.get("total_xp", 0)),
-                intimacy_level=intimacy_data.get("current_level", 1),
-                emotion=int(emotion_score),
+                xp=xp,
+                intimacy_level=level,
+                emotion=emotion,
                 events=events
             )
+            logger.info(f"📊 User State Loaded: xp={xp}, level={level}, intimacy_x={state.intimacy_x:.1f}, emotion={emotion}, events={events}")
+            return state
         except Exception as e:
             logger.warning(f"Failed to load user state: {e}")
             return UserState(

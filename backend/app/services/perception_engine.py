@@ -260,12 +260,18 @@ class PerceptionEngine:
             llm = self._get_llm()
             
             # 调用 LLM (temperature=0 for stability)
-            response = await llm.chat(
-                messages=[{"role": "user", "content": "Analyze this input and return JSON only."}],
-                system_prompt=system_prompt,
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "Analyze this input and return JSON only."}
+            ]
+            response_data = await llm.chat_completion(
+                messages=messages,
                 temperature=0,
                 max_tokens=500
             )
+            
+            # 从响应中提取内容
+            response = response_data["choices"][0]["message"]["content"]
             
             # 解析 JSON
             result = self._parse_response(response)

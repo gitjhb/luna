@@ -28,6 +28,7 @@ from datetime import datetime
 # 创建专门的 logger
 logger = logging.getLogger("chat.debug")
 logger.setLevel(logging.DEBUG)
+logger.propagate = False  # 不向 root logger 传播，避免重复日志
 
 # 如果没有 handler，添加一个
 if not logger.handlers:
