@@ -375,8 +375,6 @@ class GameEngine:
     async def _load_user_state(self, user_id: str, character_id: str) -> UserState:
         """
         从数据库加载用户状态
-        
-        TODO: 实现数据库读取
         """
         try:
             from app.services.intimacy_service import intimacy_service
@@ -388,13 +386,30 @@ class GameEngine:
             # 获取情绪
             emotion_score = await emotion_engine.get_score(user_id, character_id)
             
-            # 获取事件列表 (TODO: 需要从数据库读取)
-            events = []  # 暂时为空，需要实现
+            # 获取事件列表
+            events = []
+            try:
+                from app.core.database import get_db
+                from sqlalchemy import select
+                from app.models.database.intimacy_models import UserIntimacy
+                
+                async with get_db() as db:
+                    result = await db.execute(
+                        select(UserIntimacy).where(
+                            UserIntimacy.user_id == user_id,
+                            UserIntimacy.character_id == character_id
+                        )
+                    )
+                    intimacy_record = result.scalar_one_or_none()
+                    if intimacy_record and intimacy_record.events:
+                        events = intimacy_record.events if isinstance(intimacy_record.events, list) else []
+            except Exception as e:
+                logger.warning(f"Failed to load events from DB: {e}")
             
             return UserState(
                 user_id=user_id,
                 character_id=character_id,
-                xp=intimacy_data.get("total_xp", 0),
+                xp=int(intimacy_data.get("total_xp", 0)),
                 intimacy_level=intimacy_data.get("current_level", 1),
                 emotion=int(emotion_score),
                 events=events
@@ -409,21 +424,43 @@ class GameEngine:
     async def _save_user_state(self, user_state: UserState) -> None:
         """
         保存用户状态到数据库
-        
-        TODO: 实现数据库写入 (特别是 events 字段)
         """
         try:
             from app.services.emotion_engine_v2 import emotion_engine
             
-            # 更新情绪分数
-            # 注意：这里直接设置，不是增量更新
-            # TODO: 可能需要调整 emotion_engine 的接口
+            # 更新情绪分数 (通过计算delta来实现)
+            current_score = await emotion_engine.get_score(
+                user_state.user_id, 
+                user_state.character_id
+            )
+            delta = user_state.emotion - int(current_score)
+            if delta != 0:
+                await emotion_engine.update_score(
+                    user_state.user_id, 
+                    user_state.character_id, 
+                    delta,
+                    reason="game_engine_sync"
+                )
             
-            # TODO: 保存 events 到数据库
-            # await db.execute(
-            #     "UPDATE user_intimacy SET events = ? WHERE user_id = ? AND character_id = ?",
-            #     [json.dumps(user_state.events), user_state.user_id, user_state.character_id]
-            # )
+            # 保存 events 到数据库
+            try:
+                from app.core.database import get_db
+                from sqlalchemy import update
+                from app.models.database.intimacy_models import UserIntimacy
+                
+                async with get_db() as db:
+                    await db.execute(
+                        update(UserIntimacy)
+                        .where(
+                            UserIntimacy.user_id == user_state.user_id,
+                            UserIntimacy.character_id == user_state.character_id
+                        )
+                        .values(events=user_state.events)
+                    )
+                    await db.commit()
+                    logger.debug(f"Events saved to DB: {user_state.events}")
+            except Exception as e:
+                logger.warning(f"Failed to save events to DB: {e}")
             
             logger.debug(f"User state saved: emotion={user_state.emotion}, events={user_state.events}")
         except Exception as e:

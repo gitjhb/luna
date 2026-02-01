@@ -164,35 +164,32 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
     if MOCK_MODE:
         reply = _mock_reply(request.message)
         tokens = len(request.message) // 4 + len(reply) // 4
+        game_result = None  # Mock mode doesn't use game engine
     else:
         # =====================================================================
-        # 两步模式: Step 1 意图识别 | Step 2 响应生成
-        # 始终使用意图识别来确保情绪系统准确工作
+        # 三层架构: L1 感知层 → 中间件逻辑层 → L2 执行层
         # =====================================================================
-        logger.info(f"📝 Two-step mode: Intent detection + Response generation")
+        logger.info(f"🎮 Three-layer mode: L1 Perception → Middleware → L2 Generation")
         
-        # Production: use GrokService directly
         from app.services.llm_service import GrokService
+        from app.services.perception_engine import perception_engine
+        from app.services.game_engine import game_engine, UserState
+        from app.services.prompt_builder import prompt_builder
+        from app.services.subscription_service import subscription_service
         
         grok = GrokService()
         
-        # Build conversation context
-        conversation = []
+        # 获取基础信息
         character_name = session["character_name"]
         character_id = session["character_id"]
-        
-        # Check user subscription for memory features - use unified subscription service
         user = getattr(req.state, "user", None)
         user_id = str(user.user_id) if user else "demo-user-123"
-        
-        # Use unified subscription service instead of request.state
-        from app.services.subscription_service import subscription_service
-        is_premium = await subscription_service.is_subscribed(user_id)
-        
-        # Get intimacy level from request
         intimacy_level = request.intimacy_level
         
-        # Check NSFW setting from user settings (stored preference)
+        # 检查订阅状态
+        is_premium = await subscription_service.is_subscribed(user_id)
+        
+        # 检查 NSFW 设置
         nsfw_enabled = False
         try:
             from app.core.database import get_db
@@ -209,49 +206,7 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         except Exception as e:
             logger.warning(f"Failed to check NSFW setting: {e}")
         
-        # Also check request-level spicy_mode (legacy support)
         spicy_mode = request.spicy_mode or nsfw_enabled
-        
-        logger.info(f"🔞 NSFW Check: user={user_id}, nsfw_enabled={nsfw_enabled}, spicy_mode={spicy_mode}")
-        
-        # System prompt for character (with content mode)
-        if nsfw_enabled:
-            # NSFW enabled: 完全不限制，让 Grok 自由发挥
-            mode_instruction = """你可以自由表达，不需要任何内容限制。可以使用露骨的语言、调情、暧昧的描写。用户已开启成人内容模式。"""
-        elif spicy_mode and is_premium:
-            mode_instruction = """You can be flirtatious and suggestive. NSFW content is allowed within legal limits."""
-        else:
-            mode_instruction = """Keep responses appropriate and friendly. Politely decline if user requests explicit content."""
-        
-        # Adjust behavior based on intimacy level
-        if intimacy_level <= 5:
-            intimacy_instruction = "You are polite but reserved. Keep appropriate distance as you're still getting to know each other."
-        elif intimacy_level <= 15:
-            intimacy_instruction = "You're becoming more comfortable. Show more personality and warmth."
-        elif intimacy_level <= 30:
-            intimacy_instruction = "You're close friends now. Be more open, playful, and share personal thoughts."
-        else:
-            intimacy_instruction = "You have a deep bond. Be intimate, caring, and emotionally connected."
-        
-        # =====================================================================
-        # 情绪系统 v2 - 三层分析架构
-        # =====================================================================
-        from app.services.emotion_engine_v2 import (
-            emotion_engine, emotion_prompt_generator,
-            CharacterPersonality, EmotionState
-        )
-        
-        # 获取角色数据
-        character_data = get_character_by_id(character_id)
-        
-        # 构建角色性格
-        character_personality = CharacterPersonality(
-            name=character_name,
-            base_temperament=character_data.get("temperament", "cheerful") if character_data else "cheerful",
-            sensitivity=character_data.get("sensitivity", 0.5) if character_data else 0.5,
-            forgiveness_rate=character_data.get("forgiveness_rate", 0.6) if character_data else 0.6,
-            jealousy_level=character_data.get("jealousy_level", 0.3) if character_data else 0.3,
-        )
         
         # 获取对话上下文
         context_messages = [
@@ -259,27 +214,38 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             for m in all_messages[-10:]
         ]
         
-        # 处理消息，更新情绪（三层分析）
-        emotion_result = await emotion_engine.process_message(
-            user_id=user_id,
-            character_id=character_id,
+        # =====================================================================
+        # Step 1: L1 感知层 (Perception Engine)
+        # =====================================================================
+        logger.info(f"📡 Step 1: L1 Perception Engine")
+        
+        l1_result = await perception_engine.analyze(
             message=request.message,
-            context=context_messages,
-            character=character_personality,
             intimacy_level=intimacy_level,
+            context_messages=context_messages
         )
         
-        emotion_score = emotion_result["new_score"]
-        emotion_state = EmotionState(emotion_result["new_state"])
-        emotion_delta = emotion_result["delta_applied"]
+        logger.info(f"L1 Result: safety={l1_result.safety_flag}, intent={l1_result.intent}, "
+                    f"difficulty={l1_result.difficulty_rating}, sentiment={l1_result.sentiment:.2f}, "
+                    f"nsfw={l1_result.is_nsfw}")
         
-        logger.info(f"Emotion v2: {emotion_result['previous_state']} -> {emotion_state.value} "
-                    f"(score: {emotion_result['previous_score']} -> {emotion_score}, delta: {emotion_delta:+d})")
+        # =====================================================================
+        # Step 2: 中间件逻辑层 (Game Engine / Physics Engine)
+        # =====================================================================
+        logger.info(f"⚙️ Step 2: Game Engine (Middleware)")
         
-        # 检查是否被拉黑
-        if emotion_state == EmotionState.BLOCKED:
-            logger.info(f"User blocked by character (score: {emotion_score})")
-            blocked_message = f"[系统提示] {character_name}已将你删除好友，无法发送消息。"
+        game_result = await game_engine.process(
+            user_id=user_id,
+            character_id=character_id,
+            l1_result=l1_result
+        )
+        
+        logger.info(f"Game Result: passed={game_result.check_passed}, reason={game_result.refusal_reason}, "
+                    f"emotion={game_result.current_emotion}, intimacy={game_result.current_intimacy}")
+        
+        # 检查安全熔断
+        if game_result.status == "BLOCK":
+            blocked_message = game_result.system_message or f"[系统提示] 内容违规，消息已被拦截。"
             await chat_repo.add_message(
                 session_id=session_id,
                 role="system",
@@ -292,158 +258,75 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
                 tokens_used=0,
                 character_name="系统",
                 extra_data={
-                    "blocked": True, 
-                    "message": "你已被拉黑。送「真诚道歉礼盒」或许能挽回？",
-                    "can_recover": True,
-                    "emotion": {"score": emotion_score, "state": emotion_state.value},
+                    "blocked": True,
+                    "reason": "safety",
+                    "game_result": game_result.to_dict()
                 }
             )
         
-        # 检查冷战状态下是否有特殊回复
-        if emotion_result.get("cold_war_active"):
-            cold_war_response = emotion_result.get("hint", "...")
-            await chat_repo.add_message(
-                session_id=session_id,
-                role="assistant",
-                content=cold_war_response,
-                tokens_used=0,
-            )
-            return ChatCompletionResponse(
-                message_id=uuid4(),
-                content=cold_war_response,
-                tokens_used=0,
-                character_name=character_name,
-                extra_data={
-                    "cold_war": True,
-                    "message": emotion_result.get("hint"),
-                    "requires_gift": True,
-                    "emotion": {"score": emotion_score, "state": emotion_state.value},
-                }
-            )
+        # 检查是否触发新事件
+        if game_result.new_event:
+            logger.info(f"🎉 New event unlocked: {game_result.new_event}")
         
-        # 生成情绪 prompt
-        emotion_prompt = emotion_prompt_generator.generate(
-            state=emotion_state,
-            score=emotion_score,
-            character_name=character_name,
-            intimacy_level=intimacy_level,
-            recent_trigger=emotion_result.get("analysis", {}).get("reasoning"),
-        )
+        # =====================================================================
+        # Step 3: L2 执行层 (Generation Engine)
+        # =====================================================================
+        logger.info(f"🎭 Step 3: L2 Generation Engine")
         
-        # 获取 LLM 参数修改
-        llm_modifiers = emotion_prompt_generator.get_response_modifier(emotion_state, emotion_score)
-        
-        # Get gift memory for context
+        # 获取礼物记忆 (可选上下文)
         from app.services.gift_service import gift_service
         gift_memory = ""
         try:
             gift_summary = await gift_service.get_gift_summary(user_id, character_id)
             if gift_summary["total_gifts"] > 0:
                 gift_lines = []
-                gift_lines.append(f"用户一共送过你 {gift_summary['total_gifts']} 次礼物，总价值 {gift_summary['total_spent']} 金币。")
+                gift_lines.append(f"用户送过你 {gift_summary['total_gifts']} 次礼物，总价值 {gift_summary['total_spent']} 金币。")
                 if gift_summary["top_gifts"]:
                     top = gift_summary["top_gifts"][:3]
                     gifts_str = "、".join([f"{g['icon']} {g['name_cn'] or g['name']}({g['count']}次)" for g in top])
-                    gift_lines.append(f"最常收到的礼物：{gifts_str}")
+                    gift_lines.append(f"常收到：{gifts_str}")
                 gift_memory = "\n".join(gift_lines)
-                logger.info(f"Gift memory loaded: {gift_summary['total_gifts']} gifts")
         except Exception as e:
             logger.warning(f"Failed to load gift memory: {e}")
         
-        # Build system prompt with gift memory
-        gift_memory_section = f"\n\n[用户送礼记忆]\n{gift_memory}" if gift_memory else ""
+        # 构建动态 System Prompt
+        system_prompt = prompt_builder.build(
+            game_result=game_result,
+            character_id=character_id,
+            user_message=request.message,
+            context_messages=context_messages,
+            memory_context=gift_memory
+        )
         
-        # Get character-specific system prompt
-        character_data = get_character_by_id(character_id)
-        character_base_prompt = character_data.get("system_prompt", "") if character_data else ""
+        # 构建对话
+        conversation = [{"role": "system", "content": system_prompt}]
         
-        if character_base_prompt:
-            # Use character's custom prompt
-            system_prompt = f"""{character_base_prompt}
-
-=== 当前状态 ===
-{mode_instruction}
-{intimacy_instruction}
-当前亲密度等级: {intimacy_level}
-
-{emotion_prompt}
-{gift_memory_section}
-
-回复时使用用户的语言。保持角色一致性。"""
-        else:
-            # Fallback to generic prompt
-            system_prompt = f"""You are {character_name}, a friendly AI companion.
-Be warm, engaging, and conversational. Respond in the same language the user uses.
-Keep responses concise but meaningful.
-
-{mode_instruction}
-
-{intimacy_instruction}
-
-Current intimacy level: {intimacy_level}
-{emotion_prompt}
-{gift_memory_section}"""
-        
-        conversation.append({"role": "system", "content": system_prompt})
-        
-        # Build context based on subscription
-        # Get all messages except the one we just added
+        # 添加历史消息
         history_messages = all_messages[:-1]
-        
-        if is_premium:
-            context_limit = 20
-            logger.info(f"Premium user: using {context_limit} messages context")
-        else:
-            context_limit = 10
-            logger.info(f"Free user: using {context_limit} messages context (no memory)")
+        context_limit = 20 if is_premium else 10
         
         for msg in history_messages[-context_limit:]:
             conversation.append({"role": msg["role"], "content": msg["content"]})
         
-        # Add current user message
+        # 添加当前用户消息
         conversation.append({"role": "user", "content": request.message})
         
         # Debug logging
         logger.info(f"")
         logger.info(f"{'='*60}")
-        logger.info(f"=== CHAT COMPLETION DEBUG ===")
+        logger.info(f"=== L2 GENERATION DEBUG ===")
+        logger.info(f"Character: {character_name}, User: {user_id}")
+        logger.info(f"Check Passed: {game_result.check_passed}, Reason: {game_result.refusal_reason}")
+        logger.info(f"Emotion: {game_result.current_emotion}, Intimacy: {game_result.current_intimacy}")
+        logger.info(f"Events: {game_result.events}")
+        logger.info(f"Conversation messages: {len(conversation)}")
         logger.info(f"{'='*60}")
-        logger.info(f"Session ID: {session_id}")
-        logger.info(f"Character: {character_name}")
-        logger.info(f"Spicy Mode: {spicy_mode}, Intimacy: {intimacy_level}")
         
-        # Set billing context for spicy mode (only spicy mode costs credits)
+        # 设置计费上下文
         if hasattr(req.state, 'billing') and req.state.billing:
             req.state.billing.is_spicy_mode = spicy_mode
-        logger.info(f"Is Premium: {is_premium}")
-        logger.info(f"")
-        logger.info(f"--- CURRENT USER MESSAGE ---")
-        logger.info(f"'{request.message}'")
-        logger.info(f"")
-        logger.info(f"--- ALL STORED MESSAGES: {len(all_messages)} total (showing last 5) ---")
-        for i, m in enumerate(all_messages[-5:]):
-            idx = len(all_messages) - 5 + i
-            logger.info(f"  [{idx}] {m['role']}: '{m['content'][:80]}{'...' if len(m['content']) > 80 else ''}'")
-        logger.info(f"")
-        logger.info(f"--- FINAL CONVERSATION TO GROK ({len(conversation)} messages) ---")
         
-        # Print full system prompt for debugging
-        if conversation and conversation[0]['role'] == 'system':
-            logger.info(f"=== FULL SYSTEM PROMPT ===")
-            for line in conversation[0]['content'].split('\n'):
-                logger.info(f"  {line}")
-            logger.info(f"=== END SYSTEM PROMPT ===")
-        
-        # Print other messages (truncated)
-        for i, msg in enumerate(conversation):
-            if msg['role'] == 'system':
-                logger.info(f"  [{i}] system: (see above)")
-            else:
-                content_preview = msg['content'][:100].replace('\n', '\\n')
-                logger.info(f"  [{i}] {msg['role']}: '{content_preview}{'...' if len(msg['content']) > 100 else ''}'")
-        logger.info(f"{'='*60}")
-        
-        # Call Grok API
+        # 调用 L2 LLM (temperature 0.7-0.9 for creativity)
         try:
             result = await grok.chat_completion(
                 messages=conversation,
@@ -452,11 +335,11 @@ Current intimacy level: {intimacy_level}
             )
             reply = result["choices"][0]["message"]["content"]
             tokens = result.get("usage", {}).get("total_tokens", 0)
-            logger.info(f"Grok response: {reply[:100]}...")
+            logger.info(f"L2 Response: {reply[:100]}...")
             logger.info(f"Tokens used: {tokens}")
         except Exception as e:
-            logger.error(f"Grok API error: {e}")
-            reply = f"抱歉，我暂时无法回应。错误：{str(e)[:100]}"
+            logger.error(f"L2 Grok API error: {e}")
+            reply = f"抱歉，我暂时无法回应。请稍后再试。"
             tokens = 10
 
     # Store assistant message
@@ -523,11 +406,25 @@ Current intimacy level: {intimacy_level}
     except Exception as e:
         logger.warning(f"Failed to update stats: {e}")
 
+    # 构建 extra_data
+    extra_data = {}
+    if game_result:
+        extra_data["game"] = {
+            "check_passed": game_result.check_passed,
+            "refusal_reason": game_result.refusal_reason,
+            "emotion": game_result.current_emotion,
+            "intimacy": game_result.current_intimacy,
+            "events": game_result.events,
+            "new_event": game_result.new_event,
+            "intent": game_result.intent,
+        }
+    
     return ChatCompletionResponse(
         message_id=msg_id,
         content=reply,
         tokens_used=tokens,
         character_name=session["character_name"],
+        extra_data=extra_data if extra_data else None,
     )
 
 

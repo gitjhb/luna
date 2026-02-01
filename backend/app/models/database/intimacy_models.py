@@ -7,7 +7,7 @@ Tracks user-character relationship progression and XP history.
 """
 
 from datetime import datetime, date
-from sqlalchemy import Column, String, Float, Integer, DateTime, Date, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, Float, Integer, DateTime, Date, ForeignKey, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -45,6 +45,10 @@ class UserIntimacy(Base):
     total_messages = Column(Integer, default=0, nullable=False)
     gifts_count = Column(Integer, default=0, nullable=False)
     special_events = Column(Integer, default=0, nullable=False)
+    
+    # Event Locks (游戏事件锁)
+    # 存储已解锁的里程碑事件: ["first_chat", "first_date", "first_confession"]
+    events = Column(JSON, default=list, nullable=False)
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
