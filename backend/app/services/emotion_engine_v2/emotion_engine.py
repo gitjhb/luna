@@ -324,7 +324,10 @@ class EmotionEngineV2:
             # 尝试提取 JSON
             json_match = re.search(r'\{[\s\S]*\}', response)
             if json_match:
-                data = json.loads(json_match.group())
+                json_str = json_match.group()
+                # 修复 MiniLLM 可能返回的 +20 格式（JSON不支持+号前缀）
+                json_str = re.sub(r':\s*\+(\d+)', r': \1', json_str)
+                data = json.loads(json_str)
                 return EmotionAnalysis(
                     sentiment=data.get("sentiment", "neutral"),
                     intensity=float(data.get("intensity", 0.5)),
@@ -335,7 +338,7 @@ class EmotionEngineV2:
                     context_aware=True,
                 )
         except (json.JSONDecodeError, ValueError) as e:
-            logger.warning(f"Failed to parse LLM response: {e}")
+            logger.warning(f"Failed to parse LLM response: {e}, raw: {response[:200]}")
         
         # 解析失败，返回默认
         return EmotionAnalysis(

@@ -409,9 +409,10 @@ Current intimacy level: {intimacy_level}
         logger.info(f"--- CURRENT USER MESSAGE ---")
         logger.info(f"'{request.message}'")
         logger.info(f"")
-        logger.info(f"--- ALL STORED MESSAGES ({len(all_messages)}) ---")
-        for i, m in enumerate(all_messages):
-            logger.info(f"  [{i}] {m['role']}: '{m['content'][:80]}{'...' if len(m['content']) > 80 else ''}'")
+        logger.info(f"--- ALL STORED MESSAGES: {len(all_messages)} total (showing last 5) ---")
+        for i, m in enumerate(all_messages[-5:]):
+            idx = len(all_messages) - 5 + i
+            logger.info(f"  [{idx}] {m['role']}: '{m['content'][:80]}{'...' if len(m['content']) > 80 else ''}'")
         logger.info(f"")
         logger.info(f"--- FINAL CONVERSATION TO GROK ({len(conversation)} messages) ---")
         for i, msg in enumerate(conversation):
