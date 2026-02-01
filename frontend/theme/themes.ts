@@ -224,7 +224,7 @@ export const themes: Record<string, ThemeConfig> = {
 
 export const themeList = [
   { id: 'purple-seduction', name: 'Purple Seduction', nameCn: '紫色诱惑', icon: '💜' },
-  { id: 'cyberpunk-2077', name: 'Cyberpunk 2077', nameCn: '赛博朋克', icon: '🌃' },
+  { id: 'cyberpunk-2077', name: 'Cyberpunk 2077', nameCn: '赛博朋克', icon: '🤖' },
 ];
 
 export const defaultThemeId = 'purple-seduction';
