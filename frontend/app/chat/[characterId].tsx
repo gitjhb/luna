@@ -548,12 +548,30 @@ export default function ChatScreen() {
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isUser = item.role === 'user';
+    const isSystem = item.role === 'system';
+    const isGift = item.type === 'gift';
     const isLocked = item.isLocked && !isSubscribed;
     
     // Handle unlock tap - show subscription modal
     const handleUnlock = () => {
       setShowSubscriptionModal(true);
     };
+    
+    // 🎁 礼物事件消息 - 特殊渲染 (居中的小灰条)
+    if (isGift || isSystem) {
+      // 解析礼物名称 (格式: "[送出礼物] 🌹 玫瑰")
+      const giftMatch = item.content.match(/\[送出礼物\]\s*(.+)/);
+      const giftText = giftMatch ? giftMatch[1] : item.content;
+      
+      return (
+        <View style={styles.giftEventRow}>
+          <View style={styles.giftEventBubble}>
+            <Text style={styles.giftEventIcon}>🎁</Text>
+            <Text style={styles.giftEventText}>你送出了 {giftText}</Text>
+          </View>
+        </View>
+      );
+    }
     
     return (
       <View style={[styles.messageRow, isUser ? styles.messageRowUser : styles.messageRowAI]}>
@@ -1060,15 +1078,29 @@ export default function ChatScreen() {
             const reactions = giftReactions[gift.gift_type] || giftReactions.rose;
             const reactionMessage = giftResult.ai_response || reactions[Math.floor(Math.random() * reactions.length)];
             
-            // 添加 AI 回复到聊天
-            if (sessionId && reactionMessage) {
-              const aiMessage: Message = {
-                messageId: `gift-${Date.now()}`,
-                role: 'assistant',
-                content: reactionMessage,
+            // 添加送礼消息到聊天 (保持对话完整性)
+            if (sessionId) {
+              // 先添加送礼事件 (显示为 system 消息)
+              const giftEventMessage: Message = {
+                messageId: `gift-event-${Date.now()}`,
+                role: 'system',  // 系统消息，不是用户普通消息
+                content: `[送出礼物] ${giftIcon} ${gift.name_cn || gift.name}`,
+                type: 'gift',  // 特殊类型，用于前端渲染
                 createdAt: new Date().toISOString(),
               };
-              addMessage(sessionId, aiMessage);
+              addMessage(sessionId, giftEventMessage);
+              
+              // 再添加 AI 回复
+              if (reactionMessage) {
+                const aiMessage: Message = {
+                  messageId: `gift-reply-${Date.now()}`,
+                  role: 'assistant',
+                  content: reactionMessage,
+                  createdAt: new Date().toISOString(),
+                };
+                addMessage(sessionId, aiMessage);
+              }
+              
               setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
             }
             
@@ -1265,6 +1297,31 @@ const styles = StyleSheet.create({
   },
   messageRowAI: {
     justifyContent: 'flex-start',
+  },
+  // 🎁 礼物事件消息样式 (居中的小灰条)
+  giftEventRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginVertical: 12,
+  },
+  giftEventBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(30, 30, 40, 0.6)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(236, 72, 153, 0.3)',
+    gap: 6,
+  },
+  giftEventIcon: {
+    fontSize: 14,
+  },
+  giftEventText: {
+    fontSize: 12,
+    color: '#F472B6',
+    fontWeight: '500',
   },
   avatar: {
     width: 32,

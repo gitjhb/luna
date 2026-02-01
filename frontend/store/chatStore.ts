@@ -35,7 +35,7 @@ export interface Message {
   messageId: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  type?: 'text' | 'image';
+  type?: 'text' | 'image' | 'gift';  // gift = 送礼事件消息
   isLocked?: boolean;      // For locked/blurred content
   contentRating?: 'safe' | 'flirty' | 'spicy' | 'explicit';
   unlockPrompt?: string;
