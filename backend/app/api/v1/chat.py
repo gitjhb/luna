@@ -294,36 +294,38 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         except Exception as e:
             logger.warning(f"Failed to update emotion score: {e}")
         
-        # 检查是否处于冷战状态 (只用 score_service 判断，避免两套系统不同步)
-        is_cold_war = False
+        # 检查情绪分数 (统一用 score_service)
         emotion_score = 0
+        is_blocked = False  # -100: 被拉黑
         try:
             score_check = await emotion_score_service.get_score(user_id, character_id)
             emotion_score = score_check.get("score", 0)
-            if score_check and score_check.get("in_cold_war"):
-                is_cold_war = True
-            elif emotion_score <= -75:
-                is_cold_war = True
+            # 只有到 -100 才是真正被拉黑
+            if emotion_score <= -100:
+                is_blocked = True
         except:
             pass
         
-        # 只有分数真的到冷战阈值才不回复 (不再用 emotion_service 的 silent/cold 单独触发)
-        if is_cold_war:
-            # 角色太受伤/生气了，不想说话
-            logger.info(f"Character in cold war / silent mode, not responding")
-            silent_response = "..."
+        # 被拉黑：系统提示，类似微信"对方不是你的好友"
+        if is_blocked:
+            logger.info(f"User blocked by character (score: {emotion_score})")
+            blocked_message = f"[系统提示] {character_name}已将你删除好友，无法发送消息。"
             await chat_repo.add_message(
                 session_id=session_id,
-                role="assistant",
-                content=silent_response,
+                role="system",
+                content=blocked_message,
                 tokens_used=0,
             )
             return ChatCompletionResponse(
                 message_id=uuid4(),
-                content=silent_response,
+                content=blocked_message,
                 tokens_used=0,
-                character_name=character_name,
-                extra_data={"cold_war": True, "message": "角色正在冷战中，试试送礼物或真诚道歉？"}
+                character_name="系统",
+                extra_data={
+                    "blocked": True, 
+                    "message": "你已被拉黑。送「真诚道歉礼盒」或许能挽回？",
+                    "can_recover": True,
+                }
             )
         
         # 获取情绪 prompt

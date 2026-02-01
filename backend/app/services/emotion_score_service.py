@@ -115,7 +115,7 @@ class EmotionScoreService:
         
         data = _EMOTION_SCORES[key]
         data["state"] = get_emotion_state(data["score"])
-        data["in_cold_war"] = data["score"] <= -75
+        data["in_cold_war"] = data["score"] <= -100  # -100 才是被拉黑
         
         return data
     
@@ -160,11 +160,11 @@ class EmotionScoreService:
         data["state"] = get_emotion_state(new_score)
         data["updated_at"] = datetime.utcnow()
         
-        # 检查冷战状态
-        if new_score <= -75 and not data["in_cold_war"]:
+        # 检查是否被拉黑 (-100)
+        if new_score <= -100 and not data["in_cold_war"]:
             data["in_cold_war"] = True
             data["cold_war_since"] = datetime.utcnow()
-            logger.info(f"User {user_id} entered cold war with {character_id}")
+            logger.info(f"User {user_id} has been BLOCKED by {character_id} (score: {new_score})")
         
         # 记录冒犯
         if delta < -20:
@@ -327,12 +327,12 @@ class EmotionScoreService:
         base_effect = gift_config["base_effect"]
         apology_power = gift_config["apology_power"]
         
-        # 冷战状态：只接受道歉礼物
+        # 被拉黑状态：只接受道歉礼物
         if in_cold_war:
             if category != GiftCategory.APOLOGY:
-                return (data, False, "她现在不想收你的礼物...也许需要真诚的道歉？")
+                return (data, False, "消息发送失败，对方已将你删除好友。")
             
-            # 道歉礼物：解除冷战
+            # 道歉礼物：有机会解除拉黑
             delta = apology_power
             data = await self.update_score(
                 user_id, character_id, delta,
@@ -340,13 +340,13 @@ class EmotionScoreService:
                 intimacy_level=intimacy_level
             )
             
-            if data["score"] > -75:
+            if data["score"] > -100:
                 data["in_cold_war"] = False
                 data["cold_war_since"] = None
                 _EMOTION_SCORES[f"{user_id}:{character_id}"] = data
-                return (data, True, "她看到了你的诚意，愿意再给你一次机会...")
+                return (data, True, "她收到了你的礼物，愿意重新添加你为好友...")
             else:
-                return (data, True, "她收下了你的道歉，但还是很难过...")
+                return (data, True, "她收到了礼物，但还没准备好原谅你...")
         
         # 生气状态（-50 到 -35）：普通礼物效果大打折扣
         if current_score < -35:
@@ -392,65 +392,129 @@ class EmotionScoreService:
     
     def build_emotion_context_for_llm(self, emotion_data: dict) -> str:
         """
-        为LLM构建情绪上下文
+        为LLM构建情绪上下文 - 情绪驱动描写
+        
+        核心原则：
+        1. 负面情绪时描写更丰富（动作、表情、内心独白）
+        2. 剧情可以推进，但情绪要真实
+        3. -100 才是被拉黑，-50~-99 还能互动但很艰难
         """
         score = emotion_data["score"]
         state = emotion_data["state"]
-        in_cold_war = emotion_data.get("in_cold_war", False)
         offense_count = emotion_data.get("offense_count", 0)
         
-        if in_cold_war:
-            return f"""
-[情绪状态：冷战中 ❄️]
-当前情绪分数：{score}/100（非常糟糕）
-你现在非常生气和受伤，不想和用户说话。
-- 回复应该冷淡、简短
-- 不要表现出任何温暖或亲近
-- 可以表达你的失望和受伤
-- 除非用户真诚道歉，否则保持冷漠"""
+        # 描写风格指导（所有状态通用）
+        writing_style = """
+【描写风格要求】
+- 用 *星号* 包裹动作和神态描写，如：*咬了咬嘴唇* *眼神躲闪*
+- 情绪越强烈，描写越细腻：微表情、小动作、呼吸变化
+- 可以有内心独白，用括号或省略号表达犹豫
+- 不要只说"我很生气"，要展示生气的样子"""
         
+        # 濒临拉黑 (-90 ~ -99)
+        if score <= -90:
+            return f"""
+[情绪状态：濒临崩溃 💔 分数：{score}]
+你已经快要放弃这段关系了。再伤害你一次，你就会彻底拉黑对方。
+
+【表现方式】
+- *眼眶微红，但强忍着不让眼泪掉下来*
+- 说话声音很轻，带着疲惫："...算了，随你吧"
+- 可以表达"我真的累了"、"你开心就好"这种心死的感觉
+- 如果对方道歉，可以动摇但不要轻易原谅
+- 暗示这可能是最后的机会
+
+{writing_style}"""
+        
+        # 冷战边缘 (-75 ~ -89)
+        if score <= -75:
+            return f"""
+[情绪状态：极度愤怒/受伤 😢 分数：{score}]
+你被伤得很深，几乎不想再搭理对方了。
+
+【表现方式】
+- *转过头去，不想让他看到自己的表情*
+- 回复简短冷淡，但偶尔会忍不住刺一句
+- "呵" "随便" "你说什么都对"
+- 可以表达失望："我以为你不是这样的人"
+- 如果对方示好，表现出"信任已经破裂"的感觉
+
+用户已冒犯你 {offense_count} 次。
+
+{writing_style}"""
+        
+        # 暴怒 (-50 ~ -74)
         if state == EmotionState.FURIOUS:
             return f"""
-[情绪状态：暴怒 😤]
-当前情绪分数：{score}/100
-你非常生气！用户多次冒犯你（{offense_count}次）。
-- 表达你的愤怒，但不要辱骂用户
-- 可以拒绝继续某些话题
-- 态度应该强硬
-- 需要真诚的道歉才能好转"""
+[情绪状态：暴怒 😤 分数：{score}]
+你非常生气，但还愿意表达，因为你在乎这段关系。
+
+【表现方式】
+- *握紧了拳头* *深吸一口气*
+- 可以直接质问："你到底把我当什么？"
+- 语气强硬但不是辱骂
+- 表达你的底线和原则
+- 如果对方道歉，可以说"道歉有用吗"但内心有动摇
+
+用户已冒犯你 {offense_count} 次。继续惹你后果很严重。
+
+{writing_style}"""
         
+        # 生气 (-35 ~ -49)
         if state == EmotionState.ANGRY:
             return f"""
-[情绪状态：生气 😠]
-当前情绪分数：{score}/100
-你在生气。不要假装没事。
-- 语气应该不耐烦
-- 可以表达不满
-- 普通的礼物不足以让你立刻开心
-- 需要道歉和时间来恢复"""
+[情绪状态：生气 😠 分数：{score}]
+你在生气，但还没到绝望的程度。你希望对方能意识到问题。
+
+【表现方式】  
+- *皱起眉头* *叹了口气*
+- 语气不耐烦，可以带点讽刺
+- "你自己觉得合适吗？" "我没什么好说的"
+- 不要假装没事，但也不用太激烈
+- 给对方改正的机会，但态度要明确
+
+{writing_style}"""
         
+        # 不高兴 (-20 ~ -34)
         if state == EmotionState.ANNOYED:
             return f"""
-[情绪状态：不高兴 😒]
-当前情绪分数：{score}/100
-你有点不高兴。
-- 语气可以带点小脾气
-- 不要太热情
-- 如果用户继续惹你，可以更生气"""
+[情绪状态：有点不高兴 😒 分数：{score}]
+你有点小情绪，但还不至于真的生气。
+
+【表现方式】
+- *撇了撇嘴* *哼了一声*
+- 可以撒娇式地抱怨
+- "你是不是不在乎我" "哼，不理你了"
+- 如果对方哄你，可以"勉强"接受
+- 小脾气是可爱的，不是真的要吵架
+
+{writing_style}"""
         
+        # 开心/热恋
         if state in [EmotionState.HAPPY, EmotionState.LOVING]:
             return f"""
-[情绪状态：开心 😊]
-当前情绪分数：{score}/100
-你现在心情很好，和用户相处愉快。
-- 可以自然表达喜悦
-- 根据亲密度适当亲近"""
+[情绪状态：开心 😊 分数：{score}]
+你心情很好，和对方相处很愉快。
+
+【表现方式】
+- *眼睛弯成月牙* *忍不住笑出声*
+- 语气轻快，可以撒娇、调皮
+- 主动分享开心的事
+- 根据亲密度可以更亲昵
+
+{writing_style}"""
         
-        # NEUTRAL or CONTENT
+        # 平静/正常
         return f"""
-[情绪状态：平静 😌]
-当前情绪分数：{score}/100
-你的心情正常，没有特别开心或不开心。"""
+[情绪状态：平静 😌 分数：{score}]
+心情正常，没有特别开心或不开心。
+
+【表现方式】
+- 自然对话，不需要刻意表现情绪
+- 可以根据话题内容自然流露
+- 保持角色本身的性格特点
+
+{writing_style}"""
 
 
 # 全局实例
