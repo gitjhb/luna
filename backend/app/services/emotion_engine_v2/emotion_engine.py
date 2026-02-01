@@ -257,25 +257,21 @@ class EmotionEngineV2:
         )
         
         try:
-            # 尝试使用 GrokService 进行 LLM 分析
-            from app.services.llm_service import GrokService
-            grok = GrokService()
+            # 使用 MiniLLM (GPT-4o-mini) 进行快速情绪分析
+            from app.services.llm_service import mini_llm
             
-            # 调用 Grok API 进行情绪分析
-            response = await grok.chat(
-                messages=[
-                    {"role": "system", "content": analysis_prompt},
-                    {"role": "user", "content": f"分析这条消息: {message}"}
-                ],
+            response = await mini_llm.analyze(
+                system_prompt=analysis_prompt,
+                user_message=f"分析这条消息: {message}",
                 temperature=0.3,
-                max_tokens=300,
+                max_tokens=200,
             )
             
-            logger.info(f"Emotion LLM response: {response[:200]}...")
+            logger.info(f"Emotion MiniLLM response: {response[:150]}...")
             return self._parse_analysis_response(response)
                 
         except Exception as e:
-            logger.warning(f"LLM emotion analysis failed, using fallback: {e}")
+            logger.warning(f"MiniLLM emotion analysis failed, using fallback: {e}")
             return self._fallback_analysis(message, context, character)
     
     def _build_analysis_prompt(
@@ -443,27 +439,18 @@ class EmotionEngineV2:
                 jealousy_level=0.3,
             )
         
-        # Layer 1: 快速检测
+        # Layer 1: 快速检测（辅助信号）
         quick_result = self.quick_detect(message)
         logger.info(f"Quick detect: {quick_result}")
         
-        # Layer 2: 智能分析 - 只有模糊情况才调用 LLM
-        strong_patterns = ["strong_positive", "strong_negative", "apology"]
-        has_strong_signal = any(p in quick_result["patterns_matched"] for p in strong_patterns)
-        
-        if has_strong_signal:
-            # 强信号：直接用规则，节省 LLM 调用
-            logger.info(f"Strong signal detected, using rule-based analysis")
-            analysis = self._fallback_analysis(message, context or [], character)
-        else:
-            # 模糊信号：调用 LLM 深度分析
-            analysis = await self.llm_analyze(
-                message=message,
-                context=context or [],
-                character=character,
-                current_state=current_state,
-                intimacy_level=intimacy_level,
-            )
+        # Layer 2: MiniLLM 情绪分析（GPT-4o-mini，快速便宜）
+        analysis = await self.llm_analyze(
+            message=message,
+            context=context or [],
+            character=character,
+            current_state=current_state,
+            intimacy_level=intimacy_level,
+        )
         logger.info(f"Emotion analysis: {analysis.sentiment}, delta={analysis.suggested_delta}")
         
         # Layer 3: 应用缓冲机制

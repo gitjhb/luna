@@ -247,3 +247,83 @@ class OpenAIEmbeddingService:
         """
         embeddings = await self.embed_texts([text])
         return embeddings[0]
+
+
+class MiniLLMService:
+    """
+    轻量级 LLM 服务 - 用于快速情绪分析
+    使用 GPT-4o-mini，成本低、速度快
+    """
+    
+    def __init__(self):
+        self.api_key = settings.OPENAI_API_KEY
+        if not self.api_key:
+            raise ValueError("OPENAI_API_KEY not set for MiniLLM")
+        
+        self.base_url = settings.OPENAI_BASE_URL
+        self.model = "gpt-4o-mini"  # 快速便宜的模型
+        self.timeout = 15.0  # 更短的超时
+    
+    @retry(
+        stop=stop_after_attempt(2),  # 只重试一次
+        wait=wait_exponential(multiplier=1, min=1, max=3)
+    )
+    async def analyze(
+        self,
+        system_prompt: str,
+        user_message: str,
+        temperature: float = 0.3,
+        max_tokens: int = 200,
+    ) -> str:
+        """
+        快速分析 - 用于情绪检测等轻量任务
+        
+        Args:
+            system_prompt: 系统指令
+            user_message: 用户消息
+            temperature: 温度（低=更确定）
+            max_tokens: 最大输出
+        
+        Returns:
+            LLM 响应文本
+        """
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=payload
+                )
+                
+                if response.status_code != 200:
+                    raise LLMServiceError(
+                        f"MiniLLM error: {response.text}",
+                        status_code=response.status_code
+                    )
+                
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
+        
+        except httpx.TimeoutException:
+            raise LLMServiceError("MiniLLM timeout")
+        except httpx.RequestError as e:
+            raise LLMServiceError(f"MiniLLM request failed: {str(e)}")
+
+
+# 单例
+mini_llm = MiniLLMService()
