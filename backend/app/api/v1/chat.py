@@ -161,7 +161,11 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
     # Generate response
     # A/B Test flag: Set AB_CHAT_UNIFIED=true for single-call mode (Group B)
     import os
-    AB_UNIFIED = os.getenv("AB_CHAT_UNIFIED", "false").lower() == "true"
+    # TODO: revert to env var after testing
+    # AB_UNIFIED = os.getenv("AB_CHAT_UNIFIED", "false").lower() == "true"
+    AB_UNIFIED = True  # Force enabled for testing
+    
+    logger.info(f"🔍 DEBUG: MOCK_MODE={MOCK_MODE}, AB_UNIFIED={AB_UNIFIED}")
     
     if MOCK_MODE:
         reply = _mock_reply(request.message)
@@ -475,9 +479,21 @@ Current intimacy level: {intimacy_level}
             logger.info(f"  [{idx}] {m['role']}: '{m['content'][:80]}{'...' if len(m['content']) > 80 else ''}'")
         logger.info(f"")
         logger.info(f"--- FINAL CONVERSATION TO GROK ({len(conversation)} messages) ---")
+        
+        # Print full system prompt for debugging
+        if conversation and conversation[0]['role'] == 'system':
+            logger.info(f"=== FULL SYSTEM PROMPT ===")
+            for line in conversation[0]['content'].split('\n'):
+                logger.info(f"  {line}")
+            logger.info(f"=== END SYSTEM PROMPT ===")
+        
+        # Print other messages (truncated)
         for i, msg in enumerate(conversation):
-            content_preview = msg['content'][:100].replace('\n', '\\n')
-            logger.info(f"  [{i}] {msg['role']}: '{content_preview}{'...' if len(msg['content']) > 100 else ''}'")
+            if msg['role'] == 'system':
+                logger.info(f"  [{i}] system: (see above)")
+            else:
+                content_preview = msg['content'][:100].replace('\n', '\\n')
+                logger.info(f"  [{i}] {msg['role']}: '{content_preview}{'...' if len(msg['content']) > 100 else ''}'")
         logger.info(f"{'='*60}")
         
         # Call Grok API
