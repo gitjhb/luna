@@ -552,7 +552,7 @@ class IntimacyService:
         # Update streak
         today = datetime.utcnow().date()
         streak_reward_triggered = False
-        old_streak = intimacy["streak_days"]
+        old_streak = intimacy["streak_days"] or 0  # Handle None
         
         if intimacy["last_interaction_date"] is None:
             intimacy["streak_days"] = 1

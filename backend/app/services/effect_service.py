@@ -18,7 +18,19 @@ from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
-MOCK_MODE = os.getenv("MOCK_DATABASE", "false").lower() == "true"
+# Check if database is available, default to mock if not
+def _check_mock_mode() -> bool:
+    env_mock = os.getenv("MOCK_DATABASE", "false").lower() == "true"
+    if env_mock:
+        return True
+    # Also check if database is initialized
+    try:
+        from app.core.database import _session_factory
+        return _session_factory is None
+    except:
+        return True
+
+MOCK_MODE = _check_mock_mode()
 
 # In-memory storage for mock mode
 _MOCK_EFFECTS: Dict[str, dict] = {}
