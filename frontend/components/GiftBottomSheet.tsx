@@ -1,7 +1,12 @@
 /**
  * Gift Bottom Sheet
  * 
- * 礼物选择面板 - 分类展示，带质感的 BottomSheet
+ * 礼物选择面板 - 按 Tier 分类展示
+ * 
+ * Tier 1: 日常消耗品 (Consumables)
+ * Tier 2: 状态触发器 (State Triggers) ⭐ MVP 重点
+ * Tier 3: 关系加速器 (Speed Dating)
+ * Tier 4: 榜一大哥尊享 (Whale Bait)
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -14,42 +19,48 @@ import {
   ScrollView,
   Animated,
   Dimensions,
-  PanResponder,
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/config';
-import { colors, spacing, radius, typography } from '../theme/designSystem';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SHEET_HEIGHT = SCREEN_HEIGHT * 0.7;
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.75;
 
-// 礼物分类配置
-const GIFT_CATEGORIES = [
-  { id: 'all', name: '全部', icon: 'apps' },
-  { id: 'normal', name: '日常', icon: 'heart' },
-  { id: 'romantic', name: '浪漫', icon: 'rose' },
-  { id: 'props', name: '道具', icon: 'cube' },
-  { id: 'jewelry', name: '珠宝', icon: 'diamond' },
-  { id: 'clothing', name: '服饰', icon: 'shirt' },
-  { id: 'apology', name: '道歉', icon: 'sad' },
-  { id: 'spicy', name: '🔥', icon: 'flame' },
+// Tier 分类配置
+const GIFT_TIERS = [
+  { id: 1, name: '日常', icon: 'cafe-outline', color: '#4ECDC4' },
+  { id: 2, name: '状态', icon: 'sparkles', color: '#FF6B9D' },
+  { id: 3, name: '加速', icon: 'rocket-outline', color: '#9B59B6' },
+  { id: 4, name: '尊享', icon: 'diamond', color: '#F1C40F' },
 ];
+
+interface StatusEffect {
+  type: string;
+  duration_messages: number;
+  prompt_modifier: string;
+}
 
 interface GiftItem {
   gift_type: string;
   name: string;
   name_cn: string;
-  description_cn: string;
+  description?: string;
+  description_cn?: string;
   price: number;
   xp_reward: number;
+  xp_multiplier?: number;
   icon: string;
-  category: string;
-  is_spicy?: boolean;
+  tier: number;
+  category?: string;
+  emotion_boost?: number;
+  status_effect?: StatusEffect;
+  clears_cold_war?: boolean;
+  force_emotion?: string;
+  level_boost?: boolean;
   requires_subscription?: boolean;
-  triggers_scene?: string;
 }
 
 interface GiftBottomSheetProps {
@@ -60,6 +71,7 @@ interface GiftBottomSheetProps {
   userCredits: number;
   isSubscribed: boolean;
   loading?: boolean;
+  inColdWar?: boolean;
 }
 
 export default function GiftBottomSheet({
@@ -70,15 +82,22 @@ export default function GiftBottomSheet({
   userCredits,
   isSubscribed,
   loading = false,
+  inColdWar = false,
 }: GiftBottomSheetProps) {
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedTier, setSelectedTier] = useState(1);
   const [selectedGift, setSelectedGift] = useState<GiftItem | null>(null);
+  const [showDetail, setShowDetail] = useState(false);
   
   const translateY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
+      // 如果在冷战中，默认选择 Tier 2 (有悔过书)
+      if (inColdWar) {
+        setSelectedTier(2);
+      }
+      
       Animated.parallel([
         Animated.spring(translateY, {
           toValue: 0,
@@ -105,48 +124,70 @@ export default function GiftBottomSheet({
           useNativeDriver: true,
         }),
       ]).start();
+      setSelectedGift(null);
+      setShowDetail(false);
     }
-  }, [visible]);
+  }, [visible, inColdWar]);
 
-  // 过滤礼物
-  const filteredGifts = gifts.filter(gift => {
-    if (selectedCategory === 'all') return true;
-    return gift.category === selectedCategory;
-  });
-
-  // 按价格分组
-  const groupedGifts = {
-    free: filteredGifts.filter(g => g.price <= 30),
-    premium: filteredGifts.filter(g => g.price > 30 && g.price <= 100),
-    luxury: filteredGifts.filter(g => g.price > 100),
-  };
+  // 按 Tier 过滤礼物
+  const filteredGifts = gifts.filter(gift => gift.tier === selectedTier);
 
   const handleSelectGift = (gift: GiftItem) => {
-    if (gift.requires_subscription && !isSubscribed) {
-      // 需要订阅但未订阅
-      setSelectedGift(gift);
-      return;
-    }
-    if (gift.price > userCredits) {
-      // 余额不足
-      setSelectedGift(gift);
-      return;
-    }
     setSelectedGift(gift);
+    setShowDetail(true);
   };
 
   const handleConfirmGift = () => {
     if (selectedGift) {
       onSelectGift(selectedGift);
       setSelectedGift(null);
+      setShowDetail(false);
       onClose();
     }
   };
 
+  const canAfford = (gift: GiftItem) => gift.price <= userCredits;
+  const needsSubscription = (gift: GiftItem) => gift.requires_subscription && !isSubscribed;
+
+  const renderTierTab = (tier: typeof GIFT_TIERS[0]) => {
+    const isActive = selectedTier === tier.id;
+    const tierGifts = gifts.filter(g => g.tier === tier.id);
+    
+    return (
+      <TouchableOpacity
+        key={tier.id}
+        style={[
+          styles.tierTab,
+          isActive && { backgroundColor: tier.color + '30', borderColor: tier.color },
+        ]}
+        onPress={() => setSelectedTier(tier.id)}
+      >
+        <Ionicons
+          name={tier.icon as any}
+          size={18}
+          color={isActive ? tier.color : 'rgba(255,255,255,0.5)'}
+        />
+        <Text style={[
+          styles.tierTabText,
+          isActive && { color: tier.color },
+        ]}>
+          {tier.name}
+        </Text>
+        {tierGifts.length > 0 && (
+          <View style={[styles.tierBadge, { backgroundColor: tier.color }]}>
+            <Text style={styles.tierBadgeText}>{tierGifts.length}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
   const renderGiftItem = (gift: GiftItem) => {
-    const canAfford = gift.price <= userCredits;
-    const needsSubscription = gift.requires_subscription && !isSubscribed;
+    const affordable = canAfford(gift);
+    const locked = needsSubscription(gift);
     const isSelected = selectedGift?.gift_type === gift.gift_type;
+    const hasEffect = !!gift.status_effect;
+    const isApology = gift.clears_cold_war;
     
     return (
       <TouchableOpacity
@@ -154,7 +195,7 @@ export default function GiftBottomSheet({
         style={[
           styles.giftItem,
           isSelected && styles.giftItemSelected,
-          (!canAfford || needsSubscription) && styles.giftItemDisabled,
+          (!affordable || locked) && styles.giftItemDisabled,
         ]}
         onPress={() => handleSelectGift(gift)}
         activeOpacity={0.7}
@@ -162,29 +203,46 @@ export default function GiftBottomSheet({
         {/* 礼物图标 */}
         <View style={styles.giftIconContainer}>
           <Text style={styles.giftIcon}>{gift.icon}</Text>
-          {gift.is_spicy && (
-            <View style={styles.spicyBadge}>
-              <Text style={styles.spicyBadgeText}>🔥</Text>
+          {hasEffect && (
+            <View style={[styles.effectBadge, { backgroundColor: '#FF6B9D' }]}>
+              <Ionicons name="sparkles" size={8} color="#fff" />
+            </View>
+          )}
+          {isApology && inColdWar && (
+            <View style={[styles.effectBadge, { backgroundColor: '#2ECC71' }]}>
+              <Ionicons name="heart" size={8} color="#fff" />
             </View>
           )}
         </View>
         
-        {/* 礼物信息 */}
+        {/* 礼物名称 */}
         <Text style={styles.giftName} numberOfLines={1}>{gift.name_cn}</Text>
         
         {/* 价格 */}
         <View style={styles.priceRow}>
-          <Ionicons name="diamond" size={12} color={theme.colors.primary.main} />
-          <Text style={[styles.giftPrice, !canAfford && styles.giftPriceRed]}>
+          <Text style={styles.moonStoneIcon}>💎</Text>
+          <Text style={[styles.giftPrice, !affordable && styles.giftPriceRed]}>
             {gift.price}
           </Text>
         </View>
         
         {/* XP奖励 */}
-        <Text style={styles.xpReward}>+{gift.xp_reward} XP</Text>
+        <Text style={styles.xpReward}>
+          +{gift.xp_reward} XP
+          {gift.xp_multiplier && gift.xp_multiplier > 1 && (
+            <Text style={styles.multiplier}> ({gift.xp_multiplier}x)</Text>
+          )}
+        </Text>
+        
+        {/* 效果持续时间 */}
+        {hasEffect && (
+          <Text style={styles.effectDuration}>
+            ⏱️ {gift.status_effect?.duration_messages}条
+          </Text>
+        )}
         
         {/* 锁定状态 */}
-        {needsSubscription && (
+        {locked && (
           <View style={styles.lockOverlay}>
             <Ionicons name="lock-closed" size={20} color="#fff" />
           </View>
@@ -193,20 +251,101 @@ export default function GiftBottomSheet({
     );
   };
 
-  const renderGiftSection = (title: string, items: GiftItem[], icon: string) => {
-    if (items.length === 0) return null;
+  const renderGiftDetail = () => {
+    if (!selectedGift) return null;
+    
+    const affordable = canAfford(selectedGift);
+    const locked = needsSubscription(selectedGift);
+    const hasEffect = !!selectedGift.status_effect;
     
     return (
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name={icon as any} size={16} color={theme.colors.text.secondary} />
-          <Text style={styles.sectionTitle}>{title}</Text>
-          <Text style={styles.sectionCount}>{items.length}</Text>
+      <Animated.View style={styles.detailPanel}>
+        <View style={styles.detailHeader}>
+          <Text style={styles.detailIcon}>{selectedGift.icon}</Text>
+          <View style={styles.detailInfo}>
+            <Text style={styles.detailName}>{selectedGift.name_cn}</Text>
+            <Text style={styles.detailDesc}>
+              {selectedGift.description_cn || selectedGift.description}
+            </Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.closeDetailButton}
+            onPress={() => setShowDetail(false)}
+          >
+            <Ionicons name="close" size={20} color="rgba(255,255,255,0.5)" />
+          </TouchableOpacity>
         </View>
-        <View style={styles.giftGrid}>
-          {items.map(renderGiftItem)}
+        
+        {/* 效果说明 */}
+        {hasEffect && (
+          <View style={styles.effectBox}>
+            <View style={styles.effectHeader}>
+              <Ionicons name="sparkles" size={16} color="#FF6B9D" />
+              <Text style={styles.effectTitle}>状态效果</Text>
+            </View>
+            <Text style={styles.effectDesc}>
+              {getEffectDescription(selectedGift.status_effect!.type)}
+            </Text>
+            <View style={styles.effectMeta}>
+              <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.6)" />
+              <Text style={styles.effectMetaText}>
+                持续 {selectedGift.status_effect!.duration_messages} 条对话
+              </Text>
+            </View>
+          </View>
+        )}
+        
+        {/* 道歉礼物说明 */}
+        {selectedGift.clears_cold_war && (
+          <View style={[styles.effectBox, { borderColor: '#2ECC71' }]}>
+            <View style={styles.effectHeader}>
+              <Ionicons name="heart" size={16} color="#2ECC71" />
+              <Text style={[styles.effectTitle, { color: '#2ECC71' }]}>修复关系</Text>
+            </View>
+            <Text style={styles.effectDesc}>
+              这份礼物可以解除冷战状态，让你们重新开始对话
+            </Text>
+          </View>
+        )}
+        
+        {/* 价格和按钮 */}
+        <View style={styles.detailFooter}>
+          <View style={styles.detailPriceBox}>
+            <Text style={styles.moonStoneIcon}>💎</Text>
+            <Text style={[styles.detailPrice, !affordable && { color: '#E74C3C' }]}>
+              {selectedGift.price}
+            </Text>
+            <Text style={styles.detailUnit}>月石</Text>
+          </View>
+          
+          {locked ? (
+            <TouchableOpacity style={styles.subscribeButton}>
+              <Ionicons name="lock-open" size={16} color="#fff" />
+              <Text style={styles.subscribeButtonText}>订阅解锁</Text>
+            </TouchableOpacity>
+          ) : !affordable ? (
+            <TouchableOpacity style={styles.rechargeButton}>
+              <Ionicons name="add-circle" size={16} color="#fff" />
+              <Text style={styles.rechargeButtonText}>充值</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.confirmButton}
+              onPress={handleConfirmGift}
+            >
+              <LinearGradient
+                colors={['#EC4899', '#8B5CF6']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.confirmButtonGradient}
+              >
+                <Text style={styles.confirmButtonText}>送出</Text>
+                <Ionicons name="gift" size={18} color="#fff" />
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
         </View>
-      </View>
+      </Animated.View>
     );
   };
 
@@ -239,49 +378,33 @@ export default function GiftBottomSheet({
 
           {/* 头部 */}
           <View style={styles.header}>
-            <Text style={styles.title}>送礼物</Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.title}>💝 送礼物</Text>
+              {inColdWar && (
+                <View style={styles.coldWarBadge}>
+                  <Ionicons name="snow" size={12} color="#fff" />
+                  <Text style={styles.coldWarText}>冷战中</Text>
+                </View>
+              )}
+            </View>
             <View style={styles.creditsDisplay}>
-              <Ionicons name="diamond" size={16} color={theme.colors.primary.main} />
+              <Text style={styles.moonStoneIcon}>💎</Text>
               <Text style={styles.creditsText}>{userCredits}</Text>
+              <Text style={styles.creditsLabel}>月石</Text>
             </View>
           </View>
 
-          {/* 分类标签 */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.categoryScroll}
-            contentContainerStyle={styles.categoryContainer}
-          >
-            {GIFT_CATEGORIES.map((cat) => (
-              <TouchableOpacity
-                key={cat.id}
-                style={[
-                  styles.categoryTab,
-                  selectedCategory === cat.id && styles.categoryTabActive,
-                ]}
-                onPress={() => setSelectedCategory(cat.id)}
-              >
-                {cat.id === 'spicy' ? (
-                  <Text style={styles.categoryIcon}>{cat.name}</Text>
-                ) : (
-                  <Ionicons
-                    name={cat.icon as any}
-                    size={16}
-                    color={selectedCategory === cat.id ? '#fff' : theme.colors.text.tertiary}
-                  />
-                )}
-                {cat.id !== 'spicy' && (
-                  <Text style={[
-                    styles.categoryText,
-                    selectedCategory === cat.id && styles.categoryTextActive,
-                  ]}>
-                    {cat.name}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          {/* Tier 标签 */}
+          <View style={styles.tierTabContainer}>
+            {GIFT_TIERS.map(renderTierTab)}
+          </View>
+
+          {/* Tier 描述 */}
+          <View style={styles.tierDescContainer}>
+            <Text style={styles.tierDesc}>
+              {getTierDescription(selectedTier)}
+            </Text>
+          </View>
 
           {/* 礼物列表 */}
           {loading ? (
@@ -294,76 +417,54 @@ export default function GiftBottomSheet({
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.giftListContent}
             >
-              {selectedCategory === 'all' ? (
-                <>
-                  {renderGiftSection('基础礼物', groupedGifts.free, 'heart-outline')}
-                  {renderGiftSection('精选礼物', groupedGifts.premium, 'star-outline')}
-                  {renderGiftSection('奢华礼物', groupedGifts.luxury, 'diamond-outline')}
-                </>
-              ) : (
-                <View style={styles.giftGrid}>
-                  {filteredGifts.map(renderGiftItem)}
-                </View>
-              )}
+              <View style={styles.giftGrid}>
+                {filteredGifts.map(renderGiftItem)}
+              </View>
               
               {filteredGifts.length === 0 && (
                 <View style={styles.emptyState}>
-                  <Ionicons name="gift-outline" size={48} color={theme.colors.text.tertiary} />
+                  <Ionicons name="gift-outline" size={48} color="rgba(255,255,255,0.3)" />
                   <Text style={styles.emptyText}>该分类暂无礼物</Text>
                 </View>
               )}
               
-              <View style={{ height: 100 }} />
+              <View style={{ height: showDetail ? 200 : 40 }} />
             </ScrollView>
           )}
 
-          {/* 底部确认栏 */}
-          {selectedGift && (
-            <View style={styles.confirmBar}>
-              <View style={styles.selectedGiftInfo}>
-                <Text style={styles.selectedGiftIcon}>{selectedGift.icon}</Text>
-                <View>
-                  <Text style={styles.selectedGiftName}>{selectedGift.name_cn}</Text>
-                  <Text style={styles.selectedGiftPrice}>
-                    {selectedGift.price} 钻石 · +{selectedGift.xp_reward} XP
-                  </Text>
-                </View>
-              </View>
-              
-              {selectedGift.requires_subscription && !isSubscribed ? (
-                <TouchableOpacity style={styles.subscribeButton}>
-                  <Text style={styles.subscribeButtonText}>订阅解锁</Text>
-                </TouchableOpacity>
-              ) : selectedGift.price > userCredits ? (
-                <TouchableOpacity style={styles.rechargeButton}>
-                  <Text style={styles.rechargeButtonText}>充值</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={styles.confirmButton}
-                  onPress={handleConfirmGift}
-                >
-                  <LinearGradient
-                    colors={theme.colors.primary.gradient}
-                    style={styles.confirmButtonGradient}
-                  >
-                    <Text style={styles.confirmButtonText}>送出</Text>
-                    <Ionicons name="send" size={16} color="#fff" />
-                  </LinearGradient>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
+          {/* 礼物详情面板 */}
+          {showDetail && renderGiftDetail()}
         </BlurView>
       </Animated.View>
     </Modal>
   );
 }
 
+// 获取效果描述
+function getEffectDescription(effectType: string): string {
+  const descriptions: Record<string, string> = {
+    tipsy: '她会变得微醺，说话更加柔软放松，防御心降低，更容易说出心里话...',
+    maid_mode: '她会进入女仆模式，称呼你为"主人"，语气变得恭敬服务导向~',
+    truth_mode: '她必须诚实回答所有问题，包括那些平时会回避的隐私问题...',
+  };
+  return descriptions[effectType] || '特殊效果';
+}
+
+// 获取 Tier 描述
+function getTierDescription(tier: number): string {
+  const descriptions: Record<number, string> = {
+    1: '日常小礼物，维持好感，修补小摩擦',
+    2: '状态触发器，改变她的行为模式 ⭐',
+    3: '关系加速器，快速提升亲密度',
+    4: '榜一大哥专属，解锁终极特权',
+  };
+  return descriptions[tier] || '';
+}
+
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
   },
   backdropTouch: {
     flex: 1,
@@ -400,56 +501,93 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingBottom: 12,
+    paddingBottom: 16,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   title: {
     fontSize: 20,
     fontWeight: '700',
     color: '#fff',
   },
+  coldWarBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3498DB',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  coldWarText: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '600',
+  },
   creditsDisplay: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(236, 72, 153, 0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 6,
-  },
-  creditsText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.primary.main,
-  },
-  categoryScroll: {
-    maxHeight: 44,
-  },
-  categoryContainer: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  categoryTab: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.2)',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.08)',
     gap: 6,
   },
-  categoryTabActive: {
-    backgroundColor: theme.colors.primary.main,
-  },
-  categoryIcon: {
+  moonStoneIcon: {
     fontSize: 14,
   },
-  categoryText: {
-    fontSize: 13,
-    color: theme.colors.text.tertiary,
+  creditsText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#A78BFA',
   },
-  categoryTextActive: {
-    color: '#fff',
+  creditsLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.6)',
+  },
+  tierTabContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  tierTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'transparent',
+    gap: 6,
+  },
+  tierTabText: {
+    fontSize: 13,
     fontWeight: '600',
+    color: 'rgba(255,255,255,0.5)',
+  },
+  tierBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  tierBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  tierDescContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  tierDesc: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center',
   },
   loadingContainer: {
     flex: 1,
@@ -458,32 +596,9 @@ const styles = StyleSheet.create({
   },
   giftList: {
     flex: 1,
-    marginTop: 12,
   },
   giftListContent: {
     paddingHorizontal: 16,
-  },
-  section: {
-    marginBottom: 20,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.text.secondary,
-  },
-  sectionCount: {
-    fontSize: 12,
-    color: theme.colors.text.tertiary,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
   },
   giftGrid: {
     flexDirection: 'row',
@@ -493,14 +608,14 @@ const styles = StyleSheet.create({
   giftItem: {
     width: (SCREEN_WIDTH - 52) / 4,
     backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 10,
     alignItems: 'center',
     borderWidth: 2,
     borderColor: 'transparent',
   },
   giftItemSelected: {
-    borderColor: theme.colors.primary.main,
+    borderColor: '#EC4899',
     backgroundColor: 'rgba(236, 72, 153, 0.15)',
   },
   giftItemDisabled: {
@@ -511,18 +626,21 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   giftIcon: {
-    fontSize: 28,
+    fontSize: 32,
   },
-  spicyBadge: {
+  effectBadge: {
     position: 'absolute',
     top: -4,
     right: -8,
-  },
-  spicyBadgeText: {
-    fontSize: 10,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   giftName: {
     fontSize: 11,
+    fontWeight: '600',
     color: '#fff',
     textAlign: 'center',
     marginBottom: 4,
@@ -533,9 +651,9 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   giftPrice: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: theme.colors.primary.main,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#A78BFA',
   },
   giftPriceRed: {
     color: '#E74C3C',
@@ -545,89 +663,162 @@ const styles = StyleSheet.create({
     color: '#2ECC71',
     marginTop: 2,
   },
+  multiplier: {
+    color: '#F1C40F',
+  },
+  effectDuration: {
+    fontSize: 8,
+    color: '#FF6B9D',
+    marginTop: 2,
+  },
   lockOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: 14,
   },
   emptyState: {
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingVertical: 60,
   },
   emptyText: {
     fontSize: 14,
-    color: theme.colors.text.tertiary,
+    color: 'rgba(255,255,255,0.4)',
     marginTop: 12,
   },
-  confirmBar: {
+  // Detail Panel
+  detailPanel: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
+    backgroundColor: 'rgba(26, 16, 37, 0.98)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+    padding: 20,
+    paddingBottom: 36,
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  detailIcon: {
+    fontSize: 48,
+    marginRight: 16,
+  },
+  detailInfo: {
+    flex: 1,
+  },
+  detailName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  detailDesc: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.7)',
+    lineHeight: 18,
+  },
+  closeDetailButton: {
+    padding: 4,
+  },
+  effectBox: {
+    backgroundColor: 'rgba(255, 107, 157, 0.1)',
+    borderWidth: 1,
+    borderColor: '#FF6B9D',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  effectHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 6,
+  },
+  effectTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FF6B9D',
+  },
+  effectDesc: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  effectMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  effectMetaText: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.6)',
+  },
+  detailFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    paddingBottom: 32,
-    backgroundColor: 'rgba(26, 16, 37, 0.95)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
   },
-  selectedGiftInfo: {
+  detailPriceBox: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    alignItems: 'baseline',
+    gap: 4,
   },
-  selectedGiftIcon: {
-    fontSize: 32,
+  detailPrice: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#A78BFA',
   },
-  selectedGiftName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  selectedGiftPrice: {
-    fontSize: 12,
-    color: theme.colors.text.secondary,
-    marginTop: 2,
+  detailUnit: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.5)',
   },
   confirmButton: {
-    borderRadius: 20,
+    borderRadius: 24,
     overflow: 'hidden',
   },
   confirmButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
     gap: 8,
   },
   confirmButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  subscribeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#9B59B6',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 24,
+    gap: 8,
+  },
+  subscribeButtonText: {
     fontSize: 15,
     fontWeight: '600',
     color: '#fff',
   },
-  subscribeButton: {
-    backgroundColor: '#9B59B6',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 20,
-  },
-  subscribeButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
   rechargeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#E67E22',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 24,
+    gap: 8,
   },
   rechargeButtonText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     color: '#fff',
   },

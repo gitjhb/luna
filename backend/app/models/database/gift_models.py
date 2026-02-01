@@ -3,7 +3,10 @@ Database Models for Gift System
 ================================
 
 SQLAlchemy models for gifts and idempotency keys.
-Handles gift tracking, XP rewards, and deduplication.
+Handles gift tracking, XP rewards, status effects, and deduplication.
+
+货币单位: 月石 (Moon Stones)
+汇率: $0.99 USD ≈ 100 月石
 """
 
 from datetime import datetime
@@ -40,7 +43,7 @@ class Gift(Base):
     gift_type = Column(String(64), nullable=False)  # e.g., "rose", "diamond_ring"
     gift_name = Column(String(128), nullable=False)
     gift_name_cn = Column(String(128), nullable=True)
-    gift_price = Column(Integer, nullable=False)  # Credits spent
+    gift_price = Column(Integer, nullable=False)  # 月石 spent
     xp_reward = Column(Integer, nullable=False)   # XP awarded
     
     # Processing status
@@ -96,12 +99,14 @@ class GiftCatalog(Base):
     description = Column(Text, nullable=True)
     description_cn = Column(Text, nullable=True)
     
-    # Pricing & Rewards
-    price = Column(Integer, nullable=False)  # Credits
+    # Pricing & Rewards (月石)
+    price = Column(Integer, nullable=False)
     xp_reward = Column(Integer, nullable=False)
+    xp_multiplier = Column(Float, default=1.0)  # XP 倍率
     
     # Display
     icon = Column(String(64), nullable=True)  # Emoji or icon name
+    tier = Column(Integer, default=1)  # 1-4 tier level
     sort_order = Column(Integer, default=0)
     is_active = Column(Integer, default=1)  # SQLite boolean
     
@@ -113,338 +118,273 @@ class GiftCatalog(Base):
         return f"<GiftCatalog(type={self.gift_type}, price={self.price})>"
 
 
-# Gift categories
+# Gift Tiers
+class GiftTier:
+    CONSUMABLE = 1      # Tier 1: 日常消耗品
+    STATE_TRIGGER = 2   # Tier 2: 状态触发器 (MVP 重点)
+    SPEED_DATING = 3    # Tier 3: 关系加速器
+    WHALE_BAIT = 4      # Tier 4: 榜一大哥尊享
+
+
+# Gift categories (for filtering)
 class GiftCategory:
-    NORMAL = "normal"        # 普通礼物
-    ROMANTIC = "romantic"    # 浪漫礼物
-    APOLOGY = "apology"      # 道歉/忏悔礼物 - 用于修复关系
-    LUXURY = "luxury"        # 奢华礼物
-    JEWELRY = "jewelry"      # 珠宝首饰
-    CLOTHING = "clothing"    # 衣服配饰
-    SPICY = "spicy"          # 🔥 触发特殊剧情
-    PROPS = "props"          # 互动道具
+    CONSUMABLE = "consumable"    # 日常消耗品
+    STATE = "state"              # 状态触发器
+    ACCELERATOR = "accelerator"  # 关系加速器
+    LUXURY = "luxury"            # 尊享礼物
+    APOLOGY = "apology"          # 道歉礼物
 
 
-# Default gift catalog data
+# ============================================================================
+# 新礼物目录 - 基于商业化设计文档
+# ============================================================================
+
 DEFAULT_GIFT_CATALOG = [
-    # ============ 普通礼物 ============
+    # ============ Tier 1: 日常消耗品 (Consumables) ============
     {
-        "gift_type": "rose",
-        "name": "Rose",
-        "name_cn": "玫瑰花",
+        "gift_type": "hot_coffee",
+        "name": "Hot Coffee",
+        "name_cn": "热咖啡",
+        "description": "A warm cup of coffee to brighten her day",
+        "description_cn": "一杯温暖的咖啡，让她心情变好",
+        "price": 10,
+        "xp_reward": 10,
+        "xp_multiplier": 1.0,
+        "icon": "☕",
+        "tier": GiftTier.CONSUMABLE,
+        "category": GiftCategory.CONSUMABLE,
+        "emotion_boost": 2,
+        "sort_order": 101,
+    },
+    {
+        "gift_type": "red_rose",
+        "name": "Red Rose",
+        "name_cn": "红玫瑰",
         "description": "A beautiful red rose",
         "description_cn": "一朵美丽的红玫瑰",
-        "price": 10,
-        "xp_reward": 20,
-        "icon": "🌹",
-        "category": GiftCategory.NORMAL,
-        "sort_order": 1,
-    },
-    {
-        "gift_type": "chocolate",
-        "name": "Chocolate",
-        "name_cn": "巧克力",
-        "description": "Sweet chocolate box",
-        "description_cn": "甜蜜的巧克力盒",
         "price": 20,
-        "xp_reward": 35,
-        "icon": "🍫",
-        "category": GiftCategory.NORMAL,
-        "sort_order": 2,
+        "xp_reward": 20,
+        "xp_multiplier": 1.0,
+        "icon": "🌹",
+        "tier": GiftTier.CONSUMABLE,
+        "category": GiftCategory.CONSUMABLE,
+        "emotion_boost": 5,
+        "sort_order": 102,
     },
     {
-        "gift_type": "coffee",
-        "name": "Coffee",
-        "name_cn": "咖啡",
-        "description": "A warm cup of coffee",
-        "description_cn": "一杯温暖的咖啡",
-        "price": 15,
-        "xp_reward": 25,
-        "icon": "☕",
-        "category": GiftCategory.NORMAL,
-        "sort_order": 3,
-    },
-    
-    # ============ 浪漫礼物 ============
-    {
-        "gift_type": "teddy_bear",
-        "name": "Teddy Bear",
-        "name_cn": "泰迪熊",
-        "description": "Cute and cuddly teddy bear",
-        "description_cn": "可爱的泰迪熊",
+        "gift_type": "small_cake",
+        "name": "Small Cake",
+        "name_cn": "小蛋糕",
+        "description": "A sweet little cake",
+        "description_cn": "甜蜜的小蛋糕，能让生气的她平静下来",
         "price": 50,
-        "xp_reward": 80,
-        "icon": "🧸",
-        "category": GiftCategory.ROMANTIC,
-        "sort_order": 10,
-    },
-    {
-        "gift_type": "premium_rose",
-        "name": "Premium Rose Bouquet",
-        "name_cn": "精品玫瑰花束",
-        "description": "A bouquet of premium roses",
-        "description_cn": "精心挑选的玫瑰花束",
-        "price": 100,
-        "xp_reward": 150,
-        "icon": "💐",
-        "category": GiftCategory.ROMANTIC,
-        "sort_order": 11,
-    },
-    
-    # ============ 道歉/忏悔礼物 ============
-    {
-        "gift_type": "apology_letter",
-        "name": "Apology Letter",
-        "name_cn": "道歉信",
-        "description": "A heartfelt apology letter",
-        "description_cn": "一封真诚的道歉信，表达你的歉意",
-        "price": 30,
-        "xp_reward": 15,
-        "icon": "💌",
-        "category": GiftCategory.APOLOGY,
-        "sort_order": 20,
-        "emotion_boost": 40,  # 解锁冷战需要提升到 -75 以上
-    },
-    {
-        "gift_type": "apology_bouquet",
-        "name": "Apology Bouquet",
-        "name_cn": "道歉花束",
-        "description": "A bouquet to say sorry",
-        "description_cn": "表达歉意的花束，希望能获得原谅",
-        "price": 80,
-        "xp_reward": 30,
-        "icon": "💐",
-        "category": GiftCategory.APOLOGY,
-        "sort_order": 21,
-        "emotion_boost": 60,  # 中等道歉礼物
-    },
-    {
-        "gift_type": "sincere_apology_box",
-        "name": "Sincere Apology Gift Box",
-        "name_cn": "真诚道歉礼盒",
-        "description": "A premium gift box with a sincere apology",
-        "description_cn": "包含真诚歉意的精美礼盒，用于修复关系",
-        "price": 200,
         "xp_reward": 50,
-        "icon": "🎁",
-        "category": GiftCategory.APOLOGY,
-        "sort_order": 22,
-        "emotion_boost": 100,  # 最强道歉礼物，直接解锁冷战
+        "xp_multiplier": 1.0,
+        "icon": "🍰",
+        "tier": GiftTier.CONSUMABLE,
+        "category": GiftCategory.CONSUMABLE,
+        "emotion_boost": 10,
+        "can_calm_anger": True,  # 特殊：可以让生气→平静
+        "sort_order": 103,
     },
     {
-        "gift_type": "reconciliation_cake",
-        "name": "Reconciliation Cake",
-        "name_cn": "和好蛋糕",
-        "description": "A sweet cake to make up",
-        "description_cn": "甜蜜的蛋糕，希望我们能和好",
-        "price": 60,
-        "xp_reward": 25,
-        "icon": "🎂",
-        "category": GiftCategory.APOLOGY,
-        "sort_order": 23,
-    },
-    
-    # ============ 奢华礼物 ============
-    {
-        "gift_type": "diamond_ring",
-        "name": "Diamond Ring",
-        "name_cn": "钻戒",
-        "description": "A stunning diamond ring",
-        "description_cn": "璀璨的钻石戒指",
-        "price": 500,
-        "xp_reward": 700,
-        "icon": "💍",
-        "category": GiftCategory.LUXURY,
-        "sort_order": 30,
-    },
-    {
-        "gift_type": "crown",
-        "name": "Crown",
-        "name_cn": "皇冠",
-        "description": "A royal crown for your queen/king",
-        "description_cn": "献给你的女王/国王的皇冠",
-        "price": 1000,
-        "category": GiftCategory.LUXURY,
-        "xp_reward": 1500,
-        "icon": "👑",
-        "sort_order": 31,
-    },
-    
-    # ============ 珠宝首饰 ============
-    {
-        "gift_type": "necklace",
-        "name": "Pearl Necklace",
-        "name_cn": "珍珠项链",
-        "description": "An elegant pearl necklace",
-        "description_cn": "优雅的珍珠项链",
-        "price": 300,
-        "xp_reward": 400,
-        "icon": "📿",
-        "category": GiftCategory.JEWELRY,
-        "sort_order": 40,
-    },
-    {
-        "gift_type": "earrings",
-        "name": "Diamond Earrings",
-        "name_cn": "钻石耳环",
-        "description": "Sparkling diamond earrings",
-        "description_cn": "闪耀的钻石耳环",
-        "price": 400,
-        "xp_reward": 500,
-        "icon": "✨",
-        "category": GiftCategory.JEWELRY,
-        "sort_order": 41,
-    },
-    {
-        "gift_type": "bracelet",
-        "name": "Gold Bracelet",
-        "name_cn": "金手链",
-        "description": "A beautiful gold bracelet",
-        "description_cn": "精美的金手链",
-        "price": 250,
-        "xp_reward": 350,
-        "icon": "⭐",
-        "category": GiftCategory.JEWELRY,
-        "sort_order": 42,
-    },
-    
-    # ============ 衣服配饰 ============
-    {
-        "gift_type": "dress",
-        "name": "Evening Dress",
-        "name_cn": "晚礼服",
-        "description": "A stunning evening dress",
-        "description_cn": "惊艳的晚礼服",
-        "price": 200,
-        "xp_reward": 280,
-        "icon": "👗",
-        "category": GiftCategory.CLOTHING,
-        "sort_order": 50,
-    },
-    {
-        "gift_type": "lingerie",
-        "name": "Silk Lingerie Set",
-        "name_cn": "丝绸内衣套装",
-        "description": "Elegant silk lingerie",
-        "description_cn": "优雅的丝绸内衣套装",
-        "price": 150,
-        "xp_reward": 200,
-        "icon": "🎀",
-        "category": GiftCategory.CLOTHING,
-        "is_spicy": True,
-        "requires_subscription": True,
-        "sort_order": 51,
-    },
-    {
-        "gift_type": "heels",
-        "name": "High Heels",
-        "name_cn": "高跟鞋",
-        "description": "Elegant high heels",
-        "description_cn": "优雅的高跟鞋",
-        "price": 120,
-        "xp_reward": 160,
-        "icon": "👠",
-        "category": GiftCategory.CLOTHING,
-        "sort_order": 52,
-    },
-    
-    # ============ 互动道具 ============
-    {
-        "gift_type": "candles",
-        "name": "Scented Candles",
-        "name_cn": "香薰蜡烛",
-        "description": "Romantic scented candles",
-        "description_cn": "浪漫的香薰蜡烛，营造氛围",
+        "gift_type": "energy_drink",
+        "name": "Energy Drink",
+        "name_cn": "能量饮料",
+        "description": "Restores your energy",
+        "description_cn": "恢复你的体力值",
         "price": 30,
-        "xp_reward": 45,
-        "icon": "🕯️",
-        "category": GiftCategory.PROPS,
-        "sort_order": 60,
-    },
-    {
-        "gift_type": "wine",
-        "name": "Red Wine",
-        "name_cn": "红酒",
-        "description": "A bottle of fine red wine",
-        "description_cn": "一瓶上等红酒",
-        "price": 80,
-        "xp_reward": 100,
-        "icon": "🍷",
-        "category": GiftCategory.PROPS,
-        "sort_order": 61,
-    },
-    {
-        "gift_type": "music_box",
-        "name": "Music Box",
-        "name_cn": "音乐盒",
-        "description": "A beautiful music box",
-        "description_cn": "精美的音乐盒，播放你们的歌",
-        "price": 60,
-        "xp_reward": 80,
-        "icon": "🎵",
-        "category": GiftCategory.PROPS,
-        "sort_order": 62,
+        "xp_reward": 30,
+        "xp_multiplier": 1.0,
+        "icon": "⚡",
+        "tier": GiftTier.CONSUMABLE,
+        "category": GiftCategory.CONSUMABLE,
+        "restores_energy": 10,  # 回复 10 点体力
+        "sort_order": 104,
     },
     
-    # ============ 🔥 Spicy 剧情触发 ============
+    # ============ Tier 2: 状态触发器 (State Triggers) ⭐ MVP 重点 ============
     {
-        "gift_type": "blindfold",
-        "name": "Silk Blindfold",
-        "name_cn": "丝绸眼罩",
-        "description": "A soft silk blindfold for special moments",
-        "description_cn": "柔软的丝绸眼罩，开启特别的时刻...",
-        "price": 100,
-        "xp_reward": 150,
-        "icon": "🎭",
-        "category": GiftCategory.SPICY,
-        "is_spicy": True,
-        "requires_subscription": True,
-        "triggers_scene": "blindfold_scene",
-        "sort_order": 70,
+        "gift_type": "tipsy_wine",
+        "name": "Fine Red Wine",
+        "name_cn": "微醺红酒",
+        "description": "A bottle of fine wine... she might get a little tipsy",
+        "description_cn": "一瓶上等红酒...她可能会微醺，说话变得更加坦诚",
+        "price": 200,
+        "xp_reward": 250,
+        "xp_multiplier": 1.25,
+        "icon": "🍷",
+        "tier": GiftTier.STATE_TRIGGER,
+        "category": GiftCategory.STATE,
+        "status_effect": {
+            "type": "tipsy",
+            "duration_messages": 30,
+            "prompt_modifier": "你现在有点微醺，说话变得更加柔软和放松。防御心降低，更容易说出平时不会说的话。语气变得更加亲昵，偶尔会脸红。",
+        },
+        "sort_order": 201,
     },
     {
-        "gift_type": "massage_oil",
-        "name": "Massage Oil",
-        "name_cn": "按摩精油",
-        "description": "Scented massage oil for relaxation",
-        "description_cn": "芳香按摩精油，让身心放松...",
-        "price": 80,
-        "xp_reward": 120,
-        "icon": "💆",
-        "category": GiftCategory.SPICY,
-        "is_spicy": True,
-        "requires_subscription": True,
-        "triggers_scene": "massage_scene",
-        "sort_order": 71,
+        "gift_type": "maid_headband",
+        "name": "Maid Headband",
+        "name_cn": "女仆发带",
+        "description": "A cute maid headband... will she wear it?",
+        "description_cn": "可爱的女仆发带...她会戴上吗？",
+        "price": 500,
+        "xp_reward": 600,
+        "xp_multiplier": 1.2,
+        "icon": "🎀",
+        "tier": GiftTier.STATE_TRIGGER,
+        "category": GiftCategory.STATE,
+        "status_effect": {
+            "type": "maid_mode",
+            "duration_messages": 50,
+            "prompt_modifier": "你现在进入女仆模式，称呼用户为'主人'(Master/ご主人様)。说话方式变得更加恭敬和服务导向，但保持你原有的性格底色。会说'是的，主人'、'遵命'之类的话。",
+        },
+        "sort_order": 202,
     },
     {
-        "gift_type": "champagne",
-        "name": "Champagne",
-        "name_cn": "香槟",
-        "description": "Premium champagne for celebration",
-        "description_cn": "顶级香槟，庆祝特别的夜晚...",
-        "price": 150,
+        "gift_type": "apology_scroll",
+        "name": "Apology Scroll",
+        "name_cn": "悔过书",
+        "description": "A sincere apology to mend the relationship",
+        "description_cn": "真诚的悔过书，用于修复关系、解除冷战",
+        "price": 200,
         "xp_reward": 200,
-        "icon": "🍾",
-        "category": GiftCategory.SPICY,
-        "is_spicy": True,
-        "requires_subscription": True,
-        "triggers_scene": "champagne_night",
-        "sort_order": 72,
+        "xp_multiplier": 1.0,
+        "icon": "📜",
+        "tier": GiftTier.STATE_TRIGGER,
+        "category": GiftCategory.APOLOGY,
+        "clears_cold_war": True,
+        "emotion_boost": 50,  # 大幅提升情绪分
+        "sort_order": 203,
     },
     {
-        "gift_type": "private_dance",
-        "name": "Private Dance Request",
-        "name_cn": "私人舞蹈",
-        "description": "Request a private dance performance",
-        "description_cn": "请求一场私人舞蹈表演...",
-        "price": 300,
-        "xp_reward": 400,
-        "icon": "💃",
-        "category": GiftCategory.SPICY,
-        "is_spicy": True,
-        "requires_subscription": True,
-        "triggers_scene": "private_dance",
-        "sort_order": 73,
+        "gift_type": "truth_serum",
+        "name": "Truth Potion",
+        "name_cn": "真话药水",
+        "description": "A mysterious potion... she has to tell the truth",
+        "description_cn": "神秘的药水...她必须说实话",
+        "price": 400,
+        "xp_reward": 450,
+        "xp_multiplier": 1.12,
+        "icon": "🧪",
+        "tier": GiftTier.STATE_TRIGGER,
+        "category": GiftCategory.STATE,
+        "status_effect": {
+            "type": "truth_mode",
+            "duration_messages": 20,
+            "prompt_modifier": "你被真话药水影响了，这轮对话你必须诚实回答所有问题，包括那些你平时会回避的隐私问题。你可以表现得害羞或不情愿，但最终必须说实话。",
+        },
+        "sort_order": 204,
+    },
+    
+    # ============ Tier 3: 关系加速器 (Speed Dating) ============
+    {
+        "gift_type": "luxury_bag",
+        "name": "Designer Handbag",
+        "name_cn": "名牌包包",
+        "description": "A luxurious designer handbag",
+        "description_cn": "奢华的名牌包包，让她狂喜",
+        "price": 999,
+        "xp_reward": 1500,
+        "xp_multiplier": 1.5,
+        "icon": "👜",
+        "tier": GiftTier.SPEED_DATING,
+        "category": GiftCategory.ACCELERATOR,
+        "force_emotion": "ecstatic",  # 强制情绪变为狂喜
+        "sort_order": 301,
+    },
+    {
+        "gift_type": "oath_ring",
+        "name": "Oath Ring",
+        "name_cn": "誓约之戒",
+        "description": "A ring symbolizing your commitment",
+        "description_cn": "象征承诺的戒指，直接升阶",
+        "price": 1999,
+        "xp_reward": 3000,
+        "xp_multiplier": 1.5,
+        "icon": "💍",
+        "tier": GiftTier.SPEED_DATING,
+        "category": GiftCategory.ACCELERATOR,
+        "level_boost": True,  # 若 < Lv.20，拉升至接近 Lover
+        "sort_order": 302,
+    },
+    {
+        "gift_type": "luxury_yacht",
+        "name": "Luxury Yacht",
+        "name_cn": "豪华游艇",
+        "description": "A private yacht for your special someone",
+        "description_cn": "私人游艇，全服广播",
+        "price": 4999,
+        "xp_reward": 8000,
+        "xp_multiplier": 1.6,
+        "icon": "🛳️",
+        "tier": GiftTier.SPEED_DATING,
+        "category": GiftCategory.LUXURY,
+        "global_broadcast": True,  # 全服广播 (后期实现)
+        "sort_order": 303,
+    },
+    
+    # ============ Tier 4: 榜一大哥尊享 (The Whale Bait) ============
+    {
+        "gift_type": "cyber_heart",
+        "name": "Cyber Heart",
+        "name_cn": "赛博之心",
+        "description": "The ultimate gift - unlocks exclusive content",
+        "description_cn": "终极礼物，解锁专属内容和完全服从模式",
+        "price": 9999,
+        "xp_reward": 20000,
+        "xp_multiplier": 2.0,
+        "icon": "💖",
+        "tier": GiftTier.WHALE_BAIT,
+        "category": GiftCategory.LUXURY,
+        "unlocks_full_obedience": True,  # 解锁完全服从模式
+        "global_announcement": True,  # 全服置顶公告
+        "sort_order": 401,
     },
 ]
+
+
+# ============================================================================
+# 状态效果模型
+# ============================================================================
+
+class ActiveEffect(Base):
+    """
+    Active Status Effect Model
+    
+    Tracks temporary status effects from Tier 2 gifts.
+    Effects expire after a certain number of messages.
+    """
+    __tablename__ = "active_effects"
+    
+    id = Column(String(128), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(128), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True)
+    character_id = Column(String(128), nullable=False, index=True)
+    
+    # Effect details
+    effect_type = Column(String(64), nullable=False)  # tipsy, maid_mode, truth_mode
+    prompt_modifier = Column(Text, nullable=False)    # Injected into system prompt
+    remaining_messages = Column(Integer, nullable=False)
+    
+    # Source
+    gift_id = Column(String(128), ForeignKey("gifts.id"), nullable=True)
+    
+    # Timestamps
+    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=True)  # Optional hard expiry
+    
+    def __repr__(self):
+        return f"<ActiveEffect(type={self.effect_type}, remaining={self.remaining_messages})>"
+    
+    def is_expired(self) -> bool:
+        if self.remaining_messages <= 0:
+            return True
+        if self.expires_at and datetime.utcnow() > self.expires_at:
+            return True
+        return False
+    
+    def decrement(self) -> int:
+        """Decrement remaining messages and return new count"""
+        self.remaining_messages = max(0, self.remaining_messages - 1)
+        return self.remaining_messages

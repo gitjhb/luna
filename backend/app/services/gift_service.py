@@ -6,7 +6,10 @@ Handles gift sending with:
 - Idempotency checks (prevents duplicate charges)
 - DB transaction for atomicity (deduct + record + XP)
 - Transaction ledger for accounting
+- Status effect application (Tier 2 gifts)
 - AI acknowledgment flow
+
+货币单位: 月石 (Moon Stones)
 """
 
 import os
@@ -18,7 +21,8 @@ from uuid import uuid4
 
 from app.services.payment_service import payment_service, _transactions
 from app.services.intimacy_service import intimacy_service
-from app.models.database.gift_models import DEFAULT_GIFT_CATALOG, GiftStatus
+from app.services.effect_service import effect_service
+from app.models.database.gift_models import DEFAULT_GIFT_CATALOG, GiftStatus, GiftTier
 
 # Import emotion service for mood-aware gift responses
 try:
@@ -51,11 +55,12 @@ class GiftService:
     3. Service checks if key exists:
        - If exists and not expired: return cached result
        - If new: BEGIN TRANSACTION
-           a. Deduct credits from wallet
+           a. Deduct 月石 from wallet
            b. Create gift record
            c. Create transaction record (ledger)
            d. Award XP
-           e. Store idempotency key
+           e. Apply status effect (if Tier 2)
+           f. Store idempotency key
          COMMIT
     4. Return gift_id + details
     5. Trigger AI response with gift context
@@ -69,14 +74,43 @@ class GiftService:
     # Gift Catalog
     # =========================================================================
     
-    async def get_catalog(self) -> List[dict]:
-        """Get all active gifts in catalog"""
+    async def get_catalog(self, tier: Optional[int] = None) -> List[dict]:
+        """
+        Get all active gifts in catalog.
+        
+        Args:
+            tier: Optional tier filter (1-4)
+        """
         catalog = [
             g for g in _MOCK_GIFT_CATALOG.values()
-            if g.get("is_active", True)
+            if g.get("is_active", True) != False
         ]
+        
+        if tier is not None:
+            catalog = [g for g in catalog if g.get("tier") == tier]
+        
         catalog.sort(key=lambda x: x.get("sort_order", 0))
         return catalog
+    
+    async def get_catalog_by_tier(self) -> Dict[int, List[dict]]:
+        """
+        Get catalog organized by tier for UI display.
+        """
+        all_gifts = await self.get_catalog()
+        
+        by_tier = {
+            GiftTier.CONSUMABLE: [],
+            GiftTier.STATE_TRIGGER: [],
+            GiftTier.SPEED_DATING: [],
+            GiftTier.WHALE_BAIT: [],
+        }
+        
+        for gift in all_gifts:
+            tier = gift.get("tier", GiftTier.CONSUMABLE)
+            if tier in by_tier:
+                by_tier[tier].append(gift)
+        
+        return by_tier
     
     async def get_gift_info(self, gift_type: str) -> Optional[dict]:
         """Get gift info by type"""
@@ -216,11 +250,12 @@ class GiftService:
         1. Check idempotency - if duplicate, return cached
         2. Validate gift type
         3. Check balance
-        4. Deduct credits
+        4. Deduct 月石
         5. Create gift record
         6. Create transaction record (ledger)
         7. Award XP
-        8. Store idempotency key
+        8. Apply status effect (if Tier 2 gift)
+        9. Store idempotency key
         """
         # Step 1: Check idempotency (outside transaction - read only)
         is_duplicate, cached_result = await self.check_idempotency_key(idempotency_key, user_id)
@@ -243,6 +278,7 @@ class GiftService:
         
         price = gift_info["price"]
         xp_reward = gift_info["xp_reward"]
+        tier = gift_info.get("tier", GiftTier.CONSUMABLE)
         
         # Step 3: Check balance (pre-check, will verify again in transaction)
         wallet = await payment_service.get_wallet(user_id)
@@ -250,26 +286,22 @@ class GiftService:
             return {
                 "success": False,
                 "error": "insufficient_credits",
-                "message": f"余额不足: 当前 {wallet['total_credits']} 金币，需要 {price} 金币",
+                "message": f"月石不足: 当前 {wallet['total_credits']} 月石，需要 {price} 月石",
                 "current_balance": wallet["total_credits"],
                 "required": price,
             }
         
         # =====================================================================
-        # BEGIN TRANSACTION (mock mode simulates; real DB uses actual transaction)
+        # BEGIN TRANSACTION
         # =====================================================================
         try:
-            # In production with real DB:
-            # async with db.transaction():
-            #     ... all the following steps ...
-            
             now = datetime.utcnow()
             gift_id = str(uuid4())
             transaction_id = str(uuid4())
             
-            # Step 4: Deduct credits
+            # Step 4: Deduct 月石
             wallet = await payment_service.deduct_credits(user_id, price)
-            logger.info(f"Credits deducted: {price} from user {user_id}, new balance: {wallet['total_credits']}")
+            logger.info(f"月石 deducted: {price} from user {user_id}, new balance: {wallet['total_credits']}")
             
             # Step 5: Create gift record
             gift = {
@@ -282,6 +314,7 @@ class GiftService:
                 "gift_name_cn": gift_info.get("name_cn"),
                 "gift_price": price,
                 "xp_reward": xp_reward,
+                "tier": tier,
                 "status": GiftStatus.PENDING.value,
                 "idempotency_key": idempotency_key,
                 "created_at": now,
@@ -289,7 +322,7 @@ class GiftService:
                 "icon": gift_info.get("icon", "🎁"),
             }
             
-            description = f"送出礼物: {gift_info.get('name_cn') or gift_info['name']} 给角色 {character_id}"
+            description = f"送出礼物: {gift_info.get('name_cn') or gift_info['name']} ({price} 月石)"
             
             if self.mock_mode:
                 _MOCK_GIFTS[gift_id] = gift
@@ -319,7 +352,6 @@ class GiftService:
                 from app.models.database.billing_models import TransactionHistory, TransactionType
                 
                 async with get_db() as db:
-                    # Create gift record in database
                     gift_obj = GiftModel(
                         id=gift_id,
                         user_id=user_id,
@@ -334,9 +366,7 @@ class GiftService:
                         idempotency_key=idempotency_key,
                     )
                     db.add(gift_obj)
-                    logger.info(f"Gift record created (db): {gift_id}")
                     
-                    # Step 6: Create transaction record (ledger entry) - database mode
                     transaction_obj = TransactionHistory(
                         transaction_id=transaction_id,
                         user_id=user_id,
@@ -348,18 +378,17 @@ class GiftService:
                     )
                     db.add(transaction_obj)
                     await db.commit()
-                    logger.info(f"Transaction record created (db): {transaction_id}")
             
             # Step 7: Award XP
             xp_result = await intimacy_service.award_xp(
                 user_id, 
                 character_id, 
-                "emotional",  # Gifts use emotional XP type
-                force=True   # Bypass daily limits for gifts
+                "emotional",
+                force=True
             )
             actual_xp = xp_result.get("xp_awarded", 0)
             
-            # Add gift-specific bonus XP (for expensive gifts)
+            # Add gift-specific bonus XP
             bonus_xp = max(0, xp_reward - actual_xp)
             if bonus_xp > 0:
                 intimacy = await intimacy_service.get_or_create_intimacy(user_id, character_id)
@@ -367,43 +396,82 @@ class GiftService:
                 intimacy["daily_xp_earned"] += bonus_xp
                 actual_xp += bonus_xp
             
-            logger.info(f"XP awarded: {actual_xp} (base: {xp_result.get('xp_awarded', 0)}, bonus: {bonus_xp})")
+            logger.info(f"XP awarded: {actual_xp}")
             
-            # Step 7.5: Check if apology gift and handle cold war unlock
+            # Step 8: Apply status effect (Tier 2 gifts)
+            status_effect_applied = None
+            if tier == GiftTier.STATE_TRIGGER and "status_effect" in gift_info:
+                effect_config = gift_info["status_effect"]
+                await effect_service.apply_effect(
+                    user_id=user_id,
+                    character_id=character_id,
+                    effect_type=effect_config["type"],
+                    prompt_modifier=effect_config["prompt_modifier"],
+                    duration_messages=effect_config["duration_messages"],
+                    gift_id=gift_id,
+                )
+                status_effect_applied = {
+                    "type": effect_config["type"],
+                    "duration": effect_config["duration_messages"],
+                }
+                logger.info(f"Status effect applied: {effect_config['type']} for {effect_config['duration_messages']} messages")
+            
+            # Step 8.5: Handle special gift effects
             cold_war_unlocked = False
-            gift_category = gift_info.get("category", "")
-            is_apology_gift = gift_category == "apology" or gift_type.startswith("apology") or "apology" in gift_type.lower()
+            emotion_boosted = False
             
-            if is_apology_gift:
+            # Apology gifts - clear cold war
+            if gift_info.get("clears_cold_war"):
                 try:
                     from app.services.emotion_score_service import emotion_score_service
                     
-                    # Check if in cold war
                     score_data = await emotion_score_service.get_score(user_id, character_id)
                     was_in_cold_war = score_data.get("in_cold_war", False) or score_data.get("score", 0) <= -75
                     
                     if was_in_cold_war:
-                        # Apology gift unlocks cold war - boost emotion significantly
-                        emotion_boost = gift_info.get("emotion_boost", 50)  # Default +50 for apology gifts
+                        emotion_boost = gift_info.get("emotion_boost", 50)
                         await emotion_score_service.update_score(
                             user_id, character_id,
                             delta=emotion_boost,
                             reason=f"apology_gift:{gift_type}",
                             intimacy_level=xp_result.get("current_level", 1)
                         )
-                        
-                        # Also clear cold war flag explicitly
-                        new_score_data = await emotion_score_service.get_score(user_id, character_id)
-                        if new_score_data.get("score", 0) > -75:
-                            new_score_data["in_cold_war"] = False
-                            new_score_data["cold_war_since"] = None
-                        
                         cold_war_unlocked = True
                         logger.info(f"Cold war unlocked via apology gift: {gift_type}")
                 except Exception as e:
-                    logger.warning(f"Failed to process apology gift emotion: {e}")
+                    logger.warning(f"Failed to process apology gift: {e}")
             
-            # Step 8: Store idempotency key
+            # Emotion boost gifts
+            elif gift_info.get("emotion_boost"):
+                try:
+                    from app.services.emotion_score_service import emotion_score_service
+                    
+                    await emotion_score_service.update_score(
+                        user_id, character_id,
+                        delta=gift_info["emotion_boost"],
+                        reason=f"gift:{gift_type}",
+                        intimacy_level=xp_result.get("current_level", 1)
+                    )
+                    emotion_boosted = True
+                except Exception as e:
+                    logger.warning(f"Failed to apply emotion boost: {e}")
+            
+            # Force emotion (luxury gifts)
+            if gift_info.get("force_emotion"):
+                try:
+                    from app.services.emotion_score_service import emotion_score_service
+                    
+                    # Set to maximum positive emotion
+                    await emotion_score_service.update_score(
+                        user_id, character_id,
+                        delta=100,  # Max boost
+                        reason=f"luxury_gift:{gift_type}",
+                        intimacy_level=xp_result.get("current_level", 1)
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to force emotion: {e}")
+            
+            # Step 9: Store idempotency key
             result = {
                 "gift_id": gift_id,
                 "gift": gift,
@@ -414,6 +482,7 @@ class GiftService:
                 "level_up": xp_result.get("level_up", False),
                 "new_level": xp_result.get("new_level"),
                 "new_stage": xp_result.get("new_stage"),
+                "status_effect_applied": status_effect_applied,
             }
             await self.store_idempotency_key(idempotency_key, user_id, gift_id, result)
             
@@ -423,11 +492,10 @@ class GiftService:
             
             logger.info(f"Gift transaction completed: {gift_type} from {user_id} to {character_id}")
             
-            # Get current intimacy level for response calibration
+            # Get current intimacy level and mood for response
             current_level = xp_result.get("new_level") or xp_result.get("current_level", 1)
-            
-            # Get current emotional state (if emotion service available)
             current_mood = "neutral"
+            
             if emotion_service:
                 try:
                     emotion_data = await emotion_service.get_emotion(user_id, character_id)
@@ -440,18 +508,18 @@ class GiftService:
                 "is_duplicate": False,
                 **result,
                 "cold_war_unlocked": cold_war_unlocked,
-                "is_apology_gift": is_apology_gift,
+                "emotion_boosted": emotion_boosted,
                 "system_message": self._build_gift_system_message(
                     gift, 
                     actual_xp,
                     intimacy_level=current_level,
                     current_mood=current_mood,
                     cold_war_unlocked=cold_war_unlocked,
+                    status_effect=status_effect_applied,
                 ),
             }
             
         except ValueError as e:
-            # Balance check failed during deduction
             logger.error(f"Gift transaction failed (insufficient funds): {e}")
             return {
                 "success": False,
@@ -459,10 +527,7 @@ class GiftService:
                 "message": str(e)
             }
         except Exception as e:
-            # Any other error - in real DB this would trigger rollback
             logger.error(f"Gift transaction failed: {e}", exc_info=True)
-            # TODO: In real DB mode, rollback would happen automatically
-            # For mock mode, we'd need to manually revert changes
             return {
                 "success": False,
                 "error": "transaction_failed",
@@ -475,86 +540,59 @@ class GiftService:
         xp_awarded: int,
         intimacy_level: int = 1,
         current_mood: str = "neutral",
-        cold_war_unlocked: bool = False
+        cold_war_unlocked: bool = False,
+        status_effect: Optional[dict] = None,
     ) -> str:
         """
         Build system message for AI context when user sends a gift.
-        
-        Response intensity is calibrated based on:
-        - Current intimacy level (1-100)
-        - Gift value
-        - Current emotional state/mood
-        
-        Key principle: Gifts should NOT instantly flip negative emotions to extremely positive.
-        A gift can soften the mood, but dramatic shifts should require higher intimacy.
         """
         gift_name = gift.get("gift_name_cn") or gift.get("gift_name")
         icon = gift.get("icon", "🎁")
         price = gift['gift_price']
+        tier = gift.get("tier", GiftTier.CONSUMABLE)
         
-        # Determine current mood description for AI
-        is_negative_mood = current_mood in ["angry", "upset", "annoyed", "hurt", "cold", "silent"]
-        mood_description = {
-            "loving": "你现在很甜蜜开心",
-            "happy": "你现在心情很好",
-            "neutral": "你现在心情平和",
-            "curious": "你现在有点好奇",
-            "annoyed": "你现在有点不高兴",
-            "angry": "你现在在生气",
-            "hurt": "你现在有点受伤难过",
-            "cold": "你现在有点冷淡",
-            "silent": "你现在不太想说话",
-        }.get(current_mood, "你现在心情平和")
-        
-        # Build tone guide based on intimacy level (WITHOUT mentioning anger unless actually angry)
-        if intimacy_level <= 3:
-            tone_guide = (
-                "保持礼貌但有距离感。可以表示感谢，但不要太热情或亲密。"
-                "不要说'亲爱的'这类亲密称呼。保持客气但略显拘谨。"
-            )
-        elif intimacy_level <= 6:
-            tone_guide = (
-                "用朋友之间的温暖语气回应，可以表示开心和感谢。"
-                "可以稍微活泼一些，但不要太过亲密或暧昧。"
-            )
-        elif intimacy_level <= 9:
-            tone_guide = (
-                "可以表现得比较开心和感动，语气亲近。"
-                "可以有一些亲昵的表达，但保持适度。"
-            )
-        else:
-            tone_guide = (
-                "可以非常热情和亲密地回应，表达深厚的感情。"
-                "可以使用亲密的称呼和表达方式。"
-            )
-        
-        # Adjust for gift value
-        if price >= 100:
-            value_note = "这是一份非常贵重的礼物，可以表现得更加惊喜。"
-        elif price >= 50:
-            value_note = "这是一份不错的礼物。"
-        elif price >= 20:
-            value_note = "这是一份普通的小礼物。"
-        else:
-            value_note = "这是一份简单的心意。"
-        
-        # Handle mood-specific guidance (ONLY mention anger if actually angry)
-        if is_negative_mood:
-            mood_note = (
-                f"重要：{mood_description}。礼物可以让你态度软化一些，"
-                "但不要立刻180度大转变变得超级开心。情绪转变应该是渐进的。"
-                "可以表示'哼，算你有心'这样的傲娇反应，而不是立刻变得很甜蜜。"
-            )
-        else:
-            # Positive or neutral mood - just be happy about the gift
-            mood_note = f"{mood_description}，收到礼物自然地感到开心就好。"
-        
-        return (
-            f"[SYSTEM] 用户送给你一份'{icon} {gift_name}'礼物（价值{price}金币）。"
+        # Base message
+        msg = (
+            f"[SYSTEM] 用户送给你一份'{icon} {gift_name}'礼物（价值{price}月石）。"
             f"好感度+{xp_awarded}。当前亲密等级：{intimacy_level}。\n\n"
-            f"当前状态：{mood_description}\n"
-            f"回应指南：{tone_guide}\n{value_note}\n{mood_note}"
         )
+        
+        # Add status effect info if applicable
+        if status_effect:
+            effect_descriptions = {
+                "tipsy": "你喝了这杯红酒，感觉有点微醺了。说话变得更加柔软放松，防御心降低...",
+                "maid_mode": "你戴上了女仆发带，进入女仆模式。称呼用户为'主人'，语气变得恭敬服务导向...",
+                "truth_mode": "你被真话药水影响了，必须诚实回答所有问题，包括隐私问题...",
+            }
+            effect_desc = effect_descriptions.get(
+                status_effect["type"], 
+                f"你受到了 {status_effect['type']} 效果的影响..."
+            )
+            msg += f"状态效果：{effect_desc}\n效果持续：{status_effect['duration']} 条对话\n\n"
+        
+        # Add cold war unlock info
+        if cold_war_unlocked:
+            msg += "这份道歉礼物解除了你们之间的冷战。你的心软了下来，愿意重新开始对话...\n\n"
+        
+        # Tone guide based on intimacy
+        if intimacy_level <= 3:
+            msg += "回应指南：保持礼貌但有距离感，不要太热情或亲密。"
+        elif intimacy_level <= 6:
+            msg += "回应指南：用朋友之间的温暖语气回应，可以稍微活泼一些。"
+        elif intimacy_level <= 9:
+            msg += "回应指南：可以表现得比较开心和感动，语气亲近。"
+        else:
+            msg += "回应指南：可以非常热情和亲密地回应，表达深厚的感情。"
+        
+        # Value note
+        if price >= 1000:
+            msg += "\n这是一份极其贵重的礼物，可以表现得非常惊喜和感动。"
+        elif price >= 200:
+            msg += "\n这是一份珍贵的礼物，可以表现得惊喜。"
+        elif price >= 50:
+            msg += "\n这是一份不错的礼物。"
+        
+        return msg
     
     # =========================================================================
     # Gift Status Management
@@ -704,9 +742,7 @@ class GiftService:
             ]
     
     async def get_gift_summary(self, user_id: str, character_id: str) -> dict:
-        """
-        Get gift summary for AI memory context.
-        """
+        """Get gift summary for AI memory context."""
         gifts = [
             g for g in _MOCK_GIFTS.values()
             if g["user_id"] == user_id and g["character_id"] == character_id
@@ -716,7 +752,6 @@ class GiftService:
         total_spent = sum(g["gift_price"] for g in gifts)
         total_xp = sum(g["xp_reward"] for g in gifts)
         
-        # Count by type
         gift_counts = {}
         for g in gifts:
             gift_type = g["gift_type"]
@@ -729,7 +764,6 @@ class GiftService:
                 }
             gift_counts[gift_type]["count"] += 1
         
-        # Sort by count descending
         top_gifts = sorted(
             gift_counts.values(),
             key=lambda x: x["count"],
@@ -746,7 +780,7 @@ class GiftService:
         }
     
     # =========================================================================
-    # Transaction History (for user's ledger view)
+    # Transaction History
     # =========================================================================
     
     async def get_gift_transactions(
@@ -763,50 +797,37 @@ class GiftService:
         gift_txns.sort(key=lambda x: x["created_at"], reverse=True)
         return gift_txns[offset:offset + limit]
     
+    # =========================================================================
+    # Convenience Methods
+    # =========================================================================
+    
     async def send_apology_gift(
         self,
         user_id: str,
         character_id: str,
-        gift_id: str = "apology_bouquet",
+        gift_id: str = "apology_scroll",
         session_id: Optional[str] = None,
     ) -> dict:
-        """
-        Convenience method to send apology gift and unlock cold war.
-        
-        This is a wrapper around send_gift specifically for apology gifts,
-        used for unlocking cold war state.
-        """
-        # Validate gift is an apology type
+        """Convenience method to send apology gift and unlock cold war."""
         gift_info = await self.get_gift_info(gift_id)
         if not gift_info:
             return {"success": False, "error": "invalid_gift", "message": f"Unknown gift: {gift_id}"}
         
-        is_apology = (
-            gift_info.get("category") == "apology" or 
-            gift_id.startswith("apology") or 
-            "apology" in gift_id.lower()
-        )
-        
-        if not is_apology:
+        if not gift_info.get("clears_cold_war"):
             return {
                 "success": False, 
                 "error": "not_apology_gift",
-                "message": "只有道歉礼物才能解除冷战。请选择道歉信、道歉花束或真诚道歉礼盒。"
+                "message": "只有道歉礼物才能解除冷战。请选择悔过书。"
             }
         
-        # Generate idempotency key
         idempotency_key = str(uuid4())
-        
-        # Send the gift
-        result = await self.send_gift(
+        return await self.send_gift(
             user_id=user_id,
             character_id=character_id,
             gift_type=gift_id,
             idempotency_key=idempotency_key,
             session_id=session_id,
         )
-        
-        return result
 
 
 # Global service instance

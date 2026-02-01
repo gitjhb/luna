@@ -2,10 +2,13 @@
  * Gift Service
  * 
  * Handles gift sending with idempotency:
- * - Get gift catalog
+ * - Get gift catalog (by tier)
  * - Send gifts with deduplication
  * - Get gift history
+ * - Get active status effects
  * - Get gift summary for AI context
+ * 
+ * 货币单位: 月石 (Moon Stones)
  */
 
 import { api } from './api';
@@ -23,19 +26,38 @@ const uuidv4 = (): string => {
 // Types
 // ============================================================================
 
+// Tier 分类
+export enum GiftTier {
+  CONSUMABLE = 1,      // 日常消耗品
+  STATE_TRIGGER = 2,   // 状态触发器 ⭐ MVP 重点
+  SPEED_DATING = 3,    // 关系加速器
+  WHALE_BAIT = 4,      // 榜一大哥尊享
+}
+
+export interface StatusEffect {
+  type: string;               // tipsy, maid_mode, truth_mode
+  duration_messages: number;  // 持续对话条数
+  prompt_modifier: string;    // AI prompt 修改器
+}
+
 export interface GiftCatalogItem {
   gift_type: string;
   name: string;
   name_cn?: string;
   description?: string;
   description_cn?: string;
-  price: number;
+  price: number;              // 月石
   xp_reward: number;
+  xp_multiplier?: number;     // XP 倍率
   icon?: string;
+  tier: number;               // 1-4
   category?: string;
-  is_spicy?: boolean;
+  emotion_boost?: number;
+  status_effect?: StatusEffect;
+  clears_cold_war?: boolean;
+  force_emotion?: string;
+  level_boost?: boolean;
   requires_subscription?: boolean;
-  triggers_scene?: string;
   sort_order?: number;
 }
 
@@ -55,11 +77,17 @@ export interface SendGiftResponse {
   gift_name?: string;
   gift_name_cn?: string;
   icon?: string;
+  tier?: number;
   credits_deducted?: number;
   new_balance?: number;
   xp_awarded?: number;
   level_up: boolean;
   new_level?: number;
+  status_effect_applied?: {
+    type: string;
+    duration: number;
+  };
+  cold_war_unlocked?: boolean;
   ai_response?: string;
   error?: string;
   message?: string;
@@ -73,6 +101,7 @@ export interface GiftHistoryItem {
   icon?: string;
   gift_price: number;
   xp_reward: number;
+  tier?: number;
   status: 'pending' | 'acknowledged' | 'failed';
   created_at: string;
   acknowledged_at?: string;
@@ -90,15 +119,49 @@ export interface GiftSummary {
   }>;
 }
 
+export interface ActiveEffect {
+  type: string;
+  name: string;
+  icon: string;
+  color: string;
+  remaining: number;
+  started_at?: string;
+}
+
+export interface EffectStatus {
+  has_effects: boolean;
+  count: number;
+  effects: ActiveEffect[];
+}
+
 // ============================================================================
 // API Functions
 // ============================================================================
 
 /**
  * Get gift catalog
+ * 
+ * @param tier - Optional tier filter (1-4)
  */
-export const getGiftCatalog = async (): Promise<GiftCatalogItem[]> => {
-  return api.get<GiftCatalogItem[]>('/gifts/catalog');
+export const getGiftCatalog = async (tier?: number): Promise<GiftCatalogItem[]> => {
+  const params = tier ? { tier } : undefined;
+  return api.get<GiftCatalogItem[]>('/gifts/catalog', params);
+};
+
+/**
+ * Get gift catalog organized by tier
+ * 
+ * Returns: { "1": [...], "2": [...], "3": [...], "4": [...] }
+ */
+export const getGiftCatalogByTier = async (): Promise<Record<string, GiftCatalogItem[]>> => {
+  return api.get<Record<string, GiftCatalogItem[]>>('/gifts/catalog/by-tier');
+};
+
+/**
+ * Get active status effects for a character
+ */
+export const getActiveEffects = async (characterId: string): Promise<EffectStatus> => {
+  return api.get<EffectStatus>(`/gifts/effects/${characterId}`);
 };
 
 /**
@@ -183,14 +246,14 @@ export const getGiftName = (gift: GiftCatalogItem | GiftHistoryItem, locale: str
   if (locale === 'zh' && gift.name_cn) {
     return gift.name_cn;
   }
-  return gift.gift_name || (gift as GiftCatalogItem).name || 'Gift';
+  return (gift as any).gift_name || (gift as GiftCatalogItem).name || 'Gift';
 };
 
 /**
- * Format gift price for display
+ * Format gift price for display (月石)
  */
 export const formatGiftPrice = (price: number): string => {
-  return `${price} 💎`;
+  return `💎 ${price}`;
 };
 
 /**
@@ -205,12 +268,66 @@ export const sortGiftsByPrice = (
   );
 };
 
+/**
+ * Get tier display name
+ */
+export const getTierName = (tier: number): string => {
+  const names: Record<number, string> = {
+    1: '日常',
+    2: '状态',
+    3: '加速',
+    4: '尊享',
+  };
+  return names[tier] || '其他';
+};
+
+/**
+ * Get tier description
+ */
+export const getTierDescription = (tier: number): string => {
+  const descriptions: Record<number, string> = {
+    1: '日常小礼物，维持好感，修补小摩擦',
+    2: '状态触发器，改变她的行为模式 ⭐',
+    3: '关系加速器，快速提升亲密度',
+    4: '榜一大哥专属，解锁终极特权',
+  };
+  return descriptions[tier] || '';
+};
+
+/**
+ * Get effect description
+ */
+export const getEffectDescription = (effectType: string): string => {
+  const descriptions: Record<string, string> = {
+    tipsy: '她会变得微醺，说话更加柔软放松，防御心降低，更容易说出心里话...',
+    maid_mode: '她会进入女仆模式，称呼你为"主人"，语气变得恭敬服务导向~',
+    truth_mode: '她必须诚实回答所有问题，包括那些平时会回避的隐私问题...',
+  };
+  return descriptions[effectType] || '特殊效果';
+};
+
+/**
+ * Check if gift has status effect (Tier 2)
+ */
+export const hasStatusEffect = (gift: GiftCatalogItem): boolean => {
+  return gift.tier === GiftTier.STATE_TRIGGER && !!gift.status_effect;
+};
+
+/**
+ * Check if gift can clear cold war
+ */
+export const canClearColdWar = (gift: GiftCatalogItem): boolean => {
+  return !!gift.clears_cold_war;
+};
+
 // ============================================================================
 // Export
 // ============================================================================
 
 export const giftService = {
   getGiftCatalog,
+  getGiftCatalogByTier,
+  getActiveEffects,
   sendGift,
   getGiftHistory,
   getGiftSummary,
@@ -219,6 +336,11 @@ export const giftService = {
   getGiftName,
   formatGiftPrice,
   sortGiftsByPrice,
+  getTierName,
+  getTierDescription,
+  getEffectDescription,
+  hasStatusEffect,
+  canClearColdWar,
 };
 
 export default giftService;

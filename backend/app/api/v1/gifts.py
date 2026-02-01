@@ -2,18 +2,22 @@
 Gift API Routes
 ===============
 
-Handles gift sending with idempotency, catalog browsing, and history.
+Handles gift sending with idempotency, catalog browsing, history, and status effects.
+
+货币单位: 月石 (Moon Stones)
 """
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
 import logging
 
 from app.services.gift_service import gift_service
+from app.services.effect_service import effect_service
 from app.services.chat_repository import chat_repo
+from app.models.database.gift_models import GiftTier
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +37,13 @@ class SendGiftRequest(BaseModel):
     trigger_ai_response: bool = Field(default=True, description="Auto-trigger AI response after gift")
 
 
+class StatusEffectInfo(BaseModel):
+    """Status effect information"""
+    type: str
+    duration_messages: int
+    prompt_modifier: Optional[str] = None
+
+
 class SendGiftResponse(BaseModel):
     """Response from sending a gift"""
     success: bool
@@ -42,14 +53,24 @@ class SendGiftResponse(BaseModel):
     gift_name: Optional[str] = None
     gift_name_cn: Optional[str] = None
     icon: Optional[str] = None
+    tier: Optional[int] = None
     credits_deducted: Optional[int] = None
     new_balance: Optional[int] = None
     xp_awarded: Optional[int] = None
     level_up: bool = False
     new_level: Optional[int] = None
-    ai_response: Optional[str] = None  # AI's immediate response if trigger_ai_response=True
+    status_effect_applied: Optional[StatusEffectInfo] = None
+    cold_war_unlocked: bool = False
+    ai_response: Optional[str] = None
     error: Optional[str] = None
     message: Optional[str] = None
+
+
+class StatusEffectItem(BaseModel):
+    """Status effect item for display"""
+    type: str
+    duration_messages: int
+    prompt_modifier: str
 
 
 class GiftCatalogItem(BaseModel):
@@ -61,11 +82,16 @@ class GiftCatalogItem(BaseModel):
     description_cn: Optional[str] = None
     price: int
     xp_reward: int
+    xp_multiplier: Optional[float] = 1.0
     icon: Optional[str] = None
-    category: Optional[str] = "normal"
-    is_spicy: Optional[bool] = False
+    tier: int = 1
+    category: Optional[str] = None
+    emotion_boost: Optional[int] = None
+    status_effect: Optional[StatusEffectItem] = None
+    clears_cold_war: Optional[bool] = False
+    force_emotion: Optional[str] = None
+    level_boost: Optional[bool] = False
     requires_subscription: Optional[bool] = False
-    triggers_scene: Optional[str] = None
     sort_order: Optional[int] = 0
 
 
@@ -96,14 +122,50 @@ class GiftSummary(BaseModel):
 # ============================================================================
 
 @router.get("/catalog", response_model=List[GiftCatalogItem])
-async def get_gift_catalog():
+async def get_gift_catalog(tier: Optional[int] = None):
     """
     Get available gift catalog.
     
     Returns list of all purchasable gifts with pricing and XP rewards.
+    Optionally filter by tier (1-4):
+    - Tier 1: 日常消耗品 (Consumables)
+    - Tier 2: 状态触发器 (State Triggers)
+    - Tier 3: 关系加速器 (Speed Dating)
+    - Tier 4: 榜一大哥尊享 (Whale Bait)
     """
-    catalog = await gift_service.get_catalog()
+    catalog = await gift_service.get_catalog(tier=tier)
     return [GiftCatalogItem(**g) for g in catalog]
+
+
+@router.get("/catalog/by-tier")
+async def get_gift_catalog_by_tier():
+    """
+    Get gift catalog organized by tier.
+    
+    Returns:
+    {
+        "1": [...],  # 日常消耗品
+        "2": [...],  # 状态触发器
+        "3": [...],  # 关系加速器
+        "4": [...]   # 榜一大哥尊享
+    }
+    """
+    by_tier = await gift_service.get_catalog_by_tier()
+    return {str(k): v for k, v in by_tier.items()}
+
+
+@router.get("/effects/{character_id}")
+async def get_active_effects(character_id: str, req: Request):
+    """
+    Get active status effects for a character.
+    
+    Returns current effects from Tier 2 gifts (tipsy, maid_mode, truth_mode, etc.)
+    """
+    user = getattr(req.state, "user", None)
+    user_id = str(user.user_id) if user else "demo-user-123"
+    
+    status = await effect_service.get_effect_status(user_id, character_id)
+    return status
 
 
 @router.post("/send", response_model=SendGiftResponse)
@@ -144,6 +206,15 @@ async def send_gift(request: SendGiftRequest, req: Request):
             message=result.get("message"),
         )
     
+    # Build status effect info if present
+    status_effect_info = None
+    if result.get("status_effect_applied"):
+        se = result["status_effect_applied"]
+        status_effect_info = StatusEffectInfo(
+            type=se["type"],
+            duration_messages=se["duration"],
+        )
+    
     response = SendGiftResponse(
         success=True,
         is_duplicate=result.get("is_duplicate", False),
@@ -152,11 +223,14 @@ async def send_gift(request: SendGiftRequest, req: Request):
         gift_name=result.get("gift", {}).get("gift_name"),
         gift_name_cn=result.get("gift", {}).get("gift_name_cn"),
         icon=result.get("gift", {}).get("icon"),
+        tier=result.get("gift", {}).get("tier"),
         credits_deducted=result.get("credits_deducted"),
         new_balance=result.get("new_balance"),
         xp_awarded=result.get("xp_awarded"),
         level_up=result.get("level_up", False),
         new_level=result.get("new_level"),
+        status_effect_applied=status_effect_info,
+        cold_war_unlocked=result.get("cold_war_unlocked", False),
     )
     
     # Record gift in stats (if not duplicate)
