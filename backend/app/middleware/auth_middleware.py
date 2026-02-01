@@ -56,11 +56,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Create user context
         if self.mock_mode:
             # Mock mode: create demo user with consistent ID
-            # Get actual subscription status from payment service
-            from app.services.payment_service import payment_service
-            subscription = await payment_service.get_subscription(DEMO_USER_ID)
-            subscription_tier = subscription.get("tier", "free")
-            is_subscribed = subscription_tier != "free"
+            # Get actual subscription status from unified subscription service
+            from app.services.subscription_service import subscription_service
+            subscription_info = await subscription_service.get_subscription_info(DEMO_USER_ID)
+            subscription_tier = subscription_info.get("effective_tier", "free")
+            is_subscribed = subscription_info.get("is_subscribed", False)
             
             request.state.user = UserContext(
                 user_id=DEMO_USER_ID,

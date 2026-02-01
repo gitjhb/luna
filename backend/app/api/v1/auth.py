@@ -91,11 +91,19 @@ async def guest_login():
 
 @router.get("/me")
 async def get_current_user():
-    """Get current user info (mock)"""
+    """Get current user info (uses unified subscription service)"""
+    user_id = "demo-user-123"
+    
+    # Use unified subscription service for accurate tier info
+    from app.services.subscription_service import subscription_service
+    subscription_info = await subscription_service.get_subscription_info(user_id)
+    
     return {
-        "user_id": "demo-user-123",
+        "user_id": user_id,
         "email": "demo@example.com",
-        "subscription_tier": "free",
+        "subscription_tier": subscription_info.get("effective_tier", "free"),
+        "is_subscribed": subscription_info.get("is_subscribed", False),
+        "subscription_expires_at": subscription_info.get("expires_at"),
     }
 
 

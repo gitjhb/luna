@@ -61,13 +61,14 @@ async def get_emotion_status(character_id: UUID, request: Request):
         is_vip = True  # Demo mode: always VIP
     else:
         user_id = str(user.user_id)
-        # Check subscription_tier for VIP status
-        tier = getattr(user, "subscription_tier", "free")
-        is_vip = tier in ["premium", "vip"]
         
         # Testing bypass: guest users, demo user, and MOCK_MODE always have access
         if user_id.startswith("guest-") or user_id.startswith("demo-") or MOCK_MODE:
             is_vip = True
+        else:
+            # Use unified subscription service to check VIP status
+            from app.services.subscription_service import subscription_service
+            is_vip = await subscription_service.is_subscribed(user_id)
     
     # Check VIP status
     if not is_vip:

@@ -102,29 +102,78 @@ async def purchase_credits(request: PurchaseRequest):
 
 
 @router.get("/subscription", response_model=SubscriptionInfo)
-async def get_subscription():
-    """Get current subscription info"""
+async def get_subscription(req: Request):
+    """
+    Get current subscription info
+    
+    Uses unified subscription service for accurate tier info.
+    """
+    user = getattr(req.state, "user", None)
+    user_id = str(user.user_id) if user else "demo-user-123"
+    
+    from app.services.subscription_service import subscription_service
+    info = await subscription_service.get_subscription_info(user_id)
+    
     return SubscriptionInfo(
-        tier=_mock_wallet["subscription_tier"],
-        expires_at=None,
-        auto_renew=False,
+        tier=info.get("effective_tier", "free"),
+        expires_at=info.get("expires_at"),
+        auto_renew=info.get("auto_renew", False),
     )
 
 
 @router.post("/subscribe/{plan_id}")
-async def subscribe(plan_id: str):
-    """Subscribe to a plan (mock)"""
+async def subscribe(plan_id: str, req: Request):
+    """
+    Subscribe to a plan
+    
+    Uses unified subscription service.
+    """
+    user = getattr(req.state, "user", None)
+    user_id = str(user.user_id) if user else "demo-user-123"
+    
     plans = {
-        "basic": {"tier": "premium", "daily": 100},
-        "pro": {"tier": "premium", "daily": 300},
-        "vip": {"tier": "vip", "daily": 1000},
+        "basic": {"tier": "premium", "duration_days": 30},
+        "pro": {"tier": "premium", "duration_days": 30},
+        "vip": {"tier": "vip", "duration_days": 30},
     }
 
     plan = plans.get(plan_id)
     if not plan:
         raise HTTPException(status_code=400, detail="Invalid plan")
 
-    _mock_wallet["subscription_tier"] = plan["tier"]
-    _mock_wallet["daily_limit"] = plan["daily"]
+    from app.services.subscription_service import subscription_service
+    info = await subscription_service.activate_subscription(
+        user_id=user_id,
+        tier=plan["tier"],
+        duration_days=plan["duration_days"],
+        payment_provider="mock",
+    )
 
-    return {"status": "subscribed", "tier": plan["tier"]}
+    return {
+        "status": "subscribed",
+        "tier": info.get("effective_tier"),
+        "expires_at": info.get("expires_at"),
+    }
+
+
+@router.get("/subscription/debug")
+async def debug_subscription(req: Request):
+    """
+    Debug endpoint: Get detailed subscription info
+    
+    Returns all subscription-related info for debugging.
+    """
+    user = getattr(req.state, "user", None)
+    user_id = str(user.user_id) if user else "demo-user-123"
+    
+    from app.services.subscription_service import subscription_service
+    info = await subscription_service.get_subscription_info(user_id)
+    
+    return {
+        "user_id": user_id,
+        "subscription": info,
+        "debug": {
+            "tier_from_request_state": getattr(user, "subscription_tier", "N/A") if user else "N/A",
+            "is_subscribed_from_request_state": getattr(user, "is_subscribed", "N/A") if user else "N/A",
+        }
+    }

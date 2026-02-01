@@ -105,12 +105,17 @@ class AuthService:
         )
         wallet = result.scalar_one()
         
+        # Use unified subscription service to get effective tier
+        from app.services.subscription_service import subscription_service
+        effective_tier = await subscription_service.get_effective_tier(user.user_id)
+        is_subscribed = effective_tier != "free"
+        
         return {
             "user_id": user.user_id,
             "email": user.email,
             "display_name": user.display_name,
-            "is_subscribed": user.is_subscribed,
-            "subscription_tier": user.subscription_tier,
+            "is_subscribed": is_subscribed,
+            "subscription_tier": effective_tier,
             "credits_balance": wallet.total_credits,
             "access_token": id_token,  # In production, generate your own JWT
         }

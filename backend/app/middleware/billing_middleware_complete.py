@@ -266,11 +266,14 @@ class BillingMiddleware(BaseHTTPMiddleware):
                 detail="User not found"
             )
         
-        # Populate billing context
+        # Populate billing context - use unified subscription service for tier
+        from app.services.subscription_service import subscription_service
+        effective_tier = await subscription_service.get_effective_tier(user_id)
+        
         billing_context.user_id = user_id
         billing_context.user = user
-        billing_context.is_subscribed = user.is_subscribed
-        billing_context.subscription_tier = user.subscription_tier
+        billing_context.is_subscribed = effective_tier != "free"
+        billing_context.subscription_tier = effective_tier
         billing_context.initial_credits = user.wallet.total_credits if user.wallet else 0.0
     
     async def _check_rate_limit(self, billing_context: BillingContext) -> None:

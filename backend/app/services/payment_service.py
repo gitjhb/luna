@@ -268,33 +268,26 @@ class PaymentService:
     # ========================================================================
     
     async def get_subscription(self, user_id: str) -> dict:
-        """Get user subscription status"""
-        if user_id not in _subscriptions:
-            _subscriptions[user_id] = {
-                "user_id": user_id,
-                "tier": "free",
-                "started_at": None,
-                "expires_at": None,
-                "auto_renew": False,
-                "payment_provider": None,
-                "is_active": True,
-                "created_at": datetime.utcnow(),
-            }
+        """
+        Get user subscription status
         
-        sub = _subscriptions[user_id]
+        NOTE: This method now delegates to subscription_service for consistency.
+        Use subscription_service directly for new code.
+        """
+        from app.services.subscription_service import subscription_service
+        info = await subscription_service.get_subscription_info(user_id)
         
-        # Check if subscription expired
-        if sub["tier"] != "free" and sub["expires_at"]:
-            if datetime.utcnow() > sub["expires_at"]:
-                sub["tier"] = "free"
-                sub["is_active"] = True  # Free is always active
-                logger.info(f"Subscription expired for user {user_id}")
-        
-        sub["is_active"] = sub["tier"] == "free" or (
-            sub["expires_at"] and datetime.utcnow() < sub["expires_at"]
-        )
-        
-        return sub
+        # Convert to legacy format for backward compatibility
+        return {
+            "user_id": user_id,
+            "tier": info.get("effective_tier", "free"),
+            "started_at": info.get("started_at"),
+            "expires_at": info.get("expires_at"),
+            "auto_renew": info.get("auto_renew", False),
+            "payment_provider": None,
+            "is_active": info.get("is_active", True),
+            "created_at": datetime.utcnow(),
+        }
     
     async def subscribe(
         self,
@@ -304,28 +297,23 @@ class PaymentService:
         payment_provider: str = "mock",
         provider_transaction_id: str = None,
     ) -> dict:
-        """Subscribe user to a plan"""
+        """
+        Subscribe user to a plan
         
+        NOTE: This method now delegates to subscription_service for consistency.
+        """
         if plan_id not in SUBSCRIPTION_PLANS:
             raise ValueError(f"Invalid plan: {plan_id}")
         
         plan = SUBSCRIPTION_PLANS[plan_id]
-        current_sub = await self.get_subscription(user_id)
-        
-        # Check tier hierarchy - can't downgrade to lower tier
-        current_tier_level = TIER_HIERARCHY.get(current_sub["tier"], 0)
-        new_tier_level = TIER_HIERARCHY.get(plan["tier"], 0)
-        
-        if new_tier_level < current_tier_level and current_sub["is_active"]:
-            raise ValueError(f"Cannot downgrade from {current_sub['tier']} to {plan['tier']} while subscription is active")
         
         # Calculate price and duration
         if billing_period == "yearly":
             price = plan["price_yearly"]
-            duration = timedelta(days=365)
+            duration_days = 365
         else:
             price = plan["price_monthly"]
-            duration = timedelta(days=30)
+            duration_days = 30
         
         # In mock mode, skip actual payment
         if MOCK_PAYMENT:
@@ -333,41 +321,18 @@ class PaymentService:
             provider_transaction_id = f"mock_sub_{uuid4().hex[:8]}"
         else:
             # TODO: Call real payment provider (Apple/Google/Stripe)
-            # This is where you'd integrate with:
-            # - Apple StoreKit for iOS
-            # - Google Play Billing for Android
-            # - Stripe for web
             raise NotImplementedError("Real payment not implemented yet")
         
-        # Update subscription
-        now = datetime.utcnow()
-        _subscriptions[user_id] = {
-            "user_id": user_id,
-            "tier": plan["tier"],
-            "started_at": now,
-            "expires_at": now + duration,
-            "auto_renew": True,
-            "payment_provider": payment_provider,
-            "provider_subscription_id": provider_transaction_id,
-            "is_active": True,
-            "created_at": current_sub.get("created_at", now),
-            "updated_at": now,
-        }
-        
-        # Record transaction
-        transaction = {
-            "id": str(uuid4()),
-            "user_id": user_id,
-            "transaction_type": "subscription",
-            "amount": price,
-            "credits": 0,
-            "description": f"Subscribe to {plan['name']} ({billing_period})",
-            "payment_provider": payment_provider,
-            "provider_transaction_id": provider_transaction_id,
-            "status": "completed",
-            "created_at": now,
-        }
-        _transactions.append(transaction)
+        # Use unified subscription service
+        from app.services.subscription_service import subscription_service
+        subscription_info = await subscription_service.activate_subscription(
+            user_id=user_id,
+            tier=plan["tier"],
+            duration_days=duration_days,
+            payment_provider=payment_provider,
+            provider_transaction_id=provider_transaction_id,
+            price=price,
+        )
         
         # Update wallet daily credits based on new tier
         wallet = await self.get_or_create_wallet(user_id)
@@ -377,12 +342,23 @@ class PaymentService:
         
         return {
             "success": True,
-            "subscription": _subscriptions[user_id],
-            "transaction": transaction,
+            "subscription": subscription_info,
+            "transaction": {
+                "id": str(uuid4()),
+                "user_id": user_id,
+                "transaction_type": "subscription",
+                "amount": price,
+                "description": f"Subscribe to {plan['name']} ({billing_period})",
+                "status": "completed",
+                "created_at": datetime.utcnow(),
+            },
         }
     
     async def cancel_subscription(self, user_id: str, immediate: bool = True) -> dict:
-        """Cancel subscription
+        """
+        Cancel subscription
+        
+        NOTE: This method now delegates to subscription_service for consistency.
         
         Args:
             user_id: User ID
@@ -391,47 +367,8 @@ class PaymentService:
         
         Note: No refunds, credits are preserved.
         """
-        sub = await self.get_subscription(user_id)
-        
-        if sub["tier"] == "free":
-            return {"success": False, "message": "No active subscription to cancel"}
-        
-        old_tier = sub["tier"]
-        now = datetime.utcnow()
-        
-        if immediate:
-            # Immediate cancellation - downgrade to free now
-            # Credits are preserved (handled separately in wallet)
-            _subscriptions[user_id] = {
-                "user_id": user_id,
-                "tier": "free",
-                "started_at": now,
-                "expires_at": None,
-                "auto_renew": False,
-                "payment_provider": None,
-                "provider_subscription_id": None,
-                "is_active": False,
-                "created_at": sub.get("created_at", now),
-                "updated_at": now,
-            }
-            
-            logger.info(f"User {user_id} cancelled subscription immediately: {old_tier} -> free")
-            
-            return {
-                "success": True,
-                "message": "订阅已取消，已降级为免费用户。金币余额已保留。",
-                "subscription": _subscriptions[user_id],
-            }
-        else:
-            # Just stop auto-renew, keep benefits until expiry
-            sub["auto_renew"] = False
-            sub["updated_at"] = now
-            
-            return {
-                "success": True,
-                "message": f"自动续费已关闭，订阅将于 {sub['expires_at'].strftime('%Y-%m-%d')} 到期",
-                "subscription": sub,
-            }
+        from app.services.subscription_service import subscription_service
+        return await subscription_service.cancel_subscription(user_id, immediate=immediate)
     
     # ========================================================================
     # Purchase Operations

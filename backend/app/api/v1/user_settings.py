@@ -80,17 +80,20 @@ async def update_settings(request: Request, body: UpdateSettingsRequest):
     user = getattr(request.state, "user", None)
     user_id = str(user.user_id) if user else "demo-user-123"
     
-    # Check subscription for NSFW
+    # Check subscription for NSFW - use unified subscription service
     if body.nsfw_enabled:
-        tier = getattr(user, "subscription_tier", "free") if user else "free"
-        # Allow guest/demo users for testing
-        is_subscribed = tier in ["premium", "vip"] or user_id.startswith("guest-") or user_id.startswith("demo-")
+        from app.services.subscription_service import subscription_service
         
-        if not is_subscribed:
-            raise HTTPException(
-                status_code=403,
-                detail="成人内容需要订阅 Premium 或 VIP 会员才能开启"
-            )
+        # Allow guest/demo users for testing
+        if user_id.startswith("guest-") or user_id.startswith("demo-"):
+            pass  # Allow for testing
+        else:
+            can_nsfw = await subscription_service.has_feature(user_id, "nsfw_enabled")
+            if not can_nsfw:
+                raise HTTPException(
+                    status_code=403,
+                    detail="成人内容需要订阅 Premium 或 VIP 会员才能开启"
+                )
     
     from app.core.database import get_db
     from sqlalchemy import select

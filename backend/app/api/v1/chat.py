@@ -237,10 +237,13 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         character_name = session["character_name"]
         character_id = session["character_id"]
         
-        # Check user subscription for memory features
+        # Check user subscription for memory features - use unified subscription service
         user = getattr(req.state, "user", None)
         user_id = str(user.user_id) if user else "demo-user-123"
-        is_premium = getattr(user, "is_subscribed", False) if user else False
+        
+        # Use unified subscription service instead of request.state
+        from app.services.subscription_service import subscription_service
+        is_premium = await subscription_service.is_subscribed(user_id)
         
         # Get intimacy level from request
         intimacy_level = request.intimacy_level
