@@ -230,6 +230,9 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             CharacterPersonality, EmotionState
         )
         
+        # 获取角色数据
+        character_data = get_character_by_id(character_id)
+        
         # 构建角色性格
         character_personality = CharacterPersonality(
             name=character_name,
