@@ -294,19 +294,21 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         except Exception as e:
             logger.warning(f"Failed to update emotion score: {e}")
         
-        # 检查是否处于冷战状态
+        # 检查是否处于冷战状态 (只用 score_service 判断，避免两套系统不同步)
         is_cold_war = False
+        emotion_score = 0
         try:
             score_check = await emotion_score_service.get_score(user_id, character_id)
+            emotion_score = score_check.get("score", 0)
             if score_check and score_check.get("in_cold_war"):
                 is_cold_war = True
-            elif score_check and score_check.get("score", 0) <= -75:
+            elif emotion_score <= -75:
                 is_cold_war = True
         except:
             pass
         
-        # 如果角色处于沉默/冷战状态，不回复
-        if emotional_state in ["silent", "cold"] or is_cold_war:
+        # 只有分数真的到冷战阈值才不回复 (不再用 emotion_service 的 silent/cold 单独触发)
+        if is_cold_war:
             # 角色太受伤/生气了，不想说话
             logger.info(f"Character in cold war / silent mode, not responding")
             silent_response = "..."
