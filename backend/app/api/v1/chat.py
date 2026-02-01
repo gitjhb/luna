@@ -15,6 +15,7 @@ from app.models.schemas import (
 )
 from app.services.intimacy_service import intimacy_service, IntimacyService
 from app.services.chat_repository import chat_repo
+from app.services.chat_debug_logger import chat_debug
 from app.api.v1.characters import CHARACTERS, get_character_by_id
 from app.config import settings
 
@@ -124,15 +125,19 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
     """
     import time
     request_id = f"{int(time.time()*1000)}"
+    chat_debug.set_request_id(request_id)
     
     # Initialize debug variables
     l1_result = None
     game_result = None
+    emotion_before = 0
+    emotion_after = 0
     
     logger.info(f"")
     logger.info(f"🚀 [{request_id}] NEW REQUEST RECEIVED")
     logger.info(f"   Session: {request.session_id}")
     logger.info(f"   Message: '{request.message[:50]}{'...' if len(request.message) > 50 else ''}'")
+    chat_debug._log("INFO", "REQUEST", f"新请求开始 - {request.message[:100]}")
     
     session_id = str(request.session_id)
 
@@ -222,6 +227,7 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         # Step 1: L1 感知层 (Perception Engine)
         # =====================================================================
         logger.info(f"📡 Step 1: L1 Perception Engine")
+        chat_debug.log_l1_input(request.message, intimacy_level, context_messages)
         
         l1_result = await perception_engine.analyze(
             message=request.message,
@@ -229,6 +235,7 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             context_messages=context_messages
         )
         
+        chat_debug.log_l1_output(l1_result)
         logger.info(f"L1 Result: safety={l1_result.safety_flag}, intent={l1_result.intent}, "
                     f"difficulty={l1_result.difficulty_rating}, sentiment={l1_result.sentiment:.2f}, "
                     f"nsfw={l1_result.is_nsfw}")
@@ -237,6 +244,7 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         # Step 2: 中间件逻辑层 (Game Engine / Physics Engine)
         # =====================================================================
         logger.info(f"⚙️ Step 2: Game Engine (Middleware)")
+        chat_debug.log_game_input(user_id, character_id, l1_result.intent, l1_result.sentiment)
         
         game_result = await game_engine.process(
             user_id=user_id,
@@ -244,6 +252,8 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             l1_result=l1_result
         )
         
+        chat_debug.log_game_output(game_result)
+        emotion_before = game_result.current_emotion  # 记录情绪便于后续对比
         logger.info(f"Game Result: passed={game_result.check_passed}, reason={game_result.refusal_reason}, "
                     f"emotion={game_result.current_emotion}, intimacy={game_result.current_intimacy}")
         
@@ -293,6 +303,19 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         except Exception as e:
             logger.warning(f"Failed to load gift memory: {e}")
         
+        # 检查状态效果 (Tier 2 礼物)
+        effect_modifier = None
+        try:
+            from app.services.effect_service import effect_service
+            effect_modifier = await effect_service.get_combined_prompt_modifier(user_id, character_id)
+            if effect_modifier:
+                chat_debug.log_effect_modifier(effect_modifier)
+                # 获取效果状态用于日志
+                effects_status = await effect_service.get_effect_status(user_id, character_id)
+                chat_debug.log_effects(effects_status.get("effects", []))
+        except Exception as e:
+            logger.warning(f"Failed to get effect modifier: {e}")
+        
         # 构建动态 System Prompt
         system_prompt = prompt_builder.build(
             game_result=game_result,
@@ -301,6 +324,12 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             context_messages=context_messages,
             memory_context=gift_memory
         )
+        
+        # 注入状态效果到 prompt
+        if effect_modifier:
+            system_prompt = f"{system_prompt}\n\n{effect_modifier}"
+        
+        chat_debug.log_prompt(system_prompt)
         
         # 构建对话
         conversation = [{"role": "system", "content": system_prompt}]
@@ -331,6 +360,8 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             req.state.billing.is_spicy_mode = spicy_mode
         
         # 调用 L2 LLM (temperature 0.7-0.9 for creativity)
+        chat_debug.log_l2_input(conversation, temperature=0.8)
+        
         try:
             result = await grok.chat_completion(
                 messages=conversation,
@@ -339,10 +370,24 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             )
             reply = result["choices"][0]["message"]["content"]
             tokens = result.get("usage", {}).get("total_tokens", 0)
+            
+            chat_debug.log_l2_output(reply, tokens)
             logger.info(f"L2 Response: {reply[:100]}...")
             logger.info(f"Tokens used: {tokens}")
+            
+            # 减少状态效果计数
+            try:
+                from app.services.effect_service import effect_service
+                expired = await effect_service.decrement_effects(user_id, character_id)
+                if expired:
+                    for e in expired:
+                        chat_debug._log("INFO", "EFFECT_EXPIRED", f"效果已过期: {e['effect_type']}")
+            except Exception as e:
+                logger.warning(f"Failed to decrement effects: {e}")
+                
         except Exception as e:
             logger.error(f"L2 Grok API error: {e}")
+            chat_debug._log("ERROR", "L2_ERROR", str(e))
             reply = f"抱歉，我暂时无法回应。请稍后再试。"
             tokens = 10
 
