@@ -223,91 +223,47 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             intimacy_instruction = "You have a deep bond. Be intimate, caring, and emotionally connected."
         
         # =====================================================================
-        # 情绪系统 - 让角色有边界感
+        # 情绪系统 v2 - 三层分析架构
         # =====================================================================
-        from app.services.emotion_service import emotion_service
-        from app.services.emotion_score_service import emotion_score_service
+        from app.services.emotion_engine_v2 import (
+            emotion_engine, emotion_prompt_generator,
+            CharacterPersonality, EmotionState
+        )
         
-        # 处理用户消息，更新情绪状态
-        emotion_result = await emotion_service.process_message(
+        # 构建角色性格
+        character_personality = CharacterPersonality(
+            name=character_name,
+            base_temperament=character_data.get("temperament", "cheerful") if character_data else "cheerful",
+            sensitivity=character_data.get("sensitivity", 0.5) if character_data else 0.5,
+            forgiveness_rate=character_data.get("forgiveness_rate", 0.6) if character_data else 0.6,
+            jealousy_level=character_data.get("jealousy_level", 0.3) if character_data else 0.3,
+        )
+        
+        # 获取对话上下文
+        context_messages = [
+            {"role": m["role"], "content": m["content"]} 
+            for m in all_messages[-10:]
+        ]
+        
+        # 处理消息，更新情绪（三层分析）
+        emotion_result = await emotion_engine.process_message(
             user_id=user_id,
             character_id=character_id,
             message=request.message,
+            context=context_messages,
+            character=character_personality,
             intimacy_level=intimacy_level,
         )
         
-        emotional_state = emotion_result["emotional_state"]
-        emotion_intensity = emotion_result.get("emotion_intensity", 0)
-        logger.info(f"Emotion: {emotional_state} (intensity: {emotion_intensity})")
+        emotion_score = emotion_result["new_score"]
+        emotion_state = EmotionState(emotion_result["new_state"])
+        emotion_delta = emotion_result["delta_applied"]
         
-        # 更新情绪分数 (用于缓冲情绪变化)
-        try:
-            # 检测正面触发词 - 即使角色还在生气，好话也能加分
-            positive_words_cn = ["爱你", "喜欢你", "想你", "对不起", "抱歉", "好看", "漂亮", "可爱", "厉害"]
-            positive_words_en = ["love you", "like you", "miss you", "sorry", "beautiful", "cute", "amazing"]
-            
-            message_lower = request.message.lower()
-            has_positive = any(w in request.message for w in positive_words_cn) or \
-                          any(w in message_lower for w in positive_words_en)
-            
-            # 根据情绪状态变化计算 delta
-            state_to_delta = {
-                "loving": 15,
-                "happy": 10,
-                "neutral": 0,
-                "curious": 5,
-                "annoyed": -15,
-                "angry": -30,
-                "hurt": -25,
-                "cold": -20,
-                "silent": -35,
-            }
-            delta = state_to_delta.get(emotional_state, 0)
-            
-            # 如果有正面词，减轻负面影响或增加正面效果
-            if has_positive:
-                if delta < 0:
-                    # 负面状态 + 正面消息 → 情绪恢复
-                    delta = max(delta + 20, 10)  # 至少 +10
-                    logger.info(f"Positive message detected, adjusted delta: {delta}")
-                else:
-                    # 正面状态 + 正面消息 → 更好
-                    delta = delta + 10
-            else:
-                # 强度越高，负面变化越大
-                if delta != 0:
-                    delta = int(delta * (1 + emotion_intensity / 100))
-            
-            if delta != 0:
-                reason = f"chat:{emotional_state}"
-                if has_positive:
-                    reason = f"positive:{emotional_state}"
-                    
-                score_data = await emotion_score_service.update_score(
-                    user_id=user_id,
-                    character_id=character_id,
-                    delta=delta,
-                    reason=reason,
-                    intimacy_level=intimacy_level,
-                )
-                logger.info(f"Emotion score updated: {score_data.get('score')} ({delta:+d})")
-        except Exception as e:
-            logger.warning(f"Failed to update emotion score: {e}")
+        logger.info(f"Emotion v2: {emotion_result['previous_state']} -> {emotion_state.value} "
+                    f"(score: {emotion_result['previous_score']} -> {emotion_score}, delta: {emotion_delta:+d})")
         
-        # 检查情绪分数 (统一用 score_service)
-        emotion_score = 0
-        is_blocked = False  # -100: 被拉黑
-        try:
-            score_check = await emotion_score_service.get_score(user_id, character_id)
-            emotion_score = score_check.get("score", 0)
-            # 只有到 -100 才是真正被拉黑
-            if emotion_score <= -100:
-                is_blocked = True
-        except:
-            pass
-        
-        # 被拉黑：系统提示，类似微信"对方不是你的好友"
-        if is_blocked:
+        # 检查是否被拉黑
+        if emotion_state == EmotionState.BLOCKED:
             logger.info(f"User blocked by character (score: {emotion_score})")
             blocked_message = f"[系统提示] {character_name}已将你删除好友，无法发送消息。"
             await chat_repo.add_message(
@@ -325,13 +281,43 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
                     "blocked": True, 
                     "message": "你已被拉黑。送「真诚道歉礼盒」或许能挽回？",
                     "can_recover": True,
+                    "emotion": {"score": emotion_score, "state": emotion_state.value},
                 }
             )
         
-        # 获取情绪 prompt
-        emotion_data = await emotion_service.get_emotion(user_id, character_id)
-        personality_data = await emotion_service.get_personality(character_id)
-        emotion_prompt = emotion_service.generate_emotion_prompt(emotion_data, personality_data)
+        # 检查冷战状态下是否有特殊回复
+        if emotion_result.get("cold_war_active"):
+            cold_war_response = emotion_result.get("hint", "...")
+            await chat_repo.add_message(
+                session_id=session_id,
+                role="assistant",
+                content=cold_war_response,
+                tokens_used=0,
+            )
+            return ChatCompletionResponse(
+                message_id=uuid4(),
+                content=cold_war_response,
+                tokens_used=0,
+                character_name=character_name,
+                extra_data={
+                    "cold_war": True,
+                    "message": emotion_result.get("hint"),
+                    "requires_gift": True,
+                    "emotion": {"score": emotion_score, "state": emotion_state.value},
+                }
+            )
+        
+        # 生成情绪 prompt
+        emotion_prompt = emotion_prompt_generator.generate(
+            state=emotion_state,
+            score=emotion_score,
+            character_name=character_name,
+            intimacy_level=intimacy_level,
+            recent_trigger=emotion_result.get("analysis", {}).get("reasoning"),
+        )
+        
+        # 获取 LLM 参数修改
+        llm_modifiers = emotion_prompt_generator.get_response_modifier(emotion_state, emotion_score)
         
         # Get gift memory for context
         from app.services.gift_service import gift_service

@@ -78,40 +78,34 @@ async def get_emotion_status(character_id: UUID, request: Request):
     
     char_id = str(character_id)
     
-    # First try emotion_score_service (in-memory, most up-to-date)
+    # Use emotion engine v2
     try:
-        from app.services.emotion_score_service import emotion_score_service
-        score_data = await emotion_score_service.get_score(user_id, char_id)
+        from app.services.emotion_engine_v2 import emotion_engine
         
-        if score_data:
-            score = score_data.get("score", 0)
-            state = score_data.get("state", "neutral")
-            
-            # Map state to API format
-            state_mapping = {
-                "loving": "loving", "happy": "happy", "content": "happy",
-                "neutral": "neutral", "annoyed": "annoyed", "upset": "annoyed",
-                "angry": "angry", "furious": "angry", "cold_war": "cold",
-            }
-            emotional_state = state_mapping.get(state, "neutral")
-            
-            # Negative states have negative display
-            negative_states = ["annoyed", "angry", "furious", "cold_war", "cold"]
-            is_negative = state in negative_states or emotional_state in ["annoyed", "angry", "cold"]
-            
-            return EmotionStatusResponse(
-                user_id=user_id,
-                character_id=char_id,
-                emotional_state=emotional_state,
-                emotion_intensity=abs(score),
-                emotion_reason=score_data.get("last_reason"),
-                times_angered=score_data.get("offense_count", 0),
-                times_hurt=0,
-                emotion_changed_at=score_data.get("updated_at"),
-            )
+        score = await emotion_engine.get_score(user_id, char_id)
+        state = emotion_engine.score_to_state(score)
+        
+        # Map state to API format
+        state_mapping = {
+            "loving": "loving", "happy": "happy", "content": "happy",
+            "neutral": "neutral", "annoyed": "annoyed",
+            "angry": "angry", "cold_war": "cold", "blocked": "blocked",
+        }
+        emotional_state = state_mapping.get(state.value, "neutral")
+        
+        return EmotionStatusResponse(
+            user_id=user_id,
+            character_id=char_id,
+            emotional_state=emotional_state,
+            emotion_intensity=abs(score),
+            emotion_reason=None,
+            times_angered=0,
+            times_hurt=0,
+            emotion_changed_at=None,
+        )
     except Exception as e:
         import logging
-        logging.warning(f"Failed to get emotion from score_service: {e}")
+        logging.warning(f"Failed to get emotion from emotion_engine_v2: {e}")
     
     if MOCK_MODE:
         emotion = _get_mock_emotion(user_id, char_id)
@@ -183,16 +177,17 @@ async def reset_emotion(character_id: UUID, request: Request):
     char_id = str(character_id)
     
     try:
-        from app.services.emotion_score_service import emotion_score_service
+        from app.services.emotion_engine_v2 import emotion_engine
         
         # Reset to neutral (score = 0)
-        await emotion_score_service.reset_score(user_id, char_id)
+        new_score = await emotion_engine.reset_score(user_id, char_id)
+        new_state = emotion_engine.score_to_state(new_score)
         
         return {
             "success": True,
             "message": "情绪已重置，冷战解除！",
-            "new_state": "neutral",
-            "new_score": 0,
+            "new_state": new_state.value,
+            "new_score": new_score,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
