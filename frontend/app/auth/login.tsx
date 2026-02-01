@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   ImageBackground,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,6 +19,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme/config';
 import { useUserStore } from '../../store/userStore';
+import { authService } from '../../services/authService';
+import { ReferralCodeModal } from '../../components/ReferralCodeModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -25,36 +28,51 @@ const BG_IMAGE = 'https://i.pinimg.com/originals/8b/1c/a0/8b1ca08def61220dc83e5c
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login } = useUserStore();
+  const { login, updateWallet } = useUserStore();
   const [loading, setLoading] = useState(false);
+  const [showReferralModal, setShowReferralModal] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState(false);
 
-  const handleLogin = async (provider: 'apple' | 'google') => {
+  const handleLogin = async (provider: 'apple' | 'google' | 'guest') => {
     setLoading(true);
     try {
-      const mockUser = {
-        userId: 'user-001',
-        email: provider === 'apple' ? 'user@icloud.com' : 'user@gmail.com',
-        displayName: 'User',
-        subscriptionTier: 'free' as const,
-        createdAt: new Date().toISOString(),
-      };
+      // Call real API
+      const result = await authService.login({ provider });
       
-      const mockWallet = {
-        totalCredits: 1000,  // 给新用户 1000 金币测试
-        dailyFreeCredits: 10,
-        purchedCredits: 990,
-        bonusCredits: 0,
-        dailyCreditsLimit: 10,
-      };
+      login(result.user, result.accessToken, result.wallet);
       
-      await new Promise(r => setTimeout(r, 800));
-      login(mockUser, 'mock-token', mockWallet);
-      router.replace('/(tabs)');
-    } catch (error) {
+      // Check if this is a new user (could be based on result.isNewUser flag from backend)
+      // For now, show referral modal for all guest logins as they're likely new users
+      if (provider === 'guest') {
+        setShowReferralModal(true);
+        setPendingNavigation(true);
+      } else {
+        router.replace('/(tabs)');
+      }
+    } catch (error: any) {
       console.error('Login failed:', error);
+      Alert.alert('登录失败', error.message || '请检查网络连接');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleReferralModalClose = () => {
+    setShowReferralModal(false);
+    if (pendingNavigation) {
+      setPendingNavigation(false);
+      router.replace('/(tabs)');
+    }
+  };
+
+  const handleReferralSuccess = (bonus: number, newBalance: number) => {
+    // Update wallet with new balance
+    updateWallet({ totalCredits: newBalance });
+    
+    // Close modal and navigate after short delay
+    setTimeout(() => {
+      handleReferralModalClose();
+    }, 500);
   };
 
   return (
@@ -99,6 +117,22 @@ export default function LoginScreen() {
 
           {/* Auth Buttons */}
           <View style={styles.authSection}>
+            {/* Guest Login - Primary for testing */}
+            <TouchableOpacity
+              style={styles.guestButton}
+              onPress={() => handleLogin('guest')}
+              disabled={loading}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={theme.colors.primary.gradient}
+                style={styles.guestButtonGradient}
+              >
+                <Ionicons name="person" size={22} color="#fff" />
+                <Text style={styles.guestButtonText}>访客登录</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.appleButton}
               onPress={() => handleLogin('apple')}
@@ -132,6 +166,13 @@ export default function LoginScreen() {
           </Text>
         </View>
       </SafeAreaView>
+
+      {/* Referral Code Modal */}
+      <ReferralCodeModal
+        visible={showReferralModal}
+        onClose={handleReferralModalClose}
+        onSuccess={handleReferralSuccess}
+      />
     </View>
   );
 }
@@ -219,6 +260,22 @@ const styles = StyleSheet.create({
   authSection: {
     gap: 12,
     marginBottom: 20,
+  },
+  guestButton: {
+    borderRadius: 28,
+    overflow: 'hidden',
+  },
+  guestButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 15,
+    gap: 10,
+  },
+  guestButtonText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
   },
   appleButton: {
     flexDirection: 'row',

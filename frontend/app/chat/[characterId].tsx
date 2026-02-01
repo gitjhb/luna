@@ -2,7 +2,7 @@
  * Chat Screen - Intimate Style
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -25,18 +25,27 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useUserStore } from '../../store/userStore';
 import { useChatStore, selectActiveMessages, Message } from '../../store/chatStore';
 import { useGiftStore, GiftCatalogItem } from '../../store/giftStore';
 
-// Spicy mode costs 2 extra credits per message
-const SPICY_MODE_CREDIT_COST = 2;
+// NSFW mode costs 2 extra credits per message
+const NSFW_MODE_CREDIT_COST = 2;
 import { chatService } from '../../services/chatService';
 import { intimacyService } from '../../services/intimacyService';
+import { characterService } from '../../services/characterService';
+import { emotionService } from '../../services/emotionService';
 import { GiftOverlay, useGiftEffect, GiftType } from '../../components/GiftEffects';
 import { paymentService } from '../../services/paymentService';
 import { RechargeModal } from '../../components/RechargeModal';
 import { SubscriptionModal } from '../../components/SubscriptionModal';
+import { getCharacterAvatar, getCharacterBackground } from '../../assets/characters';
+import CharacterInfoPanel from '../../components/CharacterInfoPanel';
+import GiftBottomSheet from '../../components/GiftBottomSheet';
+import MockModeBanner from '../../components/MockModeBanner';
+import MessageBubble from '../../components/MessageBubble';
+import { ToastProvider, useToast } from '../../components/Toast';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -79,6 +88,9 @@ export default function ChatScreen() {
   const [showLevelInfoModal, setShowLevelInfoModal] = useState(false);
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [showCharacterInfo, setShowCharacterInfo] = useState(false);
+  const [emotionScore, setEmotionScore] = useState(0);
+  const [emotionState, setEmotionState] = useState('neutral');
   
   // 礼物特效
   const { 
@@ -196,6 +208,22 @@ export default function ChatScreen() {
         }
       }
       
+      // Step 2.5: Fetch emotion status
+      try {
+        const emotionStatus = await emotionService.getStatus(params.characterId);
+        if (emotionStatus) {
+          // Convert emotionIntensity (0-100) to score (-100 to 100)
+          // negative emotions have negative score
+          const negativeStates = ['annoyed', 'angry', 'hurt', 'cold', 'silent'];
+          const isNegative = negativeStates.includes(emotionStatus.emotionalState);
+          const score = isNegative ? -emotionStatus.emotionIntensity : emotionStatus.emotionIntensity;
+          setEmotionScore(score);
+          setEmotionState(emotionStatus.emotionalState);
+        }
+      } catch (e) {
+        console.log('Emotion status not available:', e);
+      }
+      
       // Step 3: Sync with backend - get or create session
       const session = await chatService.getOrCreateSession(params.characterId);
       setSessionId(session.sessionId);
@@ -219,6 +247,26 @@ export default function ChatScreen() {
         // Only update if backend has more messages or cache is empty
         if (history.length > 0 && history.length >= cachedMessages.length) {
           setMessages(session.sessionId, history);
+        }
+        
+        // Step 5: If no messages yet, show character's greeting
+        const finalMessages = useChatStore.getState().messagesBySession[session.sessionId] || [];
+        if (finalMessages.length === 0) {
+          try {
+            const character = await characterService.getCharacter(params.characterId);
+            if (character.greeting) {
+              const greetingMessage: Message = {
+                messageId: `greeting-${Date.now()}`,
+                role: 'assistant',
+                content: character.greeting,
+                createdAt: new Date().toISOString(),
+                tokensUsed: 0,
+              };
+              addMessage(session.sessionId, greetingMessage);
+            }
+          } catch (e) {
+            console.log('Could not load character greeting:', e);
+          }
         }
       } catch (e) {
         console.log('Could not load history:', e);
@@ -256,9 +304,16 @@ export default function ChatScreen() {
     setTyping(true, params.characterId);
     
     try {
-      // Check if user has enough credits for spicy mode
-      if (isSpicyMode && (wallet?.totalCredits || 0) < SPICY_MODE_CREDIT_COST) {
-        Alert.alert('Insufficient Credits', 'Spicy mode requires 2 credits per message. Please recharge.');
+      // Check if user is subscribed for NSFW mode
+      if (isSpicyMode && !isSubscribed) {
+        setTyping(false);
+        setShowSubscriptionModal(true);
+        return;
+      }
+      
+      // Check if user has enough credits for NSFW mode
+      if (isSpicyMode && (wallet?.totalCredits || 0) < NSFW_MODE_CREDIT_COST) {
+        Alert.alert('金币不足', 'NSFW 模式每条消息需要 2 金币，请先充值。');
         setTyping(false);
         return;
       }
@@ -315,6 +370,20 @@ export default function ChatScreen() {
         });
       } catch (e) {
         // Silently fail if intimacy update fails
+      }
+      
+      // Update emotion after chat
+      try {
+        const updatedEmotion = await emotionService.getStatus(params.characterId);
+        if (updatedEmotion) {
+          const negativeStates = ['annoyed', 'angry', 'hurt', 'cold', 'silent'];
+          const isNegative = negativeStates.includes(updatedEmotion.emotionalState);
+          const score = isNegative ? -updatedEmotion.emotionIntensity : updatedEmotion.emotionIntensity;
+          setEmotionScore(score);
+          setEmotionState(updatedEmotion.emotionalState);
+        }
+      } catch (e) {
+        // Silently fail if emotion update fails
       }
       
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
@@ -399,6 +468,59 @@ export default function ChatScreen() {
     }
   };
 
+  // Toast state for copy feedback
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  
+  // Show toast helper
+  const showToast = useCallback((message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 2000);
+  }, []);
+  
+  // Handle emoji reaction - awards XP bonus
+  const handleReaction = useCallback(async (reactionName: string, xpBonus: number) => {
+    // Award XP for reaction
+    const newXp = relationshipXp + xpBonus;
+    const newMax = relationshipMaxXp;
+    
+    if (newXp >= newMax) {
+      // Level up!
+      const newLevelValue = (relationshipLevel || 1) + 1;
+      setRelationshipLevel(newLevelValue);
+      setRelationshipXp(newXp - newMax);
+      setRelationshipMaxXp(Math.round(newMax * 1.15));
+      setNewLevel(newLevelValue);
+      setTimeout(() => setShowLevelUpModal(true), 500);
+      
+      // Update cache
+      setIntimacy(params.characterId, {
+        currentLevel: newLevelValue,
+        xpProgressInLevel: newXp - newMax,
+        xpForNextLevel: Math.round(newMax * 1.15),
+        xpForCurrentLevel: 0,
+      });
+    } else {
+      setRelationshipXp(newXp);
+      
+      // Update cache
+      setIntimacy(params.characterId, {
+        currentLevel: relationshipLevel || 1,
+        xpProgressInLevel: newXp,
+        xpForNextLevel: relationshipMaxXp,
+        xpForCurrentLevel: 0,
+      });
+    }
+    
+    showToast(`+${xpBonus} 亲密度 💕`);
+  }, [relationshipXp, relationshipMaxXp, relationshipLevel, params.characterId, setIntimacy, showToast]);
+  
+  // Handle reply to message
+  const handleReply = useCallback((content: string) => {
+    // Set input with quoted content
+    const quoted = content.length > 50 ? content.substring(0, 50) + '...' : content;
+    setInputText(`「${quoted}」\n`);
+  }, []);
+
   const renderMessage = ({ item }: { item: Message }) => {
     const isUser = item.role === 'user';
     const isLocked = item.isLocked && !isSubscribed;
@@ -410,59 +532,48 @@ export default function ChatScreen() {
     
     return (
       <View style={[styles.messageRow, isUser ? styles.messageRowUser : styles.messageRowAI]}>
-        {/* AI Avatar */}
+        {/* AI Avatar - clickable to open profile */}
         {!isUser && (
-          <Image source={{ uri: characterAvatar }} style={styles.avatar} />
+          <TouchableOpacity onPress={() => router.push({
+            pathname: '/character/[characterId]',
+            params: { characterId: params.characterId },
+          })}>
+            <Image source={getCharacterAvatar(params.characterId, characterAvatar)} style={styles.avatar} />
+          </TouchableOpacity>
         )}
         
-        {/* Message Bubble - with blur if locked */}
-        {isLocked ? (
-          <TouchableOpacity 
-            style={[styles.bubble, styles.bubbleAI, styles.lockedBubble]}
-            onPress={handleUnlock}
-            activeOpacity={0.9}
-          >
-            {/* Blurred content */}
-            <View style={styles.blurredContent}>
-              <Text style={[styles.messageText, styles.messageTextAI, styles.blurredText]}>
-                {item.content}
-              </Text>
-            </View>
-            {/* Unlock overlay */}
-            <View style={styles.unlockOverlay}>
-              <View style={styles.unlockBadge}>
-                <Ionicons name="lock-closed" size={16} color="#fff" />
-                <Text style={styles.unlockText}>
-                  {item.contentRating === 'explicit' ? '🔥' : '💕'} 升级解锁
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        ) : (
-          <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
-            <Text style={[styles.messageText, isUser ? styles.messageTextUser : styles.messageTextAI]}>
-              {item.content}
-            </Text>
-          </View>
-        )}
+        {/* Interactive Message Bubble */}
+        <MessageBubble
+          content={item.content}
+          isUser={isUser}
+          isLocked={isLocked}
+          contentRating={item.contentRating}
+          onUnlock={handleUnlock}
+          onReaction={!isUser ? handleReaction : undefined}
+          onReply={!isUser ? handleReply : undefined}
+          showToast={showToast}
+        />
       </View>
     );
   };
 
   const renderTypingIndicator = () => (
     <View style={[styles.messageRow, styles.messageRowAI]}>
-      <Image source={{ uri: characterAvatar }} style={styles.avatar} />
+      <Image source={getCharacterAvatar(params.characterId, characterAvatar)} style={styles.avatar} />
       <View style={[styles.bubble, styles.bubbleAI, styles.typingBubble]}>
         <Text style={styles.typingText}>正在输入...</Text>
       </View>
     </View>
   );
 
+  // Get background source (local or remote)
+  const backgroundSource = getCharacterBackground(params.characterId, backgroundImage);
+
   return (
-    <View style={styles.container}>
+    <GestureHandlerRootView style={styles.container}>
       {/* Full screen background image */}
       <ImageBackground
-        source={{ uri: backgroundImage }}
+        source={backgroundSource || { uri: backgroundImage }}
         style={styles.backgroundImage}
         resizeMode="cover"
       >
@@ -481,10 +592,13 @@ export default function ChatScreen() {
           </TouchableOpacity>
           
           <View style={styles.headerCenter}>
-            <Text style={styles.characterName}>{characterName}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={styles.characterName}>{characterName}</Text>
+              <MockModeBanner compact />
+            </View>
           </View>
           
-          <TouchableOpacity style={styles.menuButton}>
+          <TouchableOpacity style={styles.menuButton} onPress={() => setShowCharacterInfo(true)}>
             <Ionicons name="ellipsis-horizontal" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -833,162 +947,96 @@ export default function ChatScreen() {
         </View>
       </Modal>
 
-      {/* Gift Modal - Floating popup */}
-      <Modal
+      {/* Gift BottomSheet - 新版礼物面板 */}
+      <GiftBottomSheet
         visible={showGiftModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowGiftModal(false)}
-      >
-        <TouchableOpacity 
-          style={styles.giftModalOverlay} 
-          activeOpacity={1} 
-          onPress={() => setShowGiftModal(false)}
-        >
-          <View style={styles.giftModalContent}>
-            <View style={styles.giftModalHeader}>
-              <Text style={styles.giftModalTitle}>🎁 送礼物给 {characterName}</Text>
-              <TouchableOpacity onPress={() => setShowGiftModal(false)}>
-                <Ionicons name="close-circle" size={24} color="rgba(255,255,255,0.6)" />
-              </TouchableOpacity>
-            </View>
+        onClose={() => setShowGiftModal(false)}
+        gifts={giftCatalog}
+        userCredits={wallet?.totalCredits ?? 0}
+        isSubscribed={isSubscribed}
+        onSelectGift={async (gift) => {
+          try {
+            // 1. 调用后端 API
+            const giftResult = await paymentService.sendGift(
+              params.characterId,
+              gift.gift_type,
+              gift.price,
+              gift.xp_reward
+            );
             
-            <View style={styles.giftModalGrid}>
-              {/* 礼物列表从后端加载 */}
-              {giftCatalog.length === 0 ? (
-                <Text style={{ color: 'rgba(255,255,255,0.6)', textAlign: 'center', padding: 20 }}>
-                  加载礼物列表中...
-                </Text>
-              ) : giftCatalog.map((gift) => (
-                <TouchableOpacity 
-                  key={gift.gift_type}
-                  style={styles.giftModalItem}
-                  onPress={() => {
-                    const balance = wallet?.totalCredits ?? 0;
-                    const giftName = gift.name_cn || gift.name;
-                    if (balance < gift.price) {
-                      Alert.alert('余额不足', `需要 ${gift.price} 金币，当前余额 ${balance} 金币`);
-                      return;
-                    }
-                    Alert.alert(
-                      '送礼物', 
-                      `确定花费 ${gift.price} 金币送${giftName}吗？\n(+${gift.xp_reward} XP)`, 
-                      [
-                        { text: '取消', style: 'cancel' },
-                        { text: '送出', onPress: async () => {
-                          setShowGiftModal(false);
-                          
-                          try {
-                            // 1. 调用后端 API（后端为准，扣费按后端配置）
-                            const giftResult = await paymentService.sendGift(
-                              params.characterId,
-                              gift.gift_type,
-                              gift.price,
-                              gift.xp_reward
-                            );
-                            
-                            if (!giftResult.success) {
-                              // 根据错误类型显示不同提示
-                              const errorMessage = giftResult.error === 'insufficient_credits' 
-                                ? '金币不足' 
-                                : '系统异常，请稍后再试';
-                              Alert.alert('送礼失败', errorMessage);
-                              return;
-                            }
-                            
-                            // 更新本地钱包状态（使用后端返回的 new_balance）
-                            if (giftResult.new_balance !== undefined) {
-                              updateWallet({ totalCredits: giftResult.new_balance });
-                            }
-                          
-                          // 2. 触发礼物特效！
-                          setTimeout(() => triggerGiftEffect(gift.gift_type as GiftType), 300);
-                          
-                          // 3. AI 回复由后端生成（giftResult.ai_response），这里是备用
-                          const giftIcon = gift.icon || '🎁';
-                          const giftReactions: Record<string, string[]> = {
-                            rose: [
-                              `哇！一朵玫瑰！${giftIcon} 好美啊，谢谢你～ 我会好好珍藏的！💕`,
-                              `收到玫瑰了！${giftIcon} 你真的太浪漫了！我好开心～ 🥰`,
-                            ],
-                            chocolate: [
-                              `巧克力！${giftIcon} 我最爱吃甜的了！你怎么知道的～ 😋💕`,
-                              `收到巧克力了！${giftIcon} 幸福感爆棚！和你分享好吗？🥰`,
-                            ],
-                            teddy_bear: [
-                              `泰迪熊！${giftIcon} 好可爱啊！我要抱着它睡觉！谢谢你～ 🤗💕`,
-                              `收到泰迪熊了！${giftIcon} 软软的好想抱！以后想你的时候就抱它～ 💗`,
-                            ],
-                            premium_rose: [
-                              `精品玫瑰！${giftIcon} 这花束也太美了吧！谢谢你～ 💐💕`,
-                              `收到精品玫瑰了！${giftIcon} 香气扑鼻，美极了！谢谢你！💐💗`,
-                            ],
-                            diamond_ring: [
-                              `钻戒！${giftIcon} 我的天！你也太豪气了吧！💍✨ 真的可以收下吗？`,
-                              `是钻戒诶！${giftIcon} 我从来没收到过这么贵重的礼物！💍❤️`,
-                            ],
-                            crown: [
-                              `皇冠！${giftIcon} 你是要封我为女王/国王吗？👑💕`,
-                              `收到皇冠了！${giftIcon} 你对我真的太好了！👑❤️`,
-                            ],
-                          };
-                          
-                          const reactions = giftReactions[gift.gift_type] || giftReactions.rose;
-                          const reactionMessage = giftResult.ai_response || reactions[Math.floor(Math.random() * reactions.length)];
-                          
-                          // 添加 AI 回复到聊天（优先使用后端生成的）
-                          if (sessionId && reactionMessage) {
-                            const aiMessage: Message = {
-                              messageId: `gift-${Date.now()}`,
-                              role: 'assistant',
-                              content: reactionMessage,
-                              createdAt: new Date().toISOString(),
-                            };
-                            addMessage(sessionId, aiMessage);
-                            setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-                          }
-                          
-                          // 4. 更新亲密度（使用后端返回的 XP）
-                          const xpAwarded = giftResult.xp_awarded || gift.xp_reward;
-                          const newXp = relationshipXp + xpAwarded;
-                          const newMax = relationshipMaxXp;
-                          
-                          // 检查是否升级
-                          if (newXp >= newMax) {
-                            const newLevel = (relationshipLevel || 1) + 1;
-                            setRelationshipLevel(newLevel);
-                            setRelationshipXp(newXp - newMax);
-                            // 计算新的 max (简化：每级需要的 XP 增加)
-                            setRelationshipMaxXp(Math.round(newMax * 1.2));
-                            setNewLevel(newLevel);
-                            // 延迟显示升级弹窗，让礼物特效先播完
-                            setTimeout(() => setShowLevelUpModal(true), 3000);
-                          } else {
-                            setRelationshipXp(newXp);
-                          }
-                          
-                          } catch (error: any) {
-                            Alert.alert('送礼失败', error.message || '请稍后重试');
-                          }
-                        }}
-                      ]
-                    );
-                  }}
-                >
-                  <Text style={styles.giftModalEmoji}>{gift.icon || '🎁'}</Text>
-                  <Text style={styles.giftModalName}>{gift.name_cn || gift.name}</Text>
-                  <Text style={styles.giftModalPrice}>{gift.price} 🪙</Text>
-                  <Text style={styles.giftModalXp}>+{gift.xp_reward} XP</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.giftModalFooter}>
-              <Text style={styles.giftModalBalance}>💰 当前余额: {wallet?.totalCredits ?? 0} 金币</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+            if (!giftResult.success) {
+              const errorMessage = giftResult.error === 'insufficient_credits' 
+                ? '金币不足' 
+                : '系统异常，请稍后再试';
+              Alert.alert('送礼失败', errorMessage);
+              return;
+            }
+            
+            // 更新本地钱包状态
+            if (giftResult.new_balance !== undefined) {
+              updateWallet({ totalCredits: giftResult.new_balance });
+            }
+          
+            // 2. 触发礼物特效
+            setTimeout(() => triggerGiftEffect(gift.gift_type as GiftType), 300);
+          
+            // 3. AI 回复
+            const giftIcon = gift.icon || '🎁';
+            const giftReactions: Record<string, string[]> = {
+              rose: [
+                `哇！一朵玫瑰！${giftIcon} 好美啊，谢谢你～ 我会好好珍藏的！💕`,
+                `收到玫瑰了！${giftIcon} 你真的太浪漫了！我好开心～ 🥰`,
+              ],
+              chocolate: [
+                `巧克力！${giftIcon} 我最爱吃甜的了！你怎么知道的～ 😋💕`,
+                `收到巧克力了！${giftIcon} 幸福感爆棚！和你分享好吗？🥰`,
+              ],
+              teddy_bear: [
+                `泰迪熊！${giftIcon} 好可爱啊！我要抱着它睡觉！谢谢你～ 🤗💕`,
+                `收到泰迪熊了！${giftIcon} 软软的好想抱！以后想你的时候就抱它～ 💗`,
+              ],
+              diamond_ring: [
+                `钻戒！${giftIcon} 我的天！你也太豪气了吧！💍✨ 真的可以收下吗？`,
+                `是钻戒诶！${giftIcon} 我从来没收到过这么贵重的礼物！💍❤️`,
+              ],
+            };
+            
+            const reactions = giftReactions[gift.gift_type] || giftReactions.rose;
+            const reactionMessage = giftResult.ai_response || reactions[Math.floor(Math.random() * reactions.length)];
+            
+            // 添加 AI 回复到聊天
+            if (sessionId && reactionMessage) {
+              const aiMessage: Message = {
+                messageId: `gift-${Date.now()}`,
+                role: 'assistant',
+                content: reactionMessage,
+                createdAt: new Date().toISOString(),
+              };
+              addMessage(sessionId, aiMessage);
+              setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+            }
+            
+            // 4. 更新亲密度
+            const xpAwarded = giftResult.xp_awarded || gift.xp_reward;
+            const newXp = relationshipXp + xpAwarded;
+            const newMax = relationshipMaxXp;
+            
+            if (newXp >= newMax) {
+              const newLevel = (relationshipLevel || 1) + 1;
+              setRelationshipLevel(newLevel);
+              setRelationshipXp(newXp - newMax);
+              setRelationshipMaxXp(Math.round(newMax * 1.2));
+              setNewLevel(newLevel);
+              setTimeout(() => setShowLevelUpModal(true), 3000);
+            } else {
+              setRelationshipXp(newXp);
+            }
+            
+          } catch (error: any) {
+            Alert.alert('送礼失败', error.message || '请稍后重试');
+          }
+        }}
+      />
 
       {/* 礼物特效覆盖层 */}
       <GiftOverlay
@@ -998,7 +1046,28 @@ export default function ChatScreen() {
         receiverName={characterName}
         onAnimationEnd={hideGift}
       />
-    </View>
+
+      {/* 角色信息面板 */}
+      <CharacterInfoPanel
+        visible={showCharacterInfo}
+        onClose={() => setShowCharacterInfo(false)}
+        characterId={params.characterId}
+        characterName={characterName}
+        avatarUrl={characterAvatar}
+        intimacyLevel={relationshipLevel || 1}
+        emotionScore={emotionScore}
+        emotionState={emotionState}
+      />
+      
+      {/* Toast Notification */}
+      {toastMessage && (
+        <View style={styles.toastContainer}>
+          <View style={styles.toast}>
+            <Text style={styles.toastText}>{toastMessage}</Text>
+          </View>
+        </View>
+      )}
+    </GestureHandlerRootView>
   );
 }
 
@@ -1785,5 +1854,31 @@ const styles = StyleSheet.create({
   giftModalBalance: {
     fontSize: 13,
     color: 'rgba(255, 255, 255, 0.7)',
+  },
+  // Toast styles
+  toastContainer: {
+    position: 'absolute',
+    bottom: 140,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  toast: {
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  toastText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });

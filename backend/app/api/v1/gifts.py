@@ -62,6 +62,11 @@ class GiftCatalogItem(BaseModel):
     price: int
     xp_reward: int
     icon: Optional[str] = None
+    category: Optional[str] = "normal"
+    is_spicy: Optional[bool] = False
+    requires_subscription: Optional[bool] = False
+    triggers_scene: Optional[str] = None
+    sort_order: Optional[int] = 0
 
 
 class GiftHistoryItem(BaseModel):
@@ -153,6 +158,20 @@ async def send_gift(request: SendGiftRequest, req: Request):
         level_up=result.get("level_up", False),
         new_level=result.get("new_level"),
     )
+    
+    # Record gift in stats (if not duplicate)
+    if not result.get("is_duplicate"):
+        try:
+            from app.core.database import get_db
+            from app.services.stats_service import stats_service
+            
+            async with get_db() as db:
+                await stats_service.record_gift(
+                    db, user_id, request.character_id, request.gift_type
+                )
+                logger.info(f"📊 Stats updated: gift recorded for user={user_id}, character={request.character_id}")
+        except Exception as e:
+            logger.warning(f"Failed to update gift stats: {e}")
     
     # Trigger AI response if requested and not duplicate
     if request.trigger_ai_response and not result.get("is_duplicate"):

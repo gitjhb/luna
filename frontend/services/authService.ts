@@ -1,10 +1,8 @@
 /**
- * Authentication Service
- * 
- * Handles user authentication with Firebase tokens.
+ * Authentication Service - NO MOCK, direct backend only
  */
 
-import { api, mockApi, shouldUseMock } from './api';
+import { api } from './api';
 import { User, Wallet } from '../store/userStore';
 
 interface LoginResponse {
@@ -14,46 +12,56 @@ interface LoginResponse {
 }
 
 interface LoginRequest {
-  provider: 'google' | 'apple';
-  idToken: string;
+  provider: 'google' | 'apple' | 'guest';
+  idToken?: string;
 }
 
 export const authService = {
   /**
-   * Login with Firebase token
+   * Login - guest mode for now (TODO: implement Firebase auth)
    */
   login: async (data: LoginRequest): Promise<LoginResponse> => {
-    // Always use mock for login until Firebase is set up
-    // TODO: Implement real Firebase auth
-    await mockApi.delay(1000);
-    return mockApi.responses.login;
+    // Use guest login endpoint
+    const response = await api.post<any>('/auth/guest');
     
-    // Real implementation:
-    // const endpoint = data.provider === 'apple' ? '/auth/apple' : '/auth/google';
-    // return api.post<LoginResponse>(endpoint, { firebase_token: data.idToken });
+    return {
+      user: {
+        userId: response.user_id,
+        email: 'guest@luna.app',
+        displayName: 'Guest',
+        subscriptionTier: response.subscription_tier || 'free',
+        createdAt: new Date().toISOString(),
+      },
+      wallet: {
+        totalCredits: response.wallet?.total_credits || 100,
+        dailyFreeCredits: response.wallet?.daily_free_credits || 10,
+        purchedCredits: response.wallet?.purchased_credits || 0,
+        bonusCredits: response.wallet?.bonus_credits || 0,
+        dailyCreditsLimit: response.wallet?.daily_credits_limit || 50,
+      },
+      accessToken: response.access_token,
+    };
   },
   
   /**
    * Get current user profile
    */
   getProfile: async (): Promise<User> => {
-    if (shouldUseMock()) {
-      await mockApi.delay(500);
-      return mockApi.responses.login.user;
-    }
-    
-    return api.get<User>('/auth/me');
+    const response = await api.get<any>('/auth/me');
+    return {
+      userId: response.user_id,
+      email: response.email || 'guest@luna.app',
+      displayName: response.display_name || 'Guest',
+      subscriptionTier: response.subscription_tier || 'free',
+      createdAt: response.created_at || new Date().toISOString(),
+    };
   },
   
   /**
    * Refresh access token
    */
   refreshToken: async (): Promise<{ accessToken: string }> => {
-    if (shouldUseMock()) {
-      await mockApi.delay(500);
-      return { accessToken: 'mock-refreshed-token' };
-    }
-    
-    return api.post<{ accessToken: string }>('/auth/refresh');
+    const response = await api.post<any>('/auth/refresh');
+    return { accessToken: response.access_token };
   },
 };

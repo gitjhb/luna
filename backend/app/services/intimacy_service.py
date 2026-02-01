@@ -157,6 +157,11 @@ class IntimacyService:
     
     # 照片功能配置
     PHOTO_COST = 10  # 每张照片消耗10金币
+    
+    # 连续打卡奖励配置
+    STREAK_REWARD_DAYS = 7  # 连续7天触发奖励
+    STREAK_REWARD_XP = 100  # 奖励100 XP
+    STREAK_REWARD_DESC = "神秘礼物"
 
     # Emotional words for bonus XP detection
     EMOTIONAL_WORDS_CN = [
@@ -344,6 +349,9 @@ class IntimacyService:
                     "last_daily_reset": datetime.utcnow(),
                     "streak_days": 0,
                     "last_interaction_date": None,
+                    "total_messages": 0,
+                    "gifts_count": 0,
+                    "special_events": 0,
                     "created_at": datetime.utcnow(),
                     "updated_at": datetime.utcnow(),
                 }
@@ -392,6 +400,9 @@ class IntimacyService:
                 "last_daily_reset": intimacy.last_daily_reset,
                 "streak_days": intimacy.streak_days,
                 "last_interaction_date": intimacy.last_interaction_date,
+                "total_messages": getattr(intimacy, 'total_messages', 0) or 0,
+                "gifts_count": getattr(intimacy, 'gifts_count', 0) or 0,
+                "special_events": getattr(intimacy, 'special_events', 0) or 0,
                 "created_at": intimacy.created_at,
                 "updated_at": intimacy.updated_at,
             }
@@ -540,6 +551,9 @@ class IntimacyService:
 
         # Update streak
         today = datetime.utcnow().date()
+        streak_reward_triggered = False
+        old_streak = intimacy["streak_days"]
+        
         if intimacy["last_interaction_date"] is None:
             intimacy["streak_days"] = 1
         elif intimacy["last_interaction_date"] == today:
@@ -547,8 +561,16 @@ class IntimacyService:
         elif (today - intimacy["last_interaction_date"]).days == 1:
             intimacy["streak_days"] += 1
         else:
-            intimacy["streak_days"] = 1
+            intimacy["streak_days"] = 1  # 断签重置
         intimacy["last_interaction_date"] = today
+        
+        # 检查7天连续打卡奖励
+        if (old_streak < self.STREAK_REWARD_DAYS and 
+            intimacy["streak_days"] >= self.STREAK_REWARD_DAYS):
+            streak_reward_triggered = True
+            # 额外奖励 XP
+            intimacy["total_xp"] += self.STREAK_REWARD_XP
+            logger.info(f"Streak reward triggered for {user_id}/{character_id}: {self.STREAK_REWARD_DESC}")
 
         # Log the action and save to database
         if self.mock_mode:
@@ -623,6 +645,8 @@ class IntimacyService:
             "daily_xp_earned": intimacy["daily_xp_earned"],
             "daily_xp_remaining": self.DAILY_XP_CAP - intimacy["daily_xp_earned"],
             "streak_days": intimacy["streak_days"],
+            "streak_reward_triggered": streak_reward_triggered,
+            "streak_reward_desc": self.STREAK_REWARD_DESC if streak_reward_triggered else None,
             "celebration_message": celebration,
             "unlocked_features": [f["name"] for f in newly_unlocked]
         }
@@ -674,7 +698,11 @@ class IntimacyService:
             "daily_xp_limit": self.DAILY_XP_CAP,
             "daily_xp_remaining": self.DAILY_XP_CAP - daily_xp,
             "available_actions": available_actions,
-            "unlocked_features": [f["name"] for f in unlocked]
+            "unlocked_features": [f["name"] for f in unlocked],
+            # 统计数据
+            "total_messages": intimacy.get("total_messages", 0),
+            "gifts_count": intimacy.get("gifts_count", 0),
+            "special_events": intimacy.get("special_events", 0),
         }
 
     async def daily_checkin(self, user_id: str, character_id: str) -> Dict:

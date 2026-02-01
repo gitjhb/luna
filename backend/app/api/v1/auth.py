@@ -7,7 +7,7 @@ from uuid import uuid4
 import os
 
 from app.models.schemas import (
-    TokenResponse, FirebaseAuthRequest, UserContext
+    TokenResponse, FirebaseAuthRequest, UserContext, WalletInfo
 )
 
 router = APIRouter(prefix="/auth")
@@ -69,11 +69,43 @@ async def authenticate_apple(token: str):
     raise HTTPException(status_code=501, detail="Not implemented")
 
 
+@router.post("/guest", response_model=TokenResponse)
+async def guest_login():
+    """
+    Guest login - creates a temporary user for testing.
+    """
+    user_id = f"guest-{str(uuid4())[:8]}"
+    return TokenResponse(
+        access_token=f"guest_token_{user_id}",
+        user_id=user_id,
+        subscription_tier="free",
+        wallet=WalletInfo(
+            total_credits=100,
+            daily_free_credits=10,
+            purchased_credits=0,
+            bonus_credits=0,
+            daily_credits_limit=50,
+        )
+    )
+
+
 @router.get("/me")
 async def get_current_user():
     """Get current user info (mock)"""
     return {
-        "user_id": "demo_user",
+        "user_id": "demo-user-123",
         "email": "demo@example.com",
         "subscription_tier": "free",
     }
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_token(refresh_token: str = None):
+    """Refresh access token (mock)"""
+    if MOCK_MODE:
+        return TokenResponse(
+            access_token=f"mock_refreshed_token",
+            user_id="demo-user-123",
+            subscription_tier="free",
+        )
+    raise HTTPException(status_code=501, detail="Not implemented")

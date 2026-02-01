@@ -115,10 +115,14 @@ class GiftCatalog(Base):
 
 # Gift categories
 class GiftCategory:
-    NORMAL = "normal"      # 普通礼物
-    ROMANTIC = "romantic"  # 浪漫礼物
-    APOLOGY = "apology"    # 道歉/忏悔礼物 - 用于修复关系
-    LUXURY = "luxury"      # 奢华礼物
+    NORMAL = "normal"        # 普通礼物
+    ROMANTIC = "romantic"    # 浪漫礼物
+    APOLOGY = "apology"      # 道歉/忏悔礼物 - 用于修复关系
+    LUXURY = "luxury"        # 奢华礼物
+    JEWELRY = "jewelry"      # 珠宝首饰
+    CLOTHING = "clothing"    # 衣服配饰
+    SPICY = "spicy"          # 🔥 触发特殊剧情
+    PROPS = "props"          # 互动道具
 
 
 # Default gift catalog data
@@ -199,6 +203,7 @@ DEFAULT_GIFT_CATALOG = [
         "icon": "💌",
         "category": GiftCategory.APOLOGY,
         "sort_order": 20,
+        "emotion_boost": 40,  # 解锁冷战需要提升到 -75 以上
     },
     {
         "gift_type": "apology_bouquet",
@@ -211,6 +216,7 @@ DEFAULT_GIFT_CATALOG = [
         "icon": "💐",
         "category": GiftCategory.APOLOGY,
         "sort_order": 21,
+        "emotion_boost": 60,  # 中等道歉礼物
     },
     {
         "gift_type": "sincere_apology_box",
@@ -223,6 +229,7 @@ DEFAULT_GIFT_CATALOG = [
         "icon": "🎁",
         "category": GiftCategory.APOLOGY,
         "sort_order": 22,
+        "emotion_boost": 100,  # 最强道歉礼物，直接解锁冷战
     },
     {
         "gift_type": "reconciliation_cake",
@@ -260,6 +267,184 @@ DEFAULT_GIFT_CATALOG = [
         "category": GiftCategory.LUXURY,
         "xp_reward": 1500,
         "icon": "👑",
-        "sort_order": 6,
+        "sort_order": 31,
+    },
+    
+    # ============ 珠宝首饰 ============
+    {
+        "gift_type": "necklace",
+        "name": "Pearl Necklace",
+        "name_cn": "珍珠项链",
+        "description": "An elegant pearl necklace",
+        "description_cn": "优雅的珍珠项链",
+        "price": 300,
+        "xp_reward": 400,
+        "icon": "📿",
+        "category": GiftCategory.JEWELRY,
+        "sort_order": 40,
+    },
+    {
+        "gift_type": "earrings",
+        "name": "Diamond Earrings",
+        "name_cn": "钻石耳环",
+        "description": "Sparkling diamond earrings",
+        "description_cn": "闪耀的钻石耳环",
+        "price": 400,
+        "xp_reward": 500,
+        "icon": "✨",
+        "category": GiftCategory.JEWELRY,
+        "sort_order": 41,
+    },
+    {
+        "gift_type": "bracelet",
+        "name": "Gold Bracelet",
+        "name_cn": "金手链",
+        "description": "A beautiful gold bracelet",
+        "description_cn": "精美的金手链",
+        "price": 250,
+        "xp_reward": 350,
+        "icon": "⭐",
+        "category": GiftCategory.JEWELRY,
+        "sort_order": 42,
+    },
+    
+    # ============ 衣服配饰 ============
+    {
+        "gift_type": "dress",
+        "name": "Evening Dress",
+        "name_cn": "晚礼服",
+        "description": "A stunning evening dress",
+        "description_cn": "惊艳的晚礼服",
+        "price": 200,
+        "xp_reward": 280,
+        "icon": "👗",
+        "category": GiftCategory.CLOTHING,
+        "sort_order": 50,
+    },
+    {
+        "gift_type": "lingerie",
+        "name": "Silk Lingerie Set",
+        "name_cn": "丝绸内衣套装",
+        "description": "Elegant silk lingerie",
+        "description_cn": "优雅的丝绸内衣套装",
+        "price": 150,
+        "xp_reward": 200,
+        "icon": "🎀",
+        "category": GiftCategory.CLOTHING,
+        "is_spicy": True,
+        "requires_subscription": True,
+        "sort_order": 51,
+    },
+    {
+        "gift_type": "heels",
+        "name": "High Heels",
+        "name_cn": "高跟鞋",
+        "description": "Elegant high heels",
+        "description_cn": "优雅的高跟鞋",
+        "price": 120,
+        "xp_reward": 160,
+        "icon": "👠",
+        "category": GiftCategory.CLOTHING,
+        "sort_order": 52,
+    },
+    
+    # ============ 互动道具 ============
+    {
+        "gift_type": "candles",
+        "name": "Scented Candles",
+        "name_cn": "香薰蜡烛",
+        "description": "Romantic scented candles",
+        "description_cn": "浪漫的香薰蜡烛，营造氛围",
+        "price": 30,
+        "xp_reward": 45,
+        "icon": "🕯️",
+        "category": GiftCategory.PROPS,
+        "sort_order": 60,
+    },
+    {
+        "gift_type": "wine",
+        "name": "Red Wine",
+        "name_cn": "红酒",
+        "description": "A bottle of fine red wine",
+        "description_cn": "一瓶上等红酒",
+        "price": 80,
+        "xp_reward": 100,
+        "icon": "🍷",
+        "category": GiftCategory.PROPS,
+        "sort_order": 61,
+    },
+    {
+        "gift_type": "music_box",
+        "name": "Music Box",
+        "name_cn": "音乐盒",
+        "description": "A beautiful music box",
+        "description_cn": "精美的音乐盒，播放你们的歌",
+        "price": 60,
+        "xp_reward": 80,
+        "icon": "🎵",
+        "category": GiftCategory.PROPS,
+        "sort_order": 62,
+    },
+    
+    # ============ 🔥 Spicy 剧情触发 ============
+    {
+        "gift_type": "blindfold",
+        "name": "Silk Blindfold",
+        "name_cn": "丝绸眼罩",
+        "description": "A soft silk blindfold for special moments",
+        "description_cn": "柔软的丝绸眼罩，开启特别的时刻...",
+        "price": 100,
+        "xp_reward": 150,
+        "icon": "🎭",
+        "category": GiftCategory.SPICY,
+        "is_spicy": True,
+        "requires_subscription": True,
+        "triggers_scene": "blindfold_scene",
+        "sort_order": 70,
+    },
+    {
+        "gift_type": "massage_oil",
+        "name": "Massage Oil",
+        "name_cn": "按摩精油",
+        "description": "Scented massage oil for relaxation",
+        "description_cn": "芳香按摩精油，让身心放松...",
+        "price": 80,
+        "xp_reward": 120,
+        "icon": "💆",
+        "category": GiftCategory.SPICY,
+        "is_spicy": True,
+        "requires_subscription": True,
+        "triggers_scene": "massage_scene",
+        "sort_order": 71,
+    },
+    {
+        "gift_type": "champagne",
+        "name": "Champagne",
+        "name_cn": "香槟",
+        "description": "Premium champagne for celebration",
+        "description_cn": "顶级香槟，庆祝特别的夜晚...",
+        "price": 150,
+        "xp_reward": 200,
+        "icon": "🍾",
+        "category": GiftCategory.SPICY,
+        "is_spicy": True,
+        "requires_subscription": True,
+        "triggers_scene": "champagne_night",
+        "sort_order": 72,
+    },
+    {
+        "gift_type": "private_dance",
+        "name": "Private Dance Request",
+        "name_cn": "私人舞蹈",
+        "description": "Request a private dance performance",
+        "description_cn": "请求一场私人舞蹈表演...",
+        "price": 300,
+        "xp_reward": 400,
+        "icon": "💃",
+        "category": GiftCategory.SPICY,
+        "is_spicy": True,
+        "requires_subscription": True,
+        "triggers_scene": "private_dance",
+        "sort_order": 73,
     },
 ]

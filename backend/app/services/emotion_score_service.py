@@ -178,6 +178,92 @@ class EmotionScoreService:
         
         logger.info(f"Emotion score updated: {old_score} -> {new_score} ({delta:+d}) | State: {old_state} -> {data['state']} | Reason: {reason}")
         
+        # Sync to database for API access
+        await self._sync_to_database(user_id, character_id, data, reason)
+        
+        return data
+    
+    async def _sync_to_database(self, user_id: str, character_id: str, data: dict, reason: str = ""):
+        """Sync emotion score to database for API access"""
+        try:
+            from app.core.database import get_db
+            from sqlalchemy import select
+            from app.models.database.emotion_models import UserCharacterEmotion
+            
+            async with get_db() as db:
+                result = await db.execute(
+                    select(UserCharacterEmotion).where(
+                        UserCharacterEmotion.user_id == user_id,
+                        UserCharacterEmotion.character_id == character_id
+                    )
+                )
+                db_emotion = result.scalar_one_or_none()
+                
+                # Map score to emotional_state
+                score = data.get("score", 0)
+                state = data.get("state", "neutral")
+                
+                # Map state to emotion_models EmotionalState
+                state_mapping = {
+                    "loving": "loving",
+                    "happy": "happy", 
+                    "content": "happy",
+                    "neutral": "neutral",
+                    "annoyed": "annoyed",
+                    "upset": "annoyed",
+                    "angry": "angry",
+                    "furious": "angry",
+                    "cold_war": "cold",
+                }
+                emotional_state = state_mapping.get(state, "neutral")
+                
+                if db_emotion:
+                    # Update existing
+                    db_emotion.emotional_state = emotional_state
+                    db_emotion.emotion_intensity = abs(score)
+                    db_emotion.emotion_reason = reason
+                    db_emotion.emotion_changed_at = data.get("updated_at")
+                    if score <= -50:
+                        db_emotion.times_angered = (db_emotion.times_angered or 0) + 1
+                else:
+                    # Create new
+                    db_emotion = UserCharacterEmotion(
+                        user_id=user_id,
+                        character_id=character_id,
+                        emotional_state=emotional_state,
+                        emotion_intensity=abs(score),
+                        emotion_reason=reason,
+                        emotion_changed_at=data.get("updated_at"),
+                    )
+                    db.add(db_emotion)
+                
+                await db.commit()
+        except Exception as e:
+            logger.warning(f"Failed to sync emotion to database: {e}")
+    
+    async def reset_score(self, user_id: str, character_id: str) -> dict:
+        """
+        重置情绪分数到中性状态，解除冷战
+        """
+        key = f"{user_id}:{character_id}"
+        
+        data = {
+            "score": 0,
+            "state": EmotionState.NEUTRAL,
+            "in_cold_war": False,
+            "cold_war_since": None,
+            "offense_count": 0,
+            "last_offense": None,
+            "updated_at": datetime.utcnow(),
+        }
+        
+        _EMOTION_SCORES[key] = data
+        
+        logger.info(f"Emotion score reset for {user_id}:{character_id}")
+        
+        # Sync to database
+        await self._sync_to_database(user_id, character_id, data, "reset")
+        
         return data
     
     async def apply_message_impact(

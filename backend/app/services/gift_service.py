@@ -369,6 +369,40 @@ class GiftService:
             
             logger.info(f"XP awarded: {actual_xp} (base: {xp_result.get('xp_awarded', 0)}, bonus: {bonus_xp})")
             
+            # Step 7.5: Check if apology gift and handle cold war unlock
+            cold_war_unlocked = False
+            gift_category = gift_info.get("category", "")
+            is_apology_gift = gift_category == "apology" or gift_type.startswith("apology") or "apology" in gift_type.lower()
+            
+            if is_apology_gift:
+                try:
+                    from app.services.emotion_score_service import emotion_score_service
+                    
+                    # Check if in cold war
+                    score_data = await emotion_score_service.get_score(user_id, character_id)
+                    was_in_cold_war = score_data.get("in_cold_war", False) or score_data.get("score", 0) <= -75
+                    
+                    if was_in_cold_war:
+                        # Apology gift unlocks cold war - boost emotion significantly
+                        emotion_boost = gift_info.get("emotion_boost", 50)  # Default +50 for apology gifts
+                        await emotion_score_service.update_score(
+                            user_id, character_id,
+                            delta=emotion_boost,
+                            reason=f"apology_gift:{gift_type}",
+                            intimacy_level=xp_result.get("current_level", 1)
+                        )
+                        
+                        # Also clear cold war flag explicitly
+                        new_score_data = await emotion_score_service.get_score(user_id, character_id)
+                        if new_score_data.get("score", 0) > -75:
+                            new_score_data["in_cold_war"] = False
+                            new_score_data["cold_war_since"] = None
+                        
+                        cold_war_unlocked = True
+                        logger.info(f"Cold war unlocked via apology gift: {gift_type}")
+                except Exception as e:
+                    logger.warning(f"Failed to process apology gift emotion: {e}")
+            
             # Step 8: Store idempotency key
             result = {
                 "gift_id": gift_id,
@@ -405,11 +439,14 @@ class GiftService:
                 "success": True,
                 "is_duplicate": False,
                 **result,
+                "cold_war_unlocked": cold_war_unlocked,
+                "is_apology_gift": is_apology_gift,
                 "system_message": self._build_gift_system_message(
                     gift, 
                     actual_xp,
                     intimacy_level=current_level,
-                    current_mood=current_mood
+                    current_mood=current_mood,
+                    cold_war_unlocked=cold_war_unlocked,
                 ),
             }
             
@@ -437,7 +474,8 @@ class GiftService:
         gift: dict, 
         xp_awarded: int,
         intimacy_level: int = 1,
-        current_mood: str = "neutral"
+        current_mood: str = "neutral",
+        cold_war_unlocked: bool = False
     ) -> str:
         """
         Build system message for AI context when user sends a gift.
@@ -724,6 +762,51 @@ class GiftService:
         ]
         gift_txns.sort(key=lambda x: x["created_at"], reverse=True)
         return gift_txns[offset:offset + limit]
+    
+    async def send_apology_gift(
+        self,
+        user_id: str,
+        character_id: str,
+        gift_id: str = "apology_bouquet",
+        session_id: Optional[str] = None,
+    ) -> dict:
+        """
+        Convenience method to send apology gift and unlock cold war.
+        
+        This is a wrapper around send_gift specifically for apology gifts,
+        used for unlocking cold war state.
+        """
+        # Validate gift is an apology type
+        gift_info = await self.get_gift_info(gift_id)
+        if not gift_info:
+            return {"success": False, "error": "invalid_gift", "message": f"Unknown gift: {gift_id}"}
+        
+        is_apology = (
+            gift_info.get("category") == "apology" or 
+            gift_id.startswith("apology") or 
+            "apology" in gift_id.lower()
+        )
+        
+        if not is_apology:
+            return {
+                "success": False, 
+                "error": "not_apology_gift",
+                "message": "只有道歉礼物才能解除冷战。请选择道歉信、道歉花束或真诚道歉礼盒。"
+            }
+        
+        # Generate idempotency key
+        idempotency_key = str(uuid4())
+        
+        # Send the gift
+        result = await self.send_gift(
+            user_id=user_id,
+            character_id=character_id,
+            gift_type=gift_id,
+            idempotency_key=idempotency_key,
+            session_id=session_id,
+        )
+        
+        return result
 
 
 # Global service instance

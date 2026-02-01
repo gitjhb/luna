@@ -24,13 +24,26 @@ interface TransactionHistoryModalProps {
 }
 
 // Transaction type display config
-const TRANSACTION_TYPES: Record<string, { label: string; icon: string; color: string }> = {
+const TRANSACTION_TYPES: Record<string, { label: string; icon: string; color: string; isCash?: boolean }> = {
   purchase: { label: '充值', icon: 'add-circle', color: '#10B981' },
   bonus: { label: '奖励', icon: 'gift', color: '#8B5CF6' },
   deduction: { label: '消费', icon: 'remove-circle', color: '#F59E0B' },
   gift: { label: '送礼', icon: 'heart', color: '#EC4899' },
   daily_refresh: { label: '每日赠送', icon: 'sunny', color: '#06B6D4' },
   refund: { label: '退款', icon: 'refresh-circle', color: '#6366F1' },
+  subscription: { label: '订阅', icon: 'diamond', color: '#FFD700', isCash: true },
+  referral: { label: '邀请奖励', icon: 'people', color: '#10B981' },
+};
+
+// Check if transaction involves real money (not credits)
+const isCashTransaction = (tx: Transaction): boolean => {
+  // Subscription is always cash
+  if (tx.transactionType === 'subscription') return true;
+  // Check description for subscription keywords
+  if (tx.description?.toLowerCase().includes('subscribe')) return true;
+  // Check extra_data for currency
+  if (tx.extraData?.currency === 'USD') return true;
+  return false;
 };
 
 export const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = ({
@@ -88,7 +101,19 @@ export const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = (
 
   const renderTransaction = (tx: Transaction, index: number) => {
     const config = getTransactionConfig(tx.transactionType);
+    const isCash = isCashTransaction(tx);
     const isPositive = tx.amount > 0;
+    
+    // Format amount based on currency type
+    const formatAmount = () => {
+      if (isCash) {
+        // Real money - show as expense (negative)
+        return `-$${Math.abs(tx.amount).toFixed(2)}`;
+      } else {
+        // Credits
+        return `${isPositive ? '+' : ''}${tx.amount} 金币`;
+      }
+    };
 
     return (
       <View key={tx.transactionId || index} style={styles.transactionItem}>
@@ -102,11 +127,13 @@ export const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = (
         <View style={styles.transactionAmount}>
           <Text style={[
             styles.transactionAmountText,
-            { color: isPositive ? '#10B981' : '#F59E0B' }
+            { color: isCash ? '#EC4899' : (isPositive ? '#10B981' : '#F59E0B') }
           ]}>
-            {isPositive ? '+' : ''}{tx.amount}
+            {formatAmount()}
           </Text>
-          <Text style={styles.transactionBalance}>余额: {tx.balanceAfter}</Text>
+          {!isCash && (
+            <Text style={styles.transactionBalance}>余额: {tx.balanceAfter} 金币</Text>
+          )}
         </View>
       </View>
     );

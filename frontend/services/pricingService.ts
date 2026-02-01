@@ -65,7 +65,7 @@ const defaultPricingConfig: PricingConfig = {
         'All characters unlocked',
         'Fast response speed',
         'Long-term memory',
-        'Spicy mode',
+        '成人内容 (NSFW)',
       ],
     },
     {
@@ -79,7 +79,7 @@ const defaultPricingConfig: PricingConfig = {
         'All characters unlocked',
         'Priority response speed',
         'Extended memory (10x)',
-        'Spicy mode',
+        '成人内容 (NSFW)',
         'Early access to new features',
       ],
     },

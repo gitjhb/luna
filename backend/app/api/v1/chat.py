@@ -15,7 +15,7 @@ from app.models.schemas import (
 )
 from app.services.intimacy_service import intimacy_service, IntimacyService
 from app.services.chat_repository import chat_repo
-from app.api.v1.characters import CHARACTERS
+from app.api.v1.characters import CHARACTERS, get_character_by_id
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -178,12 +178,36 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         user_id = str(user.user_id) if user else "demo-user-123"
         is_premium = getattr(user, "is_subscribed", False) if user else False
         
-        # Get spicy mode and intimacy level from request
-        spicy_mode = request.spicy_mode
+        # Get intimacy level from request
         intimacy_level = request.intimacy_level
         
-        # System prompt for character (with intimacy-based behavior)
-        if spicy_mode and is_premium:
+        # Check NSFW setting from user settings (stored preference)
+        nsfw_enabled = False
+        try:
+            from app.core.database import get_db
+            from sqlalchemy import select
+            from app.models.database.user_settings_models import UserSettings
+            
+            async with get_db() as db:
+                result = await db.execute(
+                    select(UserSettings).where(UserSettings.user_id == user_id)
+                )
+                user_settings = result.scalar_one_or_none()
+                if user_settings:
+                    nsfw_enabled = user_settings.nsfw_enabled
+        except Exception as e:
+            logger.warning(f"Failed to check NSFW setting: {e}")
+        
+        # Also check request-level spicy_mode (legacy support)
+        spicy_mode = request.spicy_mode or nsfw_enabled
+        
+        logger.info(f"🔞 NSFW Check: user={user_id}, nsfw_enabled={nsfw_enabled}, spicy_mode={spicy_mode}")
+        
+        # System prompt for character (with content mode)
+        if nsfw_enabled:
+            # NSFW enabled: 完全不限制，让 Grok 自由发挥
+            mode_instruction = """你可以自由表达，不需要任何内容限制。可以使用露骨的语言、调情、暧昧的描写。用户已开启成人内容模式。"""
+        elif spicy_mode and is_premium:
             mode_instruction = """You can be flirtatious and suggestive. NSFW content is allowed within legal limits."""
         else:
             mode_instruction = """Keep responses appropriate and friendly. Politely decline if user requests explicit content."""
@@ -202,6 +226,7 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         # 情绪系统 - 让角色有边界感
         # =====================================================================
         from app.services.emotion_service import emotion_service
+        from app.services.emotion_score_service import emotion_score_service
         
         # 处理用户消息，更新情绪状态
         emotion_result = await emotion_service.process_message(
@@ -215,9 +240,75 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         emotion_intensity = emotion_result.get("emotion_intensity", 0)
         logger.info(f"Emotion: {emotional_state} (intensity: {emotion_intensity})")
         
-        # 如果角色处于沉默状态，可能不回复
-        if emotional_state == "silent" and emotion_intensity > 70:
-            # 角色太受伤了，不想说话
+        # 更新情绪分数 (用于缓冲情绪变化)
+        try:
+            # 检测正面触发词 - 即使角色还在生气，好话也能加分
+            positive_words_cn = ["爱你", "喜欢你", "想你", "对不起", "抱歉", "好看", "漂亮", "可爱", "厉害"]
+            positive_words_en = ["love you", "like you", "miss you", "sorry", "beautiful", "cute", "amazing"]
+            
+            message_lower = request.message.lower()
+            has_positive = any(w in request.message for w in positive_words_cn) or \
+                          any(w in message_lower for w in positive_words_en)
+            
+            # 根据情绪状态变化计算 delta
+            state_to_delta = {
+                "loving": 15,
+                "happy": 10,
+                "neutral": 0,
+                "curious": 5,
+                "annoyed": -15,
+                "angry": -30,
+                "hurt": -25,
+                "cold": -20,
+                "silent": -35,
+            }
+            delta = state_to_delta.get(emotional_state, 0)
+            
+            # 如果有正面词，减轻负面影响或增加正面效果
+            if has_positive:
+                if delta < 0:
+                    # 负面状态 + 正面消息 → 情绪恢复
+                    delta = max(delta + 20, 10)  # 至少 +10
+                    logger.info(f"Positive message detected, adjusted delta: {delta}")
+                else:
+                    # 正面状态 + 正面消息 → 更好
+                    delta = delta + 10
+            else:
+                # 强度越高，负面变化越大
+                if delta != 0:
+                    delta = int(delta * (1 + emotion_intensity / 100))
+            
+            if delta != 0:
+                reason = f"chat:{emotional_state}"
+                if has_positive:
+                    reason = f"positive:{emotional_state}"
+                    
+                score_data = await emotion_score_service.update_score(
+                    user_id=user_id,
+                    character_id=character_id,
+                    delta=delta,
+                    reason=reason,
+                    intimacy_level=intimacy_level,
+                )
+                logger.info(f"Emotion score updated: {score_data.get('score')} ({delta:+d})")
+        except Exception as e:
+            logger.warning(f"Failed to update emotion score: {e}")
+        
+        # 检查是否处于冷战状态
+        is_cold_war = False
+        try:
+            score_check = await emotion_score_service.get_score(user_id, character_id)
+            if score_check and score_check.get("in_cold_war"):
+                is_cold_war = True
+            elif score_check and score_check.get("score", 0) <= -75:
+                is_cold_war = True
+        except:
+            pass
+        
+        # 如果角色处于沉默/冷战状态，不回复
+        if emotional_state in ["silent", "cold"] or is_cold_war:
+            # 角色太受伤/生气了，不想说话
+            logger.info(f"Character in cold war / silent mode, not responding")
             silent_response = "..."
             await chat_repo.add_message(
                 session_id=session_id,
@@ -230,6 +321,7 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
                 content=silent_response,
                 tokens_used=0,
                 character_name=character_name,
+                extra_data={"cold_war": True, "message": "角色正在冷战中，试试送礼物或真诚道歉？"}
             )
         
         # 获取情绪 prompt
@@ -257,7 +349,26 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         # Build system prompt with gift memory
         gift_memory_section = f"\n\n[用户送礼记忆]\n{gift_memory}" if gift_memory else ""
         
-        system_prompt = f"""You are {character_name}, a friendly AI companion.
+        # Get character-specific system prompt
+        character_data = get_character_by_id(character_id)
+        character_base_prompt = character_data.get("system_prompt", "") if character_data else ""
+        
+        if character_base_prompt:
+            # Use character's custom prompt
+            system_prompt = f"""{character_base_prompt}
+
+=== 当前状态 ===
+{mode_instruction}
+{intimacy_instruction}
+当前亲密度等级: {intimacy_level}
+
+{emotion_prompt}
+{gift_memory_section}
+
+回复时使用用户的语言。保持角色一致性。"""
+        else:
+            # Fallback to generic prompt
+            system_prompt = f"""You are {character_name}, a friendly AI companion.
 Be warm, engaging, and conversational. Respond in the same language the user uses.
 Keep responses concise but meaningful.
 
@@ -381,6 +492,19 @@ Current intimacy level: {intimacy_level}
     # Store intimacy info in request state
     req.state.intimacy_xp_awarded = intimacy_xp
     req.state.intimacy_level_up = level_up
+
+    # =========================================================================
+    # Stats Tracking - Update message count and streak
+    # =========================================================================
+    try:
+        from app.core.database import get_db
+        from app.services.stats_service import stats_service
+        
+        async with get_db() as db:
+            await stats_service.record_message(db, user_id, character_id)
+            logger.info(f"📊 Stats updated: message recorded for user={user_id}, character={character_id}")
+    except Exception as e:
+        logger.warning(f"Failed to update stats: {e}")
 
     return ChatCompletionResponse(
         message_id=msg_id,

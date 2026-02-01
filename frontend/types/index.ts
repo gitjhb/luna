@@ -16,7 +16,17 @@ export interface Character {
   tierRequired: 'free' | 'premium' | 'vip';
   isSpicy: boolean;
   tags: string[];
+  greeting?: string;  // 角色开场白
   createdAt?: string;
+  // Extended profile fields
+  age?: number;
+  zodiac?: string;  // 星座
+  occupation?: string;  // 职业
+  hobbies?: string[];  // 爱好
+  mbti?: string;  // MBTI 性格类型
+  birthday?: string;  // 生日
+  height?: string;  // 身高
+  location?: string;  // 所在地
 }
 
 // Extended character info with unlockable secrets (like Stardew Valley)
@@ -99,12 +109,16 @@ export interface SubscriptionPlan {
 
 export interface Transaction {
   transactionId: string;
-  transactionType: 'chat_deduction' | 'purchase' | 'daily_refresh' | 'bonus' | 'refund' | 'gift' | 'deduction';
+  transactionType: 'chat_deduction' | 'purchase' | 'daily_refresh' | 'bonus' | 'refund' | 'gift' | 'deduction' | 'subscription' | 'referral';
   amount: number;
   balanceBefore: number;
   balanceAfter: number;
   description?: string;
   createdAt: string;
+  extraData?: {
+    currency?: 'USD' | 'credits';
+    [key: string]: any;
+  };
 }
 
 // ============================================================================
@@ -230,6 +244,10 @@ export interface IntimacyStatus {
   dailyXpRemaining: number;
   availableActions: ActionAvailability[];
   unlockedFeatures: string[];
+  // 统计数据
+  totalMessages: number;
+  giftsCount: number;
+  specialEvents: number;
 }
 
 export interface XPAwardResponse {

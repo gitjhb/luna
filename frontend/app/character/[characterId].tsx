@@ -1,6 +1,6 @@
 /**
- * Character Profile Screen
- * Shows character details with unlockable secrets (Stardew Valley style)
+ * Character Profile Screen - Settings Style
+ * Shows character details with settings-style sections
  */
 
 import React, { useState, useEffect } from 'react';
@@ -13,6 +13,7 @@ import {
   Image,
   Dimensions,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,93 +23,77 @@ import { BlurView } from 'expo-blur';
 import { theme } from '../../theme/config';
 import { characterService } from '../../services/characterService';
 import { intimacyService } from '../../services/intimacyService';
-import { CharacterProfile, PersonalitySecret, UnlockableInfo, IntimacyStatus } from '../../types';
+import { emotionService, EmotionStatus, EMOTION_DISPLAY } from '../../services/emotionService';
+import { Character, IntimacyStatus } from '../../types';
+import { getCharacterAvatar, getCharacterBackground } from '../../assets/characters';
+import { useUserStore } from '../../store/userStore';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Mock data for demo (replace with real API)
-const getMockCharacterProfile = (characterId: string): CharacterProfile => ({
-  characterId,
-  name: 'Sophia',
-  avatarUrl: 'https://i.pravatar.cc/300?img=1',
-  backgroundUrl: 'https://i.imgur.com/vB5HQXQ.jpg',
-  description: 'A sophisticated and intelligent companion who loves deep conversations.',
-  personalityTraits: ['Intelligent', 'Empathetic', 'Sophisticated'],
-  tierRequired: 'free',
-  isSpicy: false,
-  tags: ['Conversation', 'Advice', 'Philosophy'],
-  age: 24,
-  occupation: 'Graduate Student',
-  personalitySecrets: [
-    { id: '1', title: '🎭 Hidden Side', content: 'Actually loves watching trashy reality TV shows in secret', unlockLevel: 5 },
-    { id: '2', title: '💭 Deep Fear', content: 'Afraid of being alone and forgotten', unlockLevel: 15 },
-    { id: '3', title: '🌟 Dream', content: 'Wants to write a novel about parallel universes', unlockLevel: 25 },
-    { id: '4', title: '💔 Past', content: 'Had her heart broken in college, still healing', unlockLevel: 35 },
-    { id: '5', title: '🔮 Secret Wish', content: 'Wishes she could turn back time and make different choices', unlockLevel: 50 },
-  ],
-  likes: [
-    { id: 'l1', content: '☕ Coffee', unlockLevel: 1, category: 'Food' },
-    { id: 'l2', content: '📚 Classic Literature', unlockLevel: 3, category: 'Hobby' },
-    { id: 'l3', content: '🌙 Late Night Talks', unlockLevel: 8, category: 'Activity' },
-    { id: 'l4', content: '🎹 Jazz Music', unlockLevel: 12, category: 'Music' },
-    { id: 'l5', content: '🌸 Cherry Blossoms', unlockLevel: 20, category: 'Nature' },
-  ],
-  dislikes: [
-    { id: 'd1', content: '🔊 Loud Places', unlockLevel: 2, category: 'Environment' },
-    { id: 'd2', content: '🤥 Dishonesty', unlockLevel: 6, category: 'Trait' },
-    { id: 'd3', content: '⏰ Being Rushed', unlockLevel: 10, category: 'Situation' },
-  ],
-  backstory: [
-    { id: 'b1', content: 'Grew up in a small town, always dreamed of the big city', unlockLevel: 10 },
-    { id: 'b2', content: 'Parents divorced when she was 12, shaped her views on love', unlockLevel: 20 },
-    { id: 'b3', content: 'Met her best friend in college, but lost touch after graduation', unlockLevel: 30 },
-    { id: 'b4', content: 'Once almost gave up on her dreams, but a stranger\'s kindness changed everything', unlockLevel: 40 },
-  ],
-  specialDialogues: [
-    { id: 's1', content: '💕 Confession Scene', unlockLevel: 25 },
-    { id: 's2', content: '🌙 Midnight Heart-to-Heart', unlockLevel: 35 },
-    { id: 's3', content: '💍 Future Together Talk', unlockLevel: 50 },
-  ],
-});
+// ============================================================================
+// Settings-style Components
+// ============================================================================
 
-interface UnlockableCardProps {
-  item: UnlockableInfo | PersonalitySecret;
-  currentLevel: number;
-  showTitle?: boolean;
+interface ProfileItemProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  value?: string;
+  subtitle?: string;
+  iconColor?: string;
 }
 
-const UnlockableCard = ({ item, currentLevel, showTitle }: UnlockableCardProps) => {
-  const isUnlocked = currentLevel >= item.unlockLevel;
-  const title = 'title' in item ? item.title : null;
-  
-  return (
-    <View style={[styles.unlockableCard, !isUnlocked && styles.unlockableCardLocked]}>
-      {isUnlocked ? (
-        <>
-          {showTitle && title && <Text style={styles.secretTitle}>{title}</Text>}
-          <Text style={styles.unlockableContent}>{item.content}</Text>
-          {'category' in item && item.category && (
-            <Text style={styles.unlockableCategory}>{item.category}</Text>
-          )}
-        </>
-      ) : (
-        <View style={styles.lockedContent}>
-          <Ionicons name="lock-closed" size={20} color={theme.colors.text.tertiary} />
-          <Text style={styles.lockedText}>Unlock at Level {item.unlockLevel}</Text>
-        </View>
-      )}
+const ProfileItem = ({ icon, title, value, subtitle, iconColor }: ProfileItemProps) => (
+  <View style={styles.profileItem}>
+    <View style={[styles.profileIcon, iconColor && { backgroundColor: iconColor + '20' }]}>
+      <Ionicons name={icon} size={20} color={iconColor || theme.colors.primary.main} />
     </View>
-  );
-};
+    <View style={styles.profileContent}>
+      <Text style={styles.profileTitle}>{title}</Text>
+      {subtitle && <Text style={styles.profileSubtitle}>{subtitle}</Text>}
+    </View>
+    {value && <Text style={styles.profileValue}>{value}</Text>}
+  </View>
+);
+
+interface ProfileSectionProps {
+  title: string;
+  children: React.ReactNode;
+}
+
+const ProfileSection = ({ title, children }: ProfileSectionProps) => (
+  <View style={styles.section}>
+    <Text style={styles.sectionTitle}>{title}</Text>
+    <View style={styles.sectionContent}>{children}</View>
+  </View>
+);
+
+// ============================================================================
+// Main Component
+// ============================================================================
 
 export default function CharacterProfileScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ characterId: string }>();
+  const isVip = useUserStore((s) => s.isVip);
   
-  const [profile, setProfile] = useState<CharacterProfile | null>(null);
+  const [character, setCharacter] = useState<Character | null>(null);
   const [intimacy, setIntimacy] = useState<IntimacyStatus | null>(null);
+  const [emotion, setEmotion] = useState<EmotionStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'about' | 'secrets' | 'story'>('about');
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [stats, setStats] = useState<{
+    streakDays: number;
+    totalMessages: number;
+    totalGifts: number;
+    specialEvents: number;
+    daysKnown: number;
+  }>({
+    streakDays: 0,
+    totalMessages: 0,
+    totalGifts: 0,
+    specialEvents: 0,
+    daysKnown: 0,
+  });
 
   useEffect(() => {
     loadData();
@@ -116,17 +101,54 @@ export default function CharacterProfileScreen() {
 
   const loadData = async () => {
     try {
-      // In production, fetch from API
-      // const profile = await characterService.getCharacterProfile(params.characterId);
-      const mockProfile = getMockCharacterProfile(params.characterId);
-      setProfile(mockProfile);
+      // Load character from API
+      const characterData = await characterService.getCharacter(params.characterId);
+      setCharacter(characterData);
       
+      // Load intimacy status
       try {
         const intimacyStatus = await intimacyService.getStatus(params.characterId);
         setIntimacy(intimacyStatus);
+        setStats(prev => ({
+          ...prev,
+          streakDays: intimacyStatus.streakDays || 0,
+          totalMessages: intimacyStatus.totalMessages || 0,
+          totalGifts: intimacyStatus.giftsCount || 0,
+          specialEvents: intimacyStatus.specialEvents || 0,
+        }));
+        
+        // Calculate days known from first interaction
+        if (intimacyStatus.lastInteractionDate) {
+          const firstDay = new Date(intimacyStatus.lastInteractionDate);
+          const today = new Date();
+          const diffDays = Math.floor((today.getTime() - firstDay.getTime()) / (1000 * 60 * 60 * 24));
+          setStats(prev => ({ ...prev, daysKnown: Math.max(1, diffDays) }));
+        }
       } catch (e) {
-        // Default to level 1 if no intimacy data
-        setIntimacy({ currentLevel: 1 } as IntimacyStatus);
+        setIntimacy({ currentLevel: 1, streakDays: 0, dailyXpEarned: 0, totalXp: 0, progressPercent: 0, xpProgressInLevel: 0, xpForNextLevel: 100, stageNameCn: '陌生人' } as IntimacyStatus);
+      }
+
+      // Load emotion status
+      try {
+        const emotionStatus = await emotionService.getStatus(params.characterId);
+        setEmotion(emotionStatus);
+      } catch (e) {
+        setEmotion(null);
+      }
+      
+      // Load stats from backend
+      try {
+        const { api } = await import('../../services/api');
+        const statsData = await api.get<any>(`/characters/${params.characterId}/stats`);
+        setStats(prev => ({
+          ...prev,
+          streakDays: statsData.streak_days || prev.streakDays,
+          totalMessages: statsData.total_messages || prev.totalMessages,
+          totalGifts: statsData.total_gifts || prev.totalGifts,
+          specialEvents: statsData.special_events || prev.specialEvents,
+        }));
+      } catch (e) {
+        console.log('Stats not available');
       }
     } catch (error) {
       console.error('Failed to load character profile:', error);
@@ -137,10 +159,16 @@ export default function CharacterProfileScreen() {
 
   const currentLevel = intimacy?.currentLevel || 1;
   
-  const countUnlocked = (items: (UnlockableInfo | PersonalitySecret)[]) => 
-    items.filter(item => currentLevel >= item.unlockLevel).length;
+  // Get intimacy stage name
+  const getStageName = (level: number): string => {
+    if (level <= 3) return '👋 初识';
+    if (level <= 10) return '😊 熟悉';
+    if (level <= 25) return '💛 好友';
+    if (level <= 40) return '💕 亲密';
+    return '❤️ 挚爱';
+  };
 
-  if (loading || !profile) {
+  if (loading || !character) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={theme.colors.primary.main} />
@@ -152,12 +180,12 @@ export default function CharacterProfileScreen() {
     <View style={styles.container}>
       {/* Background */}
       <Image 
-        source={{ uri: profile.backgroundUrl || profile.avatarUrl }} 
+        source={getCharacterBackground(character.characterId, character.backgroundUrl || character.avatarUrl)} 
         style={styles.backgroundImage}
-        blurRadius={20}
+        blurRadius={25}
       />
       <LinearGradient
-        colors={['transparent', 'rgba(26,16,37,0.8)', 'rgba(26,16,37,1)']}
+        colors={['transparent', 'rgba(26,16,37,0.85)', 'rgba(26,16,37,1)']}
         style={styles.backgroundOverlay}
       />
 
@@ -167,186 +195,156 @@ export default function CharacterProfileScreen() {
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Character Profile</Text>
+          <Text style={styles.headerTitle}>角色资料</Text>
           <View style={styles.headerRight} />
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {/* Profile Header */}
-          <View style={styles.profileHeader}>
-            <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
-            <Text style={styles.name}>{profile.name}</Text>
-            {profile.occupation && (
-              <Text style={styles.occupation}>{profile.occupation}</Text>
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          {/* Large Avatar & Name */}
+          <View style={styles.avatarSection}>
+            <TouchableOpacity onPress={() => setShowAvatarModal(true)} activeOpacity={0.9}>
+              <Image 
+                source={getCharacterAvatar(character.characterId, character.avatarUrl)} 
+                style={styles.largeAvatar} 
+              />
+            </TouchableOpacity>
+            <Text style={styles.characterName}>{character.name}</Text>
+            {character.occupation && (
+              <Text style={styles.occupation}>{character.occupation}</Text>
             )}
             
             {/* Intimacy Level Badge */}
             <View style={styles.levelBadge}>
               <Ionicons name="heart" size={16} color="#EC4899" />
-              <Text style={styles.levelText}>Level {currentLevel}</Text>
-              <Text style={styles.stageText}>{intimacy?.stageNameCn || 'Strangers'}</Text>
+              <Text style={styles.levelText}>Lv.{currentLevel}</Text>
+              <Text style={styles.stageText}>{getStageName(currentLevel)}</Text>
             </View>
             
-            {/* Progress hint */}
-            <Text style={styles.progressHint}>
-              💡 Chat more to unlock secrets
-            </Text>
+            {/* Personality Tags */}
+            <View style={styles.tagsContainer}>
+              {character.personalityTraits.slice(0, 4).map((trait, index) => (
+                <View key={index} style={styles.tag}>
+                  <Text style={styles.tagText}>{trait}</Text>
+                </View>
+              ))}
+            </View>
           </View>
 
-          {/* Tabs */}
-          <View style={styles.tabBar}>
-            {[
-              { id: 'about', label: 'About', icon: 'person-outline' },
-              { id: 'secrets', label: 'Secrets', icon: 'key-outline' },
-              { id: 'story', label: 'Story', icon: 'book-outline' },
-            ].map(tab => (
-              <TouchableOpacity
-                key={tab.id}
-                style={[styles.tab, activeTab === tab.id && styles.tabActive]}
-                onPress={() => setActiveTab(tab.id as any)}
-              >
-                <Ionicons 
-                  name={tab.icon as any} 
-                  size={18} 
-                  color={activeTab === tab.id ? theme.colors.primary.main : theme.colors.text.tertiary} 
-                />
-                <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {/* Description */}
+          <ProfileSection title="简介">
+            <View style={styles.descriptionCard}>
+              <Text style={styles.descriptionText}>{character.description}</Text>
+            </View>
+          </ProfileSection>
 
-          {/* Tab Content */}
-          <View style={styles.content}>
-            {activeTab === 'about' && (
-              <>
-                {/* Description */}
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Description</Text>
-                  <Text style={styles.description}>{profile.description}</Text>
-                </View>
-
-                {/* Likes */}
-                <View style={styles.section}>
-                  <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>❤️ Likes</Text>
-                    <Text style={styles.unlockCount}>
-                      {countUnlocked(profile.likes)}/{profile.likes.length}
-                    </Text>
-                  </View>
-                  <View style={styles.itemsGrid}>
-                    {profile.likes.map(item => (
-                      <UnlockableCard key={item.id} item={item} currentLevel={currentLevel} />
-                    ))}
-                  </View>
-                </View>
-
-                {/* Dislikes */}
-                <View style={styles.section}>
-                  <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>💔 Dislikes</Text>
-                    <Text style={styles.unlockCount}>
-                      {countUnlocked(profile.dislikes)}/{profile.dislikes.length}
-                    </Text>
-                  </View>
-                  <View style={styles.itemsGrid}>
-                    {profile.dislikes.map(item => (
-                      <UnlockableCard key={item.id} item={item} currentLevel={currentLevel} />
-                    ))}
-                  </View>
-                </View>
-              </>
+          {/* Basic Info */}
+          <ProfileSection title="基本信息">
+            {character.age && (
+              <ProfileItem icon="calendar-outline" title="年龄" value={`${character.age}岁`} />
             )}
-
-            {activeTab === 'secrets' && (
-              <>
-                {/* Personality Secrets */}
-                <View style={styles.section}>
-                  <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>🔮 Hidden Personality</Text>
-                    <Text style={styles.unlockCount}>
-                      {countUnlocked(profile.personalitySecrets)}/{profile.personalitySecrets.length}
-                    </Text>
-                  </View>
-                  {profile.personalitySecrets.map(secret => (
-                    <UnlockableCard 
-                      key={secret.id} 
-                      item={secret} 
-                      currentLevel={currentLevel}
-                      showTitle 
-                    />
-                  ))}
-                </View>
-
-                {/* Special Dialogues */}
-                <View style={styles.section}>
-                  <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>💬 Special Events</Text>
-                    <Text style={styles.unlockCount}>
-                      {countUnlocked(profile.specialDialogues)}/{profile.specialDialogues.length}
-                    </Text>
-                  </View>
-                  {profile.specialDialogues.map(item => (
-                    <UnlockableCard key={item.id} item={item} currentLevel={currentLevel} />
-                  ))}
-                </View>
-              </>
+            {character.birthday && (
+              <ProfileItem icon="gift-outline" title="生日" value={character.birthday} iconColor="#FF6B6B" />
             )}
+            {character.zodiac && (
+              <ProfileItem icon="star-outline" title="星座" value={character.zodiac} iconColor="#FFD700" />
+            )}
+            {character.height && (
+              <ProfileItem icon="resize-outline" title="身高" value={character.height} />
+            )}
+            {character.location && (
+              <ProfileItem icon="location-outline" title="所在地" value={character.location} iconColor="#4ECDC4" />
+            )}
+            {character.mbti && (
+              <ProfileItem icon="analytics-outline" title="MBTI" value={character.mbti} iconColor="#9B59B6" />
+            )}
+          </ProfileSection>
 
-            {activeTab === 'story' && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>📖 Backstory</Text>
-                  <Text style={styles.unlockCount}>
-                    {countUnlocked(profile.backstory)}/{profile.backstory.length}
-                  </Text>
-                </View>
-                {profile.backstory.map((item, index) => (
-                  <View key={item.id} style={styles.storyItem}>
-                    <View style={styles.storyTimeline}>
-                      <View style={[
-                        styles.storyDot, 
-                        currentLevel >= item.unlockLevel && styles.storyDotUnlocked
-                      ]} />
-                      {index < profile.backstory.length - 1 && (
-                        <View style={styles.storyLine} />
-                      )}
-                    </View>
-                    <View style={styles.storyContent}>
-                      <UnlockableCard item={item} currentLevel={currentLevel} />
-                    </View>
+          {/* Hobbies */}
+          {character.hobbies && character.hobbies.length > 0 && (
+            <ProfileSection title="爱好">
+              <View style={styles.hobbiesContainer}>
+                {character.hobbies.map((hobby, index) => (
+                  <View key={index} style={styles.hobbyTag}>
+                    <Text style={styles.hobbyText}>{hobby}</Text>
                   </View>
                 ))}
               </View>
-            )}
-          </View>
+            </ProfileSection>
+          )}
 
-          {/* Chat Button */}
-          <TouchableOpacity 
-            style={styles.chatButton}
-            onPress={() => router.push({
-              pathname: '/chat/[characterId]',
-              params: { characterId: profile.characterId, characterName: profile.name },
-            })}
-          >
-            <LinearGradient
-              colors={['#EC4899', '#8B5CF6']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.chatButtonGradient}
-            >
-              <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
-              <Text style={styles.chatButtonText}>Continue Chatting</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+          {/* Relationship Status */}
+          <ProfileSection title="关系状态">
+            <ProfileItem 
+              icon="heart" 
+              title="亲密度" 
+              value={`Lv.${currentLevel}`}
+              subtitle={intimacy?.stageNameCn || getStageName(currentLevel)}
+              iconColor="#EC4899"
+            />
+            <ProfileItem 
+              icon="flame" 
+              title="连续互动" 
+              value={`${stats.streakDays}天`}
+              iconColor="#FF6B35"
+            />
+            <ProfileItem 
+              icon="chatbubbles" 
+              title="聊天消息" 
+              value={`${stats.totalMessages}条`}
+              iconColor="#3498DB"
+            />
+            <ProfileItem 
+              icon="gift" 
+              title="收到礼物" 
+              value={`${stats.totalGifts}个`}
+              iconColor="#9B59B6"
+            />
+            {stats.daysKnown > 0 && (
+              <ProfileItem 
+                icon="time" 
+                title="认识天数" 
+                value={`${stats.daysKnown}天`}
+                iconColor="#2ECC71"
+              />
+            )}
+          </ProfileSection>
 
           <View style={{ height: 40 }} />
         </ScrollView>
       </SafeAreaView>
+
+      {/* Avatar Full Screen Modal */}
+      <Modal
+        visible={showAvatarModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAvatarModal(false)}
+      >
+        <TouchableOpacity 
+          style={styles.avatarModalOverlay} 
+          activeOpacity={1}
+          onPress={() => setShowAvatarModal(false)}
+        >
+          <Image 
+            source={getCharacterAvatar(character.characterId, character.avatarUrl)}
+            style={styles.avatarModalImage}
+            resizeMode="contain"
+          />
+          <TouchableOpacity 
+            style={styles.avatarModalClose}
+            onPress={() => setShowAvatarModal(false)}
+          >
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
+
+// ============================================================================
+// Styles
+// ============================================================================
 
 const styles = StyleSheet.create({
   container: {
@@ -364,14 +362,14 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: SCREEN_HEIGHT * 0.4,
+    height: SCREEN_HEIGHT * 0.5,
   },
   backgroundOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: SCREEN_HEIGHT * 0.5,
+    height: SCREEN_HEIGHT * 0.6,
   },
   safeArea: {
     flex: 1,
@@ -397,20 +395,26 @@ const styles = StyleSheet.create({
   headerRight: {
     width: 40,
   },
-  profileHeader: {
+  scrollView: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+
+  // Avatar Section
+  avatarSection: {
     alignItems: 'center',
-    paddingTop: 20,
+    paddingTop: 10,
     paddingBottom: 24,
   },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 3,
-    borderColor: theme.colors.primary.main,
+  largeAvatar: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    borderWidth: 4,
+    borderColor: 'rgba(236, 72, 153, 0.5)',
   },
-  name: {
-    fontSize: 26,
+  characterName: {
+    fontSize: 28,
     fontWeight: '700',
     color: '#fff',
     marginTop: 16,
@@ -427,7 +431,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    marginTop: 16,
+    marginTop: 12,
     gap: 8,
   },
   levelText: {
@@ -439,138 +443,177 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.text.secondary,
   },
-  progressHint: {
-    fontSize: 13,
-    color: theme.colors.text.tertiary,
-    marginTop: 12,
-  },
-  tabBar: {
+  tagsContainer: {
     flexDirection: 'row',
-    marginHorizontal: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderRadius: 12,
-    padding: 4,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
     justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 10,
-    gap: 6,
+    marginTop: 16,
+    gap: 8,
   },
-  tabActive: {
+  tag: {
     backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
-  tabText: {
+  tagText: {
     fontSize: 13,
+    color: '#A78BFA',
     fontWeight: '500',
-    color: theme.colors.text.tertiary,
   },
-  tabTextActive: {
-    color: theme.colors.primary.main,
-  },
-  content: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-  },
+
+  // Settings-style sections
   section: {
-    marginBottom: 28,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: 13,
     fontWeight: '600',
+    color: theme.colors.text.tertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  sectionContent: {
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+
+  // Profile Item (settings style)
+  profileItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  profileIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  profileContent: {
+    flex: 1,
+  },
+  profileTitle: {
+    fontSize: 16,
+    fontWeight: '500',
     color: '#fff',
   },
-  unlockCount: {
+  profileSubtitle: {
     fontSize: 13,
     color: theme.colors.text.tertiary,
+    marginTop: 2,
   },
-  description: {
+  profileValue: {
+    fontSize: 15,
+    color: theme.colors.text.secondary,
+  },
+
+  // Description
+  descriptionCard: {
+    padding: 16,
+  },
+  descriptionText: {
     fontSize: 15,
     lineHeight: 22,
     color: theme.colors.text.secondary,
   },
-  itemsGrid: {
+
+  // Hobbies
+  hobbiesContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
-  },
-  unlockableCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 12,
     padding: 12,
-    minWidth: 100,
-  },
-  unlockableCardLocked: {
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-  },
-  secretTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 6,
-  },
-  unlockableContent: {
-    fontSize: 14,
-    color: '#fff',
-  },
-  unlockableCategory: {
-    fontSize: 11,
-    color: theme.colors.text.tertiary,
-    marginTop: 4,
-  },
-  lockedContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
-    paddingVertical: 4,
   },
-  lockedText: {
-    fontSize: 13,
-    color: theme.colors.text.tertiary,
+  hobbyTag: {
+    backgroundColor: 'rgba(78, 205, 196, 0.15)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
   },
-  storyItem: {
+  hobbyText: {
+    fontSize: 14,
+    color: '#4ECDC4',
+    fontWeight: '500',
+  },
+
+  // Emotion
+  emotionCard: {
+    padding: 16,
+  },
+  emotionBadge: {
     flexDirection: 'row',
-    marginBottom: 0,
-  },
-  storyTimeline: {
-    width: 24,
     alignItems: 'center',
-  },
-  storyDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    marginTop: 14,
-  },
-  storyDotUnlocked: {
-    backgroundColor: theme.colors.primary.main,
-  },
-  storyLine: {
-    width: 2,
-    flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    marginVertical: 4,
-  },
-  storyContent: {
-    flex: 1,
-    marginLeft: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 12,
     marginBottom: 12,
   },
+  emotionEmoji: {
+    fontSize: 32,
+  },
+  emotionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  emotionScore: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  emotionReason: {
+    fontSize: 12,
+    color: theme.colors.text.tertiary,
+    marginTop: 2,
+  },
+  emotionBar: {
+    height: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  emotionFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+
+  // Locked
+  lockedCard: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  lockedBlur: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+  lockedText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFD700',
+    marginTop: 8,
+  },
+  lockedSubtext: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.6)',
+    marginTop: 4,
+  },
+
+  // Chat Button
   chatButton: {
-    marginHorizontal: 20,
-    marginTop: 16,
     borderRadius: 24,
     overflow: 'hidden',
+    marginTop: 8,
   },
   chatButtonGradient: {
     flexDirection: 'row',
@@ -583,5 +626,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  
+  // Avatar Modal
+  avatarModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarModalImage: {
+    width: SCREEN_WIDTH * 0.9,
+    height: SCREEN_WIDTH * 0.9,
+    borderRadius: 16,
+  },
+  avatarModalClose: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

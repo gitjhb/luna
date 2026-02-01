@@ -24,6 +24,8 @@ import { useUserStore } from '../../store/userStore';
 import { Character } from '../../types';
 import { characterService } from '../../services/characterService';
 import SettingsDrawer from '../../components/SettingsDrawer';
+import MockModeBanner from '../../components/MockModeBanner';
+import { getCharacterAvatar, getCharacterBackground } from '../../assets/characters';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 48;
@@ -120,6 +122,9 @@ export default function CompanionsScreen() {
           />
         </View>
 
+        {/* Mock Mode Warning */}
+        <MockModeBanner />
+
         {/* Characters */}
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -140,7 +145,7 @@ export default function CompanionsScreen() {
               activeOpacity={0.9}
             >
               <Image
-                source={{ uri: character.avatarUrl || 'https://i.pravatar.cc/300' }}
+                source={getCharacterAvatar(character.characterId, character.avatarUrl)}
                 style={styles.characterImage}
               />
               <LinearGradient

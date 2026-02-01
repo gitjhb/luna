@@ -33,6 +33,7 @@ class TransactionType(str, enum.Enum):
     BONUS = "bonus"
     DAILY_REFRESH = "daily_refresh"
     GIFT = "gift"  # 送礼物消费
+    REFERRAL = "referral"  # 邀请好友奖励
 
 
 class User(Base):

@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     MOCK_REDIS: bool = Field(default=True)
     MOCK_LLM: bool = Field(default=True)
     MOCK_TTS: bool = Field(default=True)
+    MOCK_IMAGE: bool = Field(default=True)  # Mock mode for image generation
     
     # ========== Rate Limiting ==========
     RATE_LIMIT_ENABLED: bool = Field(default=True)

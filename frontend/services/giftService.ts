@@ -32,6 +32,11 @@ export interface GiftCatalogItem {
   price: number;
   xp_reward: number;
   icon?: string;
+  category?: string;
+  is_spicy?: boolean;
+  requires_subscription?: boolean;
+  triggers_scene?: string;
+  sort_order?: number;
 }
 
 export interface SendGiftRequest {

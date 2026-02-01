@@ -28,6 +28,12 @@ export interface Wallet {
   dailyCreditsRefreshedAt?: string;
 }
 
+export interface UserPreferences {
+  nsfwEnabled: boolean;
+  language: string;
+  notificationsEnabled: boolean;
+}
+
 interface UserState {
   // Authentication
   isAuthenticated: boolean;
@@ -36,6 +42,9 @@ interface UserState {
   
   // Wallet & Credits
   wallet: Wallet | null;
+  
+  // User Preferences
+  preferences: UserPreferences;
   
   // Subscription helpers
   isSubscribed: boolean;
@@ -52,6 +61,7 @@ interface UserState {
   deductCredits: (amount: number) => void;
   updateUser: (user: Partial<User>) => void;
   setSubscription: (tier: 'free' | 'premium' | 'vip', expiresAt?: string) => void;
+  setPreferences: (prefs: Partial<UserPreferences>) => void;
   setHasHydrated: (state: boolean) => void;
 }
 
@@ -63,6 +73,11 @@ export const useUserStore = create<UserState>()(
       user: null,
       accessToken: null,
       wallet: null,
+      preferences: {
+        nsfwEnabled: false,
+        language: 'zh',
+        notificationsEnabled: true,
+      },
       isSubscribed: false,
       isPremium: false,
       isVip: false,
@@ -155,6 +170,16 @@ export const useUserStore = create<UserState>()(
             isVip: tier === 'vip',
           });
         }
+      },
+      
+      setPreferences: (prefs) => {
+        const current = get().preferences;
+        set({
+          preferences: {
+            ...current,
+            ...prefs,
+          },
+        });
       },
       
       setHasHydrated: (state) => {

@@ -21,6 +21,7 @@ import { theme } from '../../theme/config';
 import { useChatStore, ChatSession, Message } from '../../store/chatStore';
 import { chatService } from '../../services/chatService';
 import SettingsDrawer from '../../components/SettingsDrawer';
+import { getCharacterAvatar } from '../../assets/characters';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 
@@ -119,7 +120,7 @@ export default function ChatsScreen() {
       activeOpacity={0.8}
     >
       <Image
-        source={{ uri: item.characterAvatar || 'https://i.pravatar.cc/100' }}
+        source={getCharacterAvatar(item.characterId, item.characterAvatar)}
         style={styles.avatar}
       />
       <View style={styles.sessionInfo}>

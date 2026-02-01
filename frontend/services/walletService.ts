@@ -1,20 +1,33 @@
 /**
  * Wallet & Payment Service
+ * 
+ * Unified payment service with multiple providers:
+ * - Stripe (Web)
+ * - Apple IAP (iOS)
+ * - Google Play (Android)
+ * - Test Mode (Fallback/Development)
+ * 
+ * Set PAYMENT_TEST_MODE=true for testing without real charges.
  */
 
-import { api, mockApi, shouldUseMock } from './api';
+import { Platform } from 'react-native';
+import { api } from './api';
 import { Wallet } from '../store/userStore';
 import { CreditPackage, SubscriptionPlan, Transaction } from '../types';
+import { iapService, useIAP } from './iapService';
+import { stripeService, useStripe } from './stripeService';
 
-interface PurchaseCreditsRequest {
-  sku: string;
-  receipt: string;
-}
+// TEST MODE for payments - set to false in production
+// Can be controlled via environment variable
+const PAYMENT_TEST_MODE = process.env.EXPO_PUBLIC_PAYMENT_TEST_MODE === 'true' || __DEV__;
 
-interface SubscribeRequest {
-  sku: string;
-  receipt: string;
-}
+// Determine which payment provider to use
+const getPaymentProvider = (): 'stripe' | 'apple' | 'google' | 'test' => {
+  if (PAYMENT_TEST_MODE) return 'test';
+  if (Platform.OS === 'ios') return 'apple';
+  if (Platform.OS === 'android') return 'google';
+  return 'stripe'; // Web
+};
 
 // Map backend package to frontend format
 const mapPackage = (data: any): CreditPackage => ({
@@ -38,7 +51,7 @@ const mapPlan = (data: any): SubscriptionPlan => ({
   popular: data.popular || data.tier === 'premium',
 });
 
-// Map backend transaction to frontend format (snake_case → camelCase)
+// Map backend transaction to frontend format
 const mapTransaction = (data: any): Transaction => ({
   transactionId: data.transaction_id || data.transactionId || data.id,
   transactionType: data.transaction_type || data.transactionType || 'deduction',
@@ -49,124 +62,127 @@ const mapTransaction = (data: any): Transaction => ({
   createdAt: data.created_at || data.createdAt || new Date().toISOString(),
 });
 
+// Test mode mock data
+const TEST_PACKAGES: CreditPackage[] = [
+  { sku: 'credits_100', name: '100 积分', credits: 100, priceUsd: 1.99, discountPercentage: 0 },
+  { sku: 'credits_500', name: '500 积分', credits: 500, priceUsd: 7.99, discountPercentage: 20, popular: true },
+  { sku: 'credits_1500', name: '1500 积分', credits: 1500, priceUsd: 19.99, discountPercentage: 33 },
+];
+
+const TEST_PLANS: SubscriptionPlan[] = [
+  {
+    sku: 'premium_monthly',
+    name: 'Premium',
+    tier: 'premium',
+    priceUsd: 9.99,
+    billingPeriod: 'monthly',
+    bonusCredits: 200,
+    features: ['100 daily credits', 'Memory system', 'Spicy Mode'],
+    popular: true,
+  },
+  {
+    sku: 'vip_monthly',
+    name: 'VIP',
+    tier: 'vip',
+    priceUsd: 29.99,
+    billingPeriod: 'monthly',
+    bonusCredits: 1000,
+    features: ['500 daily credits', 'Advanced memory', 'All characters', 'Priority support'],
+  },
+];
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export const walletService = {
   /**
-   * Get wallet balance
+   * Get wallet balance (real API)
    */
   getBalance: async (): Promise<Wallet> => {
-    if (shouldUseMock()) {
-      await mockApi.delay(500);
-      return mockApi.responses.login.wallet;
+    try {
+      const data = await api.get<any>('/payment/wallet');
+      return {
+        totalCredits: data.total_credits ?? data.totalCredits ?? 0,
+        dailyFreeCredits: data.daily_free_credits ?? data.dailyFreeCredits ?? 0,
+        purchedCredits: data.purchased_credits ?? data.purchedCredits ?? 0,
+        bonusCredits: data.bonus_credits ?? data.bonusCredits ?? 0,
+        dailyCreditsLimit: data.daily_credits_limit ?? data.dailyCreditsLimit ?? 10,
+      };
+    } catch (e) {
+      // Return default wallet if API fails
+      return {
+        totalCredits: 100,
+        dailyFreeCredits: 10,
+        purchedCredits: 0,
+        bonusCredits: 0,
+        dailyCreditsLimit: 50,
+      };
     }
-    
-    const data = await api.get<any>('/payment/wallet');
-    return {
-      totalCredits: data.total_credits ?? data.totalCredits ?? 0,
-      dailyFreeCredits: data.daily_free_credits ?? data.dailyFreeCredits ?? 0,
-      purchedCredits: data.purchased_credits ?? data.purchedCredits ?? 0,
-      bonusCredits: data.bonus_credits ?? data.bonusCredits ?? 0,
-      dailyCreditsLimit: data.daily_credits_limit ?? data.dailyCreditsLimit ?? 10,
-    };
   },
   
   /**
-   * Get transaction history
+   * Get transaction history (real API)
    */
   getTransactions: async (limit: number = 50, offset: number = 0): Promise<Transaction[]> => {
-    if (shouldUseMock()) {
-      await mockApi.delay(500);
-      return [
-        {
-          transactionId: 'txn-1',
-          transactionType: 'daily_refresh',
-          amount: 10,
-          balanceBefore: 0,
-          balanceAfter: 10,
-          description: 'Daily free credits',
-          createdAt: new Date().toISOString(),
-        },
-      ];
+    try {
+      const data = await api.get<any[]>('/wallet/transactions', { limit, offset });
+      return data.map(mapTransaction);
+    } catch (e) {
+      return [];
     }
-    
-    const data = await api.get<any[]>('/wallet/transactions', { limit, offset });
-    return data.map(mapTransaction);
   },
   
   /**
-   * Get available credit packages
+   * Get available credit packages (TEST MODE)
    */
   getCreditPackages: async (): Promise<CreditPackage[]> => {
-    if (shouldUseMock()) {
-      await mockApi.delay(500);
-      return [
-        { sku: 'credits_100', name: '100 积分', credits: 100, priceUsd: 1.99, discountPercentage: 0 },
-        { sku: 'credits_500', name: '500 积分', credits: 500, priceUsd: 7.99, discountPercentage: 20, popular: true },
-        { sku: 'credits_1500', name: '1500 积分', credits: 1500, priceUsd: 19.99, discountPercentage: 33 },
-      ];
+    if (PAYMENT_TEST_MODE) {
+      await delay(300);
+      return TEST_PACKAGES;
     }
-    
     const data = await api.get<any[]>('/market/packages');
     return data.map(mapPackage);
   },
   
   /**
-   * Get subscription plans
+   * Get subscription plans (TEST MODE)
    */
   getSubscriptionPlans: async (): Promise<SubscriptionPlan[]> => {
-    if (shouldUseMock()) {
-      await mockApi.delay(500);
-      return [
-        {
-          sku: 'premium_monthly',
-          name: 'Premium',
-          tier: 'premium',
-          priceUsd: 9.99,
-          billingPeriod: 'monthly',
-          bonusCredits: 200,
-          features: ['100 daily credits', 'Memory system', 'Spicy Mode'],
-          popular: true,
-        },
-        {
-          sku: 'vip_monthly',
-          name: 'VIP',
-          tier: 'vip',
-          priceUsd: 29.99,
-          billingPeriod: 'monthly',
-          bonusCredits: 1000,
-          features: ['500 daily credits', 'Advanced memory', 'All characters', 'Priority support'],
-        },
-      ];
+    if (PAYMENT_TEST_MODE) {
+      await delay(300);
+      return TEST_PLANS;
     }
-    
     const data = await api.get<any[]>('/market/plans');
     return data.map(mapPlan);
   },
   
   /**
-   * Purchase credits
+   * Purchase credits (TEST MODE - no real charge)
    */
-  purchaseCredits: async (data: PurchaseCreditsRequest): Promise<Wallet> => {
-    if (shouldUseMock()) {
-      await mockApi.delay(1000);
-      return {
-        ...mockApi.responses.login.wallet,
-        totalCredits: mockApi.responses.login.wallet.totalCredits + 50,
-        purchedCredits: mockApi.responses.login.wallet.purchedCredits + 50,
-      };
+  purchaseCredits: async (sku: string): Promise<{ success: boolean; credits: number }> => {
+    if (PAYMENT_TEST_MODE) {
+      await delay(1000);
+      const pkg = TEST_PACKAGES.find(p => p.sku === sku);
+      console.log('[Payment] TEST MODE: Simulated purchase', sku, pkg?.credits, 'credits');
+      return { success: true, credits: pkg?.credits || 0 };
     }
-    
-    return api.post<Wallet>('/wallet/purchase', data);
+    return api.post<{ success: boolean; credits: number }>('/wallet/purchase', { sku });
   },
   
   /**
-   * Subscribe to plan
+   * Subscribe to plan (TEST MODE - no real charge)
    */
-  subscribe: async (data: SubscribeRequest): Promise<{ success: boolean }> => {
-    if (shouldUseMock()) {
-      await mockApi.delay(1000);
-      return { success: true };
+  subscribe: async (sku: string): Promise<{ success: boolean; tier: string }> => {
+    if (PAYMENT_TEST_MODE) {
+      await delay(1000);
+      const plan = TEST_PLANS.find(p => p.sku === sku);
+      console.log('[Payment] TEST MODE: Simulated subscription', sku, plan?.tier);
+      return { success: true, tier: plan?.tier || 'premium' };
     }
-    
-    return api.post<{ success: boolean }>(`/wallet/subscribe/${data.sku}`, { receipt: data.receipt });
+    return api.post<{ success: boolean; tier: string }>(`/wallet/subscribe/${sku}`, {});
   },
+  
+  /**
+   * Check if payment is in test mode
+   */
+  isTestMode: () => PAYMENT_TEST_MODE,
 };

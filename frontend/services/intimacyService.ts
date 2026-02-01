@@ -38,7 +38,7 @@ const transformIntimacyStatus = (data: any): IntimacyStatus => ({
   dailyXpEarned: data.daily_xp_earned,
   dailyXpLimit: data.daily_xp_limit,
   dailyXpRemaining: data.daily_xp_remaining,
-  availableActions: data.available_actions.map((a: any) => ({
+  availableActions: (data.available_actions || []).map((a: any) => ({
     actionType: a.action_type,
     actionName: a.action_name,
     xpReward: a.xp_reward,
@@ -47,7 +47,11 @@ const transformIntimacyStatus = (data: any): IntimacyStatus => ({
     available: a.available,
     cooldownSeconds: a.cooldown_seconds,
   })),
-  unlockedFeatures: data.unlocked_features,
+  unlockedFeatures: data.unlocked_features || [],
+  // 统计数据
+  totalMessages: data.total_messages || 0,
+  giftsCount: data.gifts_count || 0,
+  specialEvents: data.special_events || 0,
 });
 
 const transformCheckinResponse = (data: any): DailyCheckinResponse => ({

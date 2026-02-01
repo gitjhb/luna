@@ -20,11 +20,20 @@ class UserContext(BaseModel):
     is_subscribed: bool = False
 
 
+class WalletInfo(BaseModel):
+    total_credits: float = 10
+    daily_free_credits: float = 10
+    purchased_credits: float = 0
+    bonus_credits: float = 0
+    daily_credits_limit: float = 50
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user_id: str
     subscription_tier: str
+    wallet: Optional[WalletInfo] = None
 
 
 class FirebaseAuthRequest(BaseModel):

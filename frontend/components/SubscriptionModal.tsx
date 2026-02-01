@@ -241,7 +241,12 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           {/* Header */}
           <View style={styles.header}>
             <View>
-              <Text style={styles.title}>升级会员</Text>
+              <View style={styles.titleRow}>
+                <Text style={styles.title}>升级会员</Text>
+                <View style={styles.testBadge}>
+                  <Text style={styles.testBadgeText}>测试模式</Text>
+                </View>
+              </View>
               <Text style={styles.subtitle}>解锁全部高级功能</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -254,8 +259,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
             <View style={styles.highlightBanner}>
               <Ionicons name="sparkles" size={18} color="#FFD700" />
               <Text style={styles.highlightText}>
-                {highlightFeature === 'spicy' 
-                  ? '订阅解锁 Spicy Mode，体验更亲密的对话 💕'
+                {highlightFeature === 'nsfw' 
+                  ? '订阅解锁成人内容，体验更亲密的对话 🔞'
                   : `订阅解锁 ${highlightFeature} 功能`
                 }
               </Text>
@@ -309,10 +314,26 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   title: {
     fontSize: 22,
     fontWeight: '700',
     color: '#fff',
+  },
+  testBadge: {
+    backgroundColor: 'rgba(255, 165, 0, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  testBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FFA500',
   },
   subtitle: {
     fontSize: 14,

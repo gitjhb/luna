@@ -54,6 +54,11 @@ class IntimacyStatus(BaseModel):
     # Unlocked features at current level
     unlocked_features: List[str] = []
 
+    # Statistics
+    total_messages: int = 0
+    gifts_count: int = 0
+    special_events: int = 0
+
 
 class XPAwardResponse(BaseModel):
     """Response after awarding XP"""

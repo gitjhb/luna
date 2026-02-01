@@ -23,6 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme/config';
 import { useUserStore } from '../../store/userStore';
 import { walletService } from '../../services/walletService';
+import { paymentService } from '../../services/paymentService';
 import { RechargeModal } from '../../components/RechargeModal';
 import { SubscriptionModal } from '../../components/SubscriptionModal';
 import { TransactionHistoryModal } from '../../components/TransactionHistoryModal';
@@ -62,7 +63,14 @@ const AVATAR_OPTIONS = [
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, wallet, updateWallet, updateUser, isSubscribed } = useUserStore();
+  const { user, wallet, updateWallet, updateUser, isSubscribed, isVip, isPremium } = useUserStore();
+  
+  // Get display tier name
+  const getTierDisplay = () => {
+    if (isVip) return 'VIP';
+    if (isPremium) return 'Premium';
+    return 'Free';
+  };
   
   const [refreshing, setRefreshing] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -88,6 +96,33 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error('Failed to load profile data:', error);
     }
+  };
+
+  const handleCancelSubscription = () => {
+    Alert.alert(
+      '取消订阅',
+      '确定要取消订阅吗？\n\n• 将立即降级为免费用户\n• 金币余额保留\n• 不退款',
+      [
+        { text: '再想想', style: 'cancel' },
+        {
+          text: '确定取消',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const result = await paymentService.cancelSubscription();
+              if (result.success) {
+                updateUser({ subscriptionTier: 'free' });
+                Alert.alert('已取消', result.message || '订阅已取消，已降级为免费用户。');
+              } else {
+                Alert.alert('取消失败', result.message || '请稍后重试');
+              }
+            } catch (e: any) {
+              Alert.alert('取消失败', e.message || '请稍后重试');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const onRefresh = useCallback(async () => {
@@ -190,12 +225,22 @@ export default function ProfileScreen() {
                 color={isSubscribed ? '#FFD700' : theme.colors.text.tertiary} 
               />
               <Text style={[styles.membershipText, isSubscribed && styles.membershipTextPremium]}>
-                {isSubscribed ? 'Premium' : 'Free'}
+                {getTierDisplay()}
               </Text>
               {!isSubscribed && (
                 <Ionicons name="chevron-forward" size={12} color={theme.colors.text.tertiary} />
               )}
             </TouchableOpacity>
+            
+            {/* Cancel Subscription Link */}
+            {isSubscribed && (
+              <TouchableOpacity 
+                style={styles.cancelSubscriptionLink}
+                onPress={handleCancelSubscription}
+              >
+                <Text style={styles.cancelSubscriptionText}>取消订阅</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Credits Card */}
@@ -279,7 +324,10 @@ export default function ProfileScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>更多</Text>
             <View style={styles.actionsCard}>
-              <TouchableOpacity style={styles.actionRow}>
+              <TouchableOpacity 
+                style={styles.actionRow}
+                onPress={() => router.push('/invite')}
+              >
                 <View style={styles.actionIcon}>
                   <Ionicons name="gift-outline" size={20} color={theme.colors.primary.main} />
                 </View>
@@ -505,6 +553,14 @@ const styles = StyleSheet.create({
   },
   membershipTextPremium: {
     color: '#FFD700',
+  },
+  cancelSubscriptionLink: {
+    marginTop: 8,
+  },
+  cancelSubscriptionText: {
+    fontSize: 12,
+    color: theme.colors.text.tertiary,
+    textDecorationLine: 'underline',
   },
   section: {
     paddingHorizontal: 20,

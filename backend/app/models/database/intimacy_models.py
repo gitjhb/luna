@@ -39,6 +39,12 @@ class UserIntimacy(Base):
     # Streak tracking
     streak_days = Column(Integer, default=0, nullable=False)
     last_interaction_date = Column(Date, nullable=True)
+    streak_reward_claimed = Column(Integer, default=0, nullable=False)  # 已领取的7天奖励次数
+
+    # Statistics
+    total_messages = Column(Integer, default=0, nullable=False)
+    gifts_count = Column(Integer, default=0, nullable=False)
+    special_events = Column(Integer, default=0, nullable=False)
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

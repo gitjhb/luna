@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Mock mode - skip real payment processing  
 # Default to FALSE so it uses real database
-MOCK_PAYMENT = os.getenv("MOCK_PAYMENT", "false").lower() == "true"
+MOCK_PAYMENT = os.getenv("MOCK_PAYMENT", "true").lower() == "true"
 logger.info(f"Payment service MOCK_PAYMENT: {MOCK_PAYMENT}")
 
 # In-memory storage (replace with DB in production)
@@ -381,21 +381,57 @@ class PaymentService:
             "transaction": transaction,
         }
     
-    async def cancel_subscription(self, user_id: str) -> dict:
-        """Cancel subscription (will expire at end of period)"""
+    async def cancel_subscription(self, user_id: str, immediate: bool = True) -> dict:
+        """Cancel subscription
+        
+        Args:
+            user_id: User ID
+            immediate: If True, cancel immediately and downgrade to free.
+                      If False, just stop auto-renew (expires at end of period).
+        
+        Note: No refunds, credits are preserved.
+        """
         sub = await self.get_subscription(user_id)
         
         if sub["tier"] == "free":
             return {"success": False, "message": "No active subscription to cancel"}
         
-        sub["auto_renew"] = False
-        sub["updated_at"] = datetime.utcnow()
+        old_tier = sub["tier"]
+        now = datetime.utcnow()
         
-        return {
-            "success": True,
-            "message": f"Subscription will expire on {sub['expires_at']}",
-            "subscription": sub,
-        }
+        if immediate:
+            # Immediate cancellation - downgrade to free now
+            # Credits are preserved (handled separately in wallet)
+            _subscriptions[user_id] = {
+                "user_id": user_id,
+                "tier": "free",
+                "started_at": now,
+                "expires_at": None,
+                "auto_renew": False,
+                "payment_provider": None,
+                "provider_subscription_id": None,
+                "is_active": False,
+                "created_at": sub.get("created_at", now),
+                "updated_at": now,
+            }
+            
+            logger.info(f"User {user_id} cancelled subscription immediately: {old_tier} -> free")
+            
+            return {
+                "success": True,
+                "message": "订阅已取消，已降级为免费用户。金币余额已保留。",
+                "subscription": _subscriptions[user_id],
+            }
+        else:
+            # Just stop auto-renew, keep benefits until expiry
+            sub["auto_renew"] = False
+            sub["updated_at"] = now
+            
+            return {
+                "success": True,
+                "message": f"自动续费已关闭，订阅将于 {sub['expires_at'].strftime('%Y-%m-%d')} 到期",
+                "subscription": sub,
+            }
     
     # ========================================================================
     # Purchase Operations

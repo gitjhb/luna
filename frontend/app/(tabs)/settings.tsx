@@ -2,7 +2,7 @@
  * Settings Screen
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,6 +21,9 @@ import { theme } from '../../theme/config';
 import { useUserStore } from '../../store/userStore';
 import { useChatStore } from '../../store/chatStore';
 import { SubscriptionModal } from '../../components/SubscriptionModal';
+import { InterestsSelector } from '../../components/InterestsSelector';
+import { settingsService } from '../../services/settingsService';
+import { paymentService } from '../../services/paymentService';
 
 interface SettingItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -34,8 +38,8 @@ const SettingItem = ({ icon, title, subtitle, onPress, rightElement, danger }: S
   <TouchableOpacity 
     style={styles.settingItem} 
     onPress={onPress}
-    disabled={!onPress && !rightElement}
-    activeOpacity={0.7}
+    disabled={!onPress}
+    activeOpacity={onPress ? 0.7 : 1}
   >
     <View style={[styles.settingIcon, danger && styles.settingIconDanger]}>
       <Ionicons name={icon} size={20} color={danger ? '#EF4444' : theme.colors.primary.main} />
@@ -59,17 +63,80 @@ const SettingSection = ({ title, children }: { title: string; children: React.Re
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { user, logout, isSubscribed } = useUserStore();
-  const { isSpicyMode, setSpicyMode } = useChatStore();
+  const { user, logout, isSubscribed, preferences, setPreferences } = useUserStore();
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [nsfwLoading, setNsfwLoading] = useState(false);
 
-  const handleSpicyModeToggle = (value: boolean) => {
+  // Load settings on mount
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const settings = await settingsService.getSettings();
+      setPreferences({
+        nsfwEnabled: settings.nsfwEnabled,
+        language: settings.language,
+        notificationsEnabled: settings.notificationsEnabled,
+      });
+    } catch (e) {
+      console.log('Failed to load settings:', e);
+    }
+  };
+
+  const handleNsfwToggle = async (value: boolean) => {
     if (value && !isSubscribed) {
       // Show subscription modal if trying to enable without subscription
       setShowSubscriptionModal(true);
-    } else {
-      setSpicyMode(value);
+      return;
     }
+    
+    setNsfwLoading(true);
+    try {
+      const updated = await settingsService.toggleNsfw(value);
+      setPreferences({ nsfwEnabled: updated.nsfwEnabled });
+      
+      if (value) {
+        Alert.alert(
+          '🔞 成人内容已开启',
+          '角色现在可以使用更加露骨的语言和描写。请确保你已年满18岁。',
+          [{ text: '我知道了' }]
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('设置失败', e.message || '请稍后重试');
+    } finally {
+      setNsfwLoading(false);
+    }
+  };
+
+  const handleCancelSubscription = () => {
+    Alert.alert(
+      '取消订阅',
+      '确定要取消订阅吗？\n\n• 将立即降级为免费用户\n• 金币余额保留\n• 不退款',
+      [
+        { text: '再想想', style: 'cancel' },
+        {
+          text: '确定取消',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const result = await paymentService.cancelSubscription();
+              if (result.success) {
+                // Update local state - set tier to free
+                useUserStore.getState().updateUser({ subscriptionTier: 'free' });
+                Alert.alert('已取消', result.message || '订阅已取消，已降级为免费用户。');
+              } else {
+                Alert.alert('取消失败', result.message || '请稍后重试');
+              }
+            } catch (e: any) {
+              Alert.alert('取消失败', e.message || '请稍后重试');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleLogout = () => {
@@ -141,22 +208,49 @@ export default function SettingsScreen() {
               subtitle={isSubscribed ? 'Premium Member' : 'Free Plan - 点击升级'}
               onPress={() => setShowSubscriptionModal(true)}
             />
+            {isSubscribed && (
+              <SettingItem
+                icon="close-circle-outline"
+                title="取消订阅"
+                subtitle="降级为免费用户，金币保留"
+                onPress={handleCancelSubscription}
+                danger
+              />
+            )}
+          </SettingSection>
+
+          {/* Interests Section */}
+          <SettingSection title="我的兴趣">
+            <View style={styles.interestsContainer}>
+              <InterestsSelector 
+                inline={true}
+                onSave={(ids) => {
+                  console.log('Interests saved:', ids);
+                }}
+              />
+            </View>
           </SettingSection>
 
           {/* Preferences Section */}
           <SettingSection title="Preferences">
             <SettingItem
-              icon="flame-outline"
-              title="Spicy Mode"
-              subtitle={isSubscribed ? 'Unlock intimate content' : '需要订阅 Premium'}
+              icon="warning-outline"
+              title="成人内容 (NSFW)"
+              subtitle={isSubscribed ? '开启后角色可以说更露骨的话' : '需要订阅 Premium 才能开启'}
               onPress={!isSubscribed ? () => setShowSubscriptionModal(true) : undefined}
               rightElement={
-                <Switch
-                  value={isSpicyMode}
-                  onValueChange={handleSpicyModeToggle}
-                  trackColor={{ false: '#3e3e3e', true: theme.colors.primary.main }}
-                  thumbColor={isSpicyMode ? '#fff' : '#f4f3f4'}
-                />
+                nsfwLoading ? (
+                  <ActivityIndicator size="small" color={theme.colors.primary.main} />
+                ) : (
+                  <Switch
+                    value={preferences.nsfwEnabled}
+                    onValueChange={handleNsfwToggle}
+                    disabled={!isSubscribed}
+                    trackColor={{ false: '#3e3e3e', true: '#EF4444' }}
+                    thumbColor={preferences.nsfwEnabled ? '#fff' : '#f4f3f4'}
+                    ios_backgroundColor={!isSubscribed ? '#2a2a2a' : '#3e3e3e'}
+                  />
+                )
               }
             />
             <SettingItem
@@ -243,11 +337,16 @@ export default function SettingsScreen() {
       <SubscriptionModal
         visible={showSubscriptionModal}
         onClose={() => setShowSubscriptionModal(false)}
-        highlightFeature="spicy"
-        onSubscribeSuccess={(tier) => {
-          // After successful subscription, enable spicy mode if that was the intent
+        highlightFeature="nsfw"
+        onSubscribeSuccess={async (tier) => {
+          // After successful subscription, enable NSFW if that was the intent
           if (tier !== 'free') {
-            setSpicyMode(true);
+            try {
+              const updated = await settingsService.toggleNsfw(true);
+              setPreferences({ nsfwEnabled: updated.nsfwEnabled });
+            } catch (e) {
+              console.log('Failed to enable NSFW after subscription:', e);
+            }
           }
         }}
       />
@@ -336,5 +435,9 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: 13,
     color: theme.colors.text.tertiary,
+  },
+  interestsContainer: {
+    padding: 0,
+    margin: 0,
   },
 });

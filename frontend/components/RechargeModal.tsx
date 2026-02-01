@@ -120,7 +120,12 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
         <View style={styles.content}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>购买金币</Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.title}>购买金币</Text>
+              <View style={styles.testBadge}>
+                <Text style={styles.testBadgeText}>测试模式</Text>
+              </View>
+            </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
               <Ionicons name="close" size={24} color="#fff" />
             </TouchableOpacity>
@@ -240,10 +245,26 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   title: {
     fontSize: 18,
     fontWeight: '600',
     color: '#fff',
+  },
+  testBadge: {
+    backgroundColor: 'rgba(255, 165, 0, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  testBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FFA500',
   },
   closeButton: {
     padding: 4,

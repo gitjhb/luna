@@ -1,18 +1,16 @@
 /**
- * Chat Service
- * 
- * Handles chat sessions and messages.
+ * Chat Service - NO MOCK, direct backend only
  */
 
-import { api, mockApi, shouldUseMock } from './api';
+import { api } from './api';
 import { Message, ChatSession } from '../store/chatStore';
 
 interface SendMessageRequest {
   sessionId: string;
   message: string;
   requestType?: 'text' | 'photo' | 'video' | 'voice';
-  spicyMode?: boolean;        // Enable adult content (costs 2 credits extra)
-  intimacyLevel?: number;     // Current relationship level with character
+  spicyMode?: boolean;
+  intimacyLevel?: number;
 }
 
 interface SendMessageResponse {
@@ -59,17 +57,8 @@ const mapMessage = (data: any): Message => ({
 export const chatService = {
   /**
    * Get or create session for a character
-   * Returns existing session if one exists, creates new one if not
    */
   getOrCreateSession: async (characterId: string): Promise<ChatSession> => {
-    if (shouldUseMock()) {
-      await mockApi.delay(500);
-      return {
-        ...mockApi.responses.chatSession,
-        characterId,
-      };
-    }
-    
     // Try to get existing session first
     try {
       const sessions = await api.get<any[]>('/chat/sessions', { character_id: characterId });
@@ -77,7 +66,7 @@ export const chatService = {
         return mapSession(sessions[0]);
       }
     } catch (e) {
-      // No existing session, create new one
+      // No existing session, will create new one
     }
     
     // Create new session
@@ -89,14 +78,6 @@ export const chatService = {
    * Create new chat session
    */
   createSession: async (characterId: string): Promise<ChatSession> => {
-    if (shouldUseMock()) {
-      await mockApi.delay(500);
-      return {
-        ...mockApi.responses.chatSession,
-        characterId,
-      };
-    }
-    
     const data = await api.post<any>('/chat/sessions', { character_id: characterId });
     return mapSession(data);
   },
@@ -105,11 +86,6 @@ export const chatService = {
    * Get user's chat sessions
    */
   getSessions: async (): Promise<ChatSession[]> => {
-    if (shouldUseMock()) {
-      await mockApi.delay(500);
-      return mockApi.responses.chatSessions || [mockApi.responses.chatSession];
-    }
-    
     const data = await api.get<any[]>('/chat/sessions');
     return data.map(mapSession);
   },
@@ -118,11 +94,6 @@ export const chatService = {
    * Get session history
    */
   getSessionHistory: async (sessionId: string): Promise<Message[]> => {
-    if (shouldUseMock()) {
-      await mockApi.delay(500);
-      return [];
-    }
-    
     const data = await api.get<any[]>(`/chat/sessions/${sessionId}/messages`);
     return data.map(mapMessage);
   },
@@ -131,14 +102,6 @@ export const chatService = {
    * Send message
    */
   sendMessage: async (data: SendMessageRequest): Promise<SendMessageResponse> => {
-    if (shouldUseMock()) {
-      await mockApi.delay(2000);
-      return {
-        ...mockApi.responses.chatResponse,
-        content: `You said: "${data.message}". That's interesting! Tell me more.`,
-      };
-    }
-    
     const response = await api.post<any>('/chat/completions', {
       session_id: data.sessionId,
       message: data.message,
@@ -166,11 +129,6 @@ export const chatService = {
    * Delete session
    */
   deleteSession: async (sessionId: string): Promise<void> => {
-    if (shouldUseMock()) {
-      await mockApi.delay(500);
-      return;
-    }
-    
     return api.delete<void>(`/chat/sessions/${sessionId}`);
   },
 };

@@ -16,6 +16,18 @@ _engine = None
 _session_factory = None
 
 
+class MockDBResult:
+    """Mock result for SQLAlchemy-style queries"""
+    def scalar_one_or_none(self):
+        return None
+    def scalars(self):
+        return self
+    def all(self):
+        return []
+    def first(self):
+        return None
+
+
 class MockDB:
     """Mock database for development without actual PostgreSQL"""
 
@@ -23,20 +35,56 @@ class MockDB:
         self._data = {}
 
     async def execute(self, query, *args):
-        logger.debug(f"MockDB execute: {query[:100]}...")
-        return "UPDATE 1"
+        try:
+            query_str = str(query)[:100]
+        except:
+            query_str = "query"
+        logger.debug(f"MockDB execute: {query_str}...")
+        return MockDBResult()
 
     async def fetch(self, query, *args):
-        logger.debug(f"MockDB fetch: {query[:100]}...")
+        try:
+            query_str = str(query)[:100]
+        except:
+            query_str = "query"
+        logger.debug(f"MockDB fetch: {query_str}...")
         return []
 
     async def fetchrow(self, query, *args):
-        logger.debug(f"MockDB fetchrow: {query[:100]}...")
+        try:
+            query_str = str(query)[:100]
+        except:
+            query_str = "query"
+        logger.debug(f"MockDB fetchrow: {query_str}...")
         return None
 
     async def fetchval(self, query, *args):
-        logger.debug(f"MockDB fetchval: {query[:100]}...")
+        try:
+            query_str = str(query)[:100]
+        except:
+            query_str = "query"
+        logger.debug(f"MockDB fetchval: {query_str}...")
         return 1
+
+    def add(self, obj):
+        logger.debug(f"MockDB add: {type(obj).__name__}")
+        pass
+
+    async def commit(self):
+        logger.debug("MockDB commit")
+        pass
+
+    async def refresh(self, obj):
+        logger.debug(f"MockDB refresh: {type(obj).__name__}")
+        pass
+
+    async def rollback(self):
+        logger.debug("MockDB rollback")
+        pass
+
+    async def close(self):
+        logger.debug("MockDB close")
+        pass
 
     @asynccontextmanager
     async def transaction(self):
@@ -57,7 +105,7 @@ async def init_db():
         from app.models.database.chat_models import Base as ChatBase
         from app.models.database.billing_models import Base as BillingBase
         # Import models to register them with Base.metadata
-        from app.models.database import intimacy_models, gift_models, payment_models, emotion_models
+        from app.models.database import intimacy_models, gift_models, payment_models, emotion_models, stats_models, user_settings_models, referral_models
 
         database_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/app.db")
         
