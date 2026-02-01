@@ -1,20 +1,18 @@
 """
-Unified Chat Service (A/B Test: Single LLM Call)
-================================================
+Unified Chat Service (Single LLM Call)
+======================================
 
-This is the experimental "B" variant that combines:
-- Intent recognition
-- Emotion analysis  
-- Response generation
+[DEPRECATED - A/B测试已移除]
 
-Into a single LLM call with structured JSON output.
+此服务尝试将意图识别、情绪分析、响应生成合并为单次LLM调用。
 
-Benefits:
-- 50% less latency (1 call vs 2)
-- 50% less cost
-- More coherent (emotion directly influences response)
+经过测试，决定始终使用两步模式：
+1. Step 1: 意图识别（确保情绪系统准确）
+2. Step 2: 响应生成
 
-A/B Flag: Set AB_CHAT_UNIFIED=true in env to enable
+原因：单次调用模式下意图识别不够精确，影响情绪系统质量。
+
+此文件保留供参考，如未来需要可重新启用。
 """
 
 import logging
@@ -321,16 +319,23 @@ unified_chat = UnifiedChatService()
 
 
 # =============================================================================
-# A/B Test Helper
+# [DEPRECATED] A/B Test Helper
+# 
+# A/B测试已移除。现在始终使用两步模式（意图识别 + 响应生成）
+# 以确保情绪系统准确工作。
+#
+# 保留此代码仅供参考，未来如需要可以重新启用。
 # =============================================================================
 
 import os
 
 def is_unified_chat_enabled() -> bool:
-    """检查是否启用统一聊天（A/B测试B组）"""
-    return os.getenv("AB_CHAT_UNIFIED", "false").lower() == "true"
+    """[DEPRECATED] 检查是否启用统一聊天（A/B测试B组）"""
+    # 始终返回 False，使用两步模式
+    return False
+    # return os.getenv("AB_CHAT_UNIFIED", "false").lower() == "true"
 
 
 def get_ab_group() -> str:
-    """获取当前A/B组"""
-    return "B" if is_unified_chat_enabled() else "A"
+    """[DEPRECATED] 获取当前A/B组"""
+    return "A"  # 始终返回 A（两步模式）

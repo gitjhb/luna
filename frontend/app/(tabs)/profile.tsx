@@ -91,8 +91,18 @@ export default function ProfileScreen() {
 
   const loadData = async () => {
     try {
+      // 同步钱包
       const balance = await walletService.getBalance();
       updateWallet(balance);
+      
+      // 同步订阅状态
+      const subscription = await paymentService.getSubscription();
+      if (subscription) {
+        updateUser({ 
+          subscriptionTier: subscription.tier || 'free',
+          subscriptionExpiresAt: subscription.expires_at || undefined,
+        });
+      }
     } catch (error) {
       console.error('Failed to load profile data:', error);
     }

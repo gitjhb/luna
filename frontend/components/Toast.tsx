@@ -16,6 +16,7 @@ import Animated, {
   runOnJS,
   Easing,
 } from 'react-native-reanimated';
+import { colors, spacing, radius, typography } from '../theme/designSystem';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -101,22 +102,24 @@ const styles = StyleSheet.create({
     zIndex: 9999,
   },
   toast: {
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 25,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    backgroundColor: colors.background.elevated,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: radius.full,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border.accent,
+    shadowColor: colors.primary.main,
+    shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowRadius: 12,
     elevation: 10,
     maxWidth: SCREEN_WIDTH * 0.8,
   },
   toastText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '500',
+    color: colors.primary.main,
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.semibold,
     textAlign: 'center',
   },
 });

@@ -159,73 +159,17 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
     logger.info(f"📝 Stored user message. Total messages in session: {len(all_messages)}")
 
     # Generate response
-    # A/B Test flag: Set AB_CHAT_UNIFIED=true for single-call mode (Group B)
-    import os
-    # TODO: revert to env var after testing
-    # AB_UNIFIED = os.getenv("AB_CHAT_UNIFIED", "false").lower() == "true"
-    AB_UNIFIED = True  # Force enabled for testing
-    
-    logger.info(f"🔍 DEBUG: MOCK_MODE={MOCK_MODE}, AB_UNIFIED={AB_UNIFIED}")
+    logger.info(f"🔍 DEBUG: MOCK_MODE={MOCK_MODE}")
     
     if MOCK_MODE:
         reply = _mock_reply(request.message)
         tokens = len(request.message) // 4 + len(reply) // 4
-    elif AB_UNIFIED:
-        # =====================================================================
-        # GROUP B: Unified single-call mode (A/B Test)
-        # Combines intent + emotion + response in one LLM call
-        # =====================================================================
-        logger.info(f"🧪 A/B Group B: Unified single-call mode")
-        from app.services.chat_unified import unified_chat
-        from app.services.emotion_engine_v2 import emotion_engine
-        
-        user = getattr(req.state, "user", None)
-        user_id = str(user.user_id) if user else "demo-user-123"
-        character_id = session["character_id"]
-        character_name = session["character_name"]
-        character_data = get_character_by_id(character_id)
-        
-        # Check NSFW setting
-        nsfw_enabled = request.spicy_mode
-        try:
-            from app.core.database import get_db
-            from sqlalchemy import select
-            from app.models.database.user_settings_models import UserSettings
-            async with get_db() as db:
-                result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
-                us = result.scalar_one_or_none()
-                if us:
-                    nsfw_enabled = nsfw_enabled or us.nsfw_enabled
-        except:
-            pass
-        
-        current_affinity = await emotion_engine.get_score(user_id, character_id)
-        context_messages = [{"role": m["role"], "content": m["content"]} for m in all_messages[-10:]]
-        
-        unified_result = await unified_chat.chat(
-            message=request.message,
-            character_name=character_name,
-            character_persona=character_data.get("system_prompt", "") if character_data else "",
-            current_affinity=current_affinity,
-            intimacy_level=request.intimacy_level,
-            nsfw_enabled=nsfw_enabled,
-            context_messages=context_messages,
-            character_background=character_data.get("background", "") if character_data else "",
-        )
-        
-        # Apply emotion delta
-        await emotion_engine.update_score(user_id, character_id, unified_result.affinity_delta, f"unified:{unified_result.intent}")
-        
-        reply = f"({unified_result.action}) {unified_result.content}" if unified_result.action else unified_result.content
-        tokens = unified_result.tokens_used
-        
-        logger.info(f"📊 Unified: intent={unified_result.intent}, delta={unified_result.affinity_delta:+d}, tokens={tokens}")
     else:
         # =====================================================================
-        # GROUP A: Legacy two-call mode (default)
-        # Call 1: Emotion analysis | Call 2: Response generation
+        # 两步模式: Step 1 意图识别 | Step 2 响应生成
+        # 始终使用意图识别来确保情绪系统准确工作
         # =====================================================================
-        logger.info(f"🧪 A/B Group A: Legacy two-call mode")
+        logger.info(f"📝 Two-step mode: Intent detection + Response generation")
         
         # Production: use GrokService directly
         from app.services.llm_service import GrokService

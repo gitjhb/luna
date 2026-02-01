@@ -10,6 +10,8 @@ import { useTheme } from '../../theme/config';
 import { useChatStore } from '../../store/chatStore';
 import { useUserStore } from '../../store/userStore';
 import { walletService } from '../../services/walletService';
+import { paymentService } from '../../services/paymentService';
+import { colors, spacing, radius, typography } from '../../theme/designSystem';
 
 export default function TabsLayout() {
   const router = useRouter();
@@ -19,18 +21,30 @@ export default function TabsLayout() {
   const { updateWallet } = useUserStore();
   const [hasInitialized, setHasInitialized] = useState(false);
 
-  // Sync wallet from backend on app start
+  // Sync wallet and subscription from backend on app start
   useEffect(() => {
-    const syncWallet = async () => {
+    const syncUserData = async () => {
       try {
+        // 同步钱包
         const balance = await walletService.getBalance();
         updateWallet(balance);
         console.log('Wallet synced:', balance.totalCredits);
+        
+        // 同步订阅状态
+        const subscription = await paymentService.getSubscription();
+        if (subscription) {
+          const { setSubscription } = useUserStore.getState();
+          setSubscription(
+            subscription.tier || 'free',
+            subscription.expires_at || undefined
+          );
+          console.log('Subscription synced:', subscription.tier);
+        }
       } catch (error) {
-        console.error('Failed to sync wallet:', error);
+        console.error('Failed to sync user data:', error);
       }
     };
-    syncWallet();
+    syncUserData();
   }, []);
 
   // Calculate unread messages (simplified - can be enhanced with proper unread tracking)
@@ -164,8 +178,8 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   tabBarLabel: {
-    fontSize: 10,
-    fontWeight: '400',
+    fontSize: typography.size.xs,
+    fontWeight: typography.weight.medium,
     marginTop: 2,
   },
   tabBarItem: {
@@ -183,17 +197,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -4,
     right: -10,
-    backgroundColor: '#EF4444',
+    backgroundColor: colors.accent.main,
     minWidth: 16,
     height: 16,
-    borderRadius: 8,
+    borderRadius: radius.full,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: spacing.xs,
   },
   badgeText: {
-    color: '#fff',
+    color: colors.text.primary,
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: typography.weight.bold,
   },
 });

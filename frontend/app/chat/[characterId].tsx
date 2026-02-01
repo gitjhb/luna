@@ -46,6 +46,8 @@ import GiftBottomSheet from '../../components/GiftBottomSheet';
 import MockModeBanner from '../../components/MockModeBanner';
 import MessageBubble from '../../components/MessageBubble';
 import { ToastProvider, useToast } from '../../components/Toast';
+import { useEmotionTheme } from '../../hooks/useEmotionTheme';
+import { EmotionEffectsLayer, EmotionIndicator } from '../../components/EmotionEffects';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -91,6 +93,16 @@ export default function ChatScreen() {
   const [showCharacterInfo, setShowCharacterInfo] = useState(false);
   const [emotionScore, setEmotionScore] = useState(0);
   const [emotionState, setEmotionState] = useState('neutral');
+  
+  // 🎨 动态主题 - 根据情绪状态自动切换
+  const {
+    theme: emotionTheme,
+    emotionMode,
+    overlayColors,
+    glitchEnabled,
+    glowEnabled,
+    emotionHint,
+  } = useEmotionTheme(emotionScore, emotionState, isSpicyMode);
   
   // 礼物特效
   const { 
@@ -577,14 +589,31 @@ export default function ChatScreen() {
         style={styles.backgroundImage}
         resizeMode="cover"
       >
-        {/* Gradient overlay for readability */}
+        {/* Gradient overlay for readability - 动态主题色 */}
         <LinearGradient
-          colors={['rgba(26,16,37,0.3)', 'rgba(26,16,37,0.7)', 'rgba(26,16,37,0.95)'] as [string, string, string]}
+          colors={overlayColors as unknown as [string, string, string]}
           style={styles.overlay}
         />
       </ImageBackground>
 
+      {/* 🎆 情绪特效层 */}
+      <EmotionEffectsLayer
+        emotionMode={emotionMode}
+        glitchEnabled={glitchEnabled}
+        glowEnabled={glowEnabled}
+        glowColor={emotionTheme.colors.glow}
+      />
+
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        {/* 情绪指示器 */}
+        {emotionMode !== 'neutral' && (
+          <EmotionIndicator
+            mode={emotionMode}
+            score={emotionScore}
+            style={{ position: 'absolute', top: 60, zIndex: 100 }}
+          />
+        )}
+        
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -700,14 +729,16 @@ export default function ChatScreen() {
               />
             </View>
             
-            {/* Send Button */}
+            {/* Send Button - 动态主题色 */}
             <TouchableOpacity 
               style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]} 
               onPress={handleSend}
               disabled={!inputText.trim()}
             >
               <LinearGradient
-                colors={inputText.trim() ? ['#EC4899', '#8B5CF6'] as [string, string] : ['#555', '#444'] as [string, string]}
+                colors={inputText.trim() 
+                  ? [emotionTheme.colors.primary.main, emotionTheme.colors.accent.purple] as [string, string] 
+                  : ['#555', '#444'] as [string, string]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.sendButtonGradient}

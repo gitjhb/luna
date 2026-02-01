@@ -3,14 +3,21 @@
  * 
  * This file provides backward compatibility.
  * New code should use useTheme() from ThemeContext.
+ * 
+ * For dynamic emotion-based themes, use useDynamicTheme() from DynamicThemeContext.
  */
 
 // Re-export everything from themes.ts
 export type { ThemeConfig } from './themes';
 export { purpleSeduction, cyberpunk2077, themes, themeList, defaultThemeId } from './themes';
 
-// Re-export theme context
+// Re-export theme context (static)
 export { ThemeProvider, useTheme } from './ThemeContext';
+
+// Re-export dynamic theme context (emotion-based)
+export { DynamicThemeProvider, useDynamicTheme, AnimatedThemeBackground } from './DynamicThemeContext';
+export { angryTheme, happyTheme, getEmotionMode, getThemeForEmotion, interpolateColor } from './dynamicTheme';
+export type { EmotionMode, EmotionState } from './dynamicTheme';
 
 // Legacy: export default theme for backward compatibility
 import { purpleSeduction } from './themes';
