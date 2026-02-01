@@ -195,13 +195,24 @@ async def _trigger_gift_ai_response(
     system_message: str,
 ) -> Optional[str]:
     """
-    Trigger AI response to a gift.
+    Trigger AI response to a gift via the full pipeline.
     
-    Injects gift system message into context and gets AI response.
-    Marks gift as acknowledged after response.
+    **安全设计**:
+    - 只有这个函数才能触发 verified GIFT_SEND
+    - 用户不能通过聊天框伪造礼物
+    - 完整走 L1 -> PhysicsEngine -> L2 管道
+    
+    Flow:
+    1. 构造 verified gift event
+    2. 调用完整 chat pipeline (L1 跳过分析，直接注入 GIFT_SEND)
+    3. PhysicsEngine 执行 +50 情绪激增
+    4. L2 生成感谢语
     """
     from app.services.llm_service import GrokService
     from app.services.chat_repository import chat_repo
+    from app.services.physics_engine import PhysicsEngine, CharacterZAxis
+    from app.services.game_engine import GameEngine, UserState
+    from app.services.perception_engine import L1Result
     from app.api.v1.characters import CHARACTERS
     
     try:
@@ -222,16 +233,64 @@ async def _trigger_gift_ai_response(
         # Get character info
         character_name = session["character_name"]
         
-        # Build conversation for AI
-        grok = GrokService()
-        
-        # Get gift details for the message
+        # Get gift details
         gift = await gift_service.get_gift(gift_id)
         gift_name = gift.get("gift_name_cn") or gift.get("gift_name", "礼物")
         gift_icon = gift.get("icon", "🎁")
+        gift_price = gift.get("gift_price", 10)
         
-        # Store gift event as a user message in chat history
-        # This ensures the gift is remembered in conversation context
+        # =========================================================================
+        # 1. 构造 VERIFIED L1 Result (跳过 L1 分析，直接注入)
+        # =========================================================================
+        # 这是后端主导的"伪造消息"，绝对可信
+        verified_l1_result = L1Result(
+            safety_flag="SAFE",
+            difficulty_rating=0,  # 给的，不是要的
+            intent_category="GIFT_SEND",  # 直接注入
+            sentiment_score=1.0,  # 送礼是最高好感
+            is_nsfw=False,
+            reasoning="[VERIFIED_TRANSACTION] Backend-triggered gift event"
+        )
+        
+        logger.info(f"🎁 Verified gift event: {gift_icon} {gift_name} (price={gift_price})")
+        
+        # =========================================================================
+        # 2. 执行 PhysicsEngine (情绪 +50)
+        # =========================================================================
+        # 加载当前用户状态
+        game_engine = GameEngine()
+        user_state = await game_engine._load_user_state(user_id, character_id)
+        old_emotion = user_state.emotion
+        
+        # 获取角色配置
+        char_config = CharacterZAxis.from_character_id(character_id)
+        
+        # 计算情绪增量 (GIFT_SEND = +50)
+        l1_dict = {
+            'sentiment_score': verified_l1_result.sentiment_score,
+            'intent_category': verified_l1_result.intent_category,
+        }
+        state_dict = {
+            'emotion': user_state.emotion,
+            'last_intents': user_state.last_intents,
+        }
+        
+        new_emotion = PhysicsEngine.update_state(state_dict, l1_dict, char_config)
+        user_state.emotion = new_emotion
+        
+        # 更新防刷列表
+        user_state.last_intents.append("GIFT_SEND")
+        if len(user_state.last_intents) > 10:
+            user_state.last_intents = user_state.last_intents[-10:]
+        
+        # 保存更新后的状态
+        await game_engine._save_user_state(user_state)
+        
+        logger.info(f"🎁 PhysicsEngine: emotion {old_emotion} -> {new_emotion} (GIFT_SEND +50)")
+        
+        # =========================================================================
+        # 3. 存储礼物事件到聊天记录
+        # =========================================================================
         gift_event_message = f"[送出礼物] {gift_icon} {gift_name}"
         await chat_repo.add_message(
             session_id=session_id,
@@ -239,22 +298,22 @@ async def _trigger_gift_ai_response(
             content=gift_event_message,
             tokens_used=0,
         )
-        logger.info(f"Gift event stored in chat history: {gift_event_message}")
         
-        # Invalidate context cache so next chat includes the gift event
+        # Invalidate context cache
         from app.core.redis import get_redis
         redis = await get_redis()
         cache_key = f"session:{session_id}:context"
         await redis.delete(cache_key)
-        logger.info(f"Context cache invalidated for session {session_id}")
         
-        # Get recent messages for context (now includes the gift event)
+        # =========================================================================
+        # 4. L2 生成感谢语
+        # =========================================================================
+        grok = GrokService()
+        
+        # Get recent messages for context
         history = await chat_repo.get_messages(session_id, limit=10)
         
-        # Get gift price for reaction intensity
-        gift_price = gift.get("gift_price", 10)
-        
-        # Reaction intensity based on gift value
+        # 根据礼物价值和当前情绪调整反应强度
         if gift_price >= 500:
             intensity = "非常激动和感动，这是一份珍贵的礼物！用更长更热情的回复表达你的感谢"
         elif gift_price >= 100:
@@ -262,9 +321,22 @@ async def _trigger_gift_ai_response(
         else:
             intensity = "开心和感谢，用温暖的语气回复"
         
+        # 根据情绪状态调整语气
+        emotion_hint = ""
+        if new_emotion > 50:
+            emotion_hint = "你现在心情非常好，可以撒娇、说甜蜜的话"
+        elif new_emotion > 20:
+            emotion_hint = "你现在心情不错，态度温暖亲切"
+        elif new_emotion < -20:
+            emotion_hint = "虽然你之前心情不好，但收到礼物后开始消气了，态度缓和下来"
+        
         conversation = [
             {"role": "system", "content": f"""You are {character_name}, a warm and affectionate AI companion.
 {system_message}
+
+## 当前状态
+- 情绪值: {new_emotion} (从 {old_emotion} 变化)
+- {emotion_hint}
 
 ## 回复要求
 - 用中文回复（除非用户一直用英文）
@@ -281,7 +353,7 @@ async def _trigger_gift_ai_response(
         for msg in history:
             conversation.append({"role": msg["role"], "content": msg["content"]})
         
-        # Generate response - 更长的回复
+        # Generate response
         result = await grok.chat_completion(
             messages=conversation,
             temperature=0.9,
@@ -290,7 +362,7 @@ async def _trigger_gift_ai_response(
         
         ai_response = result["choices"][0]["message"]["content"]
         
-        # Store AI response as message
+        # Store AI response
         await chat_repo.add_message(
             session_id=session_id,
             role="assistant",
@@ -301,11 +373,13 @@ async def _trigger_gift_ai_response(
         # Mark gift as acknowledged
         await gift_service.mark_acknowledged(gift_id)
         
-        logger.info(f"Gift AI response generated for {gift_id}: {ai_response[:50]}...")
+        logger.info(f"🎁 Gift AI response generated: {ai_response[:50]}...")
         return ai_response
         
     except Exception as e:
         logger.error(f"Failed to generate gift AI response: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 

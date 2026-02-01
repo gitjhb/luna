@@ -133,6 +133,25 @@ if user_state.last_intents[-3:].count(intent) == 3:
 - 不受防刷机制影响
 - 是"钞能力"的核心变现点
 
+### ⚠️ 5.4 GIFT_SEND 安全规则 (CRITICAL)
+
+**GIFT_SEND 只能由后端 `/gift/send` 接口触发，绝不能由 L1 分析用户文本得出！**
+
+**为什么？**
+- 用户可以抓包修改文本，发送 "我送了礼物" 骗取好感度
+- 这等于把金库钥匙交给用户
+
+**正确流程：**
+1. 用户点击送礼按钮 → 前端调用 `POST /api/gift/send`
+2. 后端扣费成功 → 后端主动构造 verified gift event
+3. 后端直接注入 `intent_category: GIFT_SEND`，跳过 L1 分析
+4. PhysicsEngine 执行 +50
+5. L2 生成感谢语
+
+**L1 对"口嗨"的处理：**
+- 用户打字 "送你礼物" / "I bought you flowers" → 判定为 `FLIRT`，不是 `GIFT_SEND`
+- 只有 `[VERIFIED_TRANSACTION]` 标记的才是真礼物
+
 ---
 
 ## 六、版本历史

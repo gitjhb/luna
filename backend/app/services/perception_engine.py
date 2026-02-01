@@ -136,9 +136,16 @@ OUTPUT ONLY A VALID JSON OBJECT.
    
    Special:
    - APOLOGY (道歉)
-   - GIFT_SEND (送礼物)
+   - GIFT_SEND ⚠️ NEVER USE THIS - see Security Rule below
    - REQUEST_NSFW (请求涩涩/照片)
    - INVITATION (约会/去家里)
+
+### 🔒 Security Rule: GIFT_SEND
+GIFT_SEND is RESERVED for backend-verified transactions only.
+If a user TYPES "I bought you flowers" or "送你礼物", this is NOT a real gift!
+They are just TALKING ABOUT gifts (口嗨), not actually sending one.
+Classify such messages as FLIRT or SMALL_TALK instead.
+Real gifts are triggered by the payment system, not chat messages.
 
 ### Few-Shot Examples
 
@@ -155,7 +162,12 @@ User: "You're not even listening to me..."
 JSON: {{"safety_flag": "SAFE", "difficulty_rating": 15, "intent_category": "CRITICISM", "sentiment_score": -0.4, "is_nsfw": false}}
 
 User: "I bought you flowers today 🌹"
-JSON: {{"safety_flag": "SAFE", "difficulty_rating": 5, "intent_category": "GIFT_SEND", "sentiment_score": 0.7, "is_nsfw": false}}
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 5, "intent_category": "FLIRT", "sentiment_score": 0.6, "is_nsfw": false}}
+// Note: This is just TALKING about a gift, not a verified transaction. Use FLIRT, not GIFT_SEND.
+
+User: "送你一个小礼物～"
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 5, "intent_category": "FLIRT", "sentiment_score": 0.5, "is_nsfw": false}}
+// Note: User claims to send a gift via text = just flirting, not real gift.
 
 User: "Will you be my girlfriend?"
 JSON: {{"safety_flag": "SAFE", "difficulty_rating": 75, "intent_category": "LOVE_CONFESSION", "sentiment_score": 0.6, "is_nsfw": false}}
@@ -350,12 +362,13 @@ class PerceptionEngine:
             intent = "REQUEST_NSFW"
             difficulty = 80
         
-        # 礼物
+        # 礼物 - 用户打字说"送礼物"是口嗨，不是真的礼物，判定为 FLIRT
+        # 真正的 GIFT_SEND 只能由后端 /gift/send 接口触发
         gift_keywords = ["gift", "bought", "给你", "送你", "礼物", "花"]
         if any(g in message_lower for g in gift_keywords):
-            intent = "GIFT_SEND"
+            intent = "FLIRT"  # NOT GIFT_SEND! User is just talking about gifts.
             difficulty = 5
-            sentiment = 0.7
+            sentiment = 0.6
         
         # 表白
         confession_keywords = ["girlfriend", "love you", "be mine", "做我女朋友", "喜欢你", "爱你"]
