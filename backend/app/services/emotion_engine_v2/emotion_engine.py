@@ -257,25 +257,25 @@ class EmotionEngineV2:
         )
         
         try:
-            if self.llm:
-                # 调用 LLM
-                result = await self.llm.chat_completion(
-                    messages=[
-                        {"role": "system", "content": analysis_prompt},
-                        {"role": "user", "content": f"分析这条消息: {message}"}
-                    ],
-                    temperature=0.3,  # 低温度，更确定性
-                    max_tokens=300,
-                )
-                
-                response = result["choices"][0]["message"]["content"]
-                return self._parse_analysis_response(response)
-            else:
-                # 无 LLM 时使用规则回退
-                return self._fallback_analysis(message, context, character)
+            # 尝试使用 GrokService 进行 LLM 分析
+            from app.services.llm_service import GrokService
+            grok = GrokService()
+            
+            # 调用 Grok API 进行情绪分析
+            response = await grok.chat(
+                messages=[
+                    {"role": "system", "content": analysis_prompt},
+                    {"role": "user", "content": f"分析这条消息: {message}"}
+                ],
+                temperature=0.3,
+                max_tokens=300,
+            )
+            
+            logger.info(f"Emotion LLM response: {response[:200]}...")
+            return self._parse_analysis_response(response)
                 
         except Exception as e:
-            logger.error(f"LLM analysis failed: {e}")
+            logger.warning(f"LLM emotion analysis failed, using fallback: {e}")
             return self._fallback_analysis(message, context, character)
     
     def _build_analysis_prompt(
