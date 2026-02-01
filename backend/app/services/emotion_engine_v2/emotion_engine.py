@@ -447,15 +447,24 @@ class EmotionEngineV2:
         quick_result = self.quick_detect(message)
         logger.info(f"Quick detect: {quick_result}")
         
-        # Layer 2: LLM 分析
-        analysis = await self.llm_analyze(
-            message=message,
-            context=context or [],
-            character=character,
-            current_state=current_state,
-            intimacy_level=intimacy_level,
-        )
-        logger.info(f"LLM analysis: {analysis.sentiment}, delta={analysis.suggested_delta}")
+        # Layer 2: 智能分析 - 只有模糊情况才调用 LLM
+        strong_patterns = ["strong_positive", "strong_negative", "apology"]
+        has_strong_signal = any(p in quick_result["patterns_matched"] for p in strong_patterns)
+        
+        if has_strong_signal:
+            # 强信号：直接用规则，节省 LLM 调用
+            logger.info(f"Strong signal detected, using rule-based analysis")
+            analysis = self._fallback_analysis(message, context or [], character)
+        else:
+            # 模糊信号：调用 LLM 深度分析
+            analysis = await self.llm_analyze(
+                message=message,
+                context=context or [],
+                character=character,
+                current_state=current_state,
+                intimacy_level=intimacy_level,
+            )
+        logger.info(f"Emotion analysis: {analysis.sentiment}, delta={analysis.suggested_delta}")
         
         # Layer 3: 应用缓冲机制
         final_delta = self._apply_buffer_logic(
