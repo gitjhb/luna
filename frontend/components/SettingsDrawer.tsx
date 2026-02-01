@@ -20,7 +20,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../theme/config';
+import { useTheme, themeList } from '../theme/config';
 import { useUserStore } from '../store/userStore';
 import { useChatStore } from '../store/chatStore';
 
@@ -63,7 +63,7 @@ const SettingItem = ({ icon, title, subtitle, onPress, rightElement, danger }: S
 
 export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps) {
   const router = useRouter();
-  const { theme } = useTheme();
+  const { theme, setTheme, themeId } = useTheme();
   const insets = useSafeAreaInsets();
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -204,6 +204,43 @@ export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps
                 subtitle="简体中文"
                 onPress={() => {}}
               />
+            </View>
+          </View>
+
+          {/* Theme Selection */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>主题风格</Text>
+            <View style={[styles.sectionContent, { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingVertical: 8 }]}>
+              {themeList.map((t) => {
+                const isActive = themeId === t.id;
+                const isCyberpunk = t.id === 'cyberpunk-2077';
+                return (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={[
+                      styles.themeCard,
+                      isActive && { borderColor: theme.colors.primary.main, borderWidth: 2 },
+                      { borderRadius: isCyberpunk ? 4 : 12 },
+                      isActive && isCyberpunk && {
+                        shadowColor: '#00F0FF',
+                        shadowOffset: { width: 0, height: 0 },
+                        shadowOpacity: 0.5,
+                        shadowRadius: 8,
+                      }
+                    ]}
+                    onPress={() => setTheme(t.id)}
+                  >
+                    <Text style={styles.themeIcon}>{t.icon}</Text>
+                    <Text style={[
+                      styles.themeName,
+                      isActive && isCyberpunk && { color: '#00F0FF' }
+                    ]}>{t.nameCn}</Text>
+                    {isActive && (
+                      <Ionicons name="checkmark-circle" size={16} color={theme.colors.primary.main} style={{ position: 'absolute', top: 4, right: 4 }} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
 
@@ -387,5 +424,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
     marginBottom: 40,
+  },
+  themeCard: {
+    width: '45%',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  themeIcon: {
+    fontSize: 24,
+    marginBottom: 8,
+  },
+  themeName: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#fff',
   },
 });
