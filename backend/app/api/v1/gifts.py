@@ -368,6 +368,7 @@ async def _trigger_gift_ai_response(
         l1_dict = {
             'sentiment_score': verified_l1_result.sentiment_score,
             'intent_category': verified_l1_result.intent_category,
+            'transaction_verified': True,  # 验证过的礼物交易
         }
         state_dict = {
             'emotion': user_state.emotion,
