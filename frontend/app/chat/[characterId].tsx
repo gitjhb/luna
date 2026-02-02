@@ -54,6 +54,7 @@ import EventStoryCard from '../../components/EventStoryCard';
 import EventStoryModal from '../../components/EventStoryModal';
 import MemoriesModal from '../../components/MemoriesModal';
 import { eventService, EventStoryPlaceholder, EventMemory } from '../../services/eventService';
+import { IntimacyInfoPanel } from '../../components/IntimacyInfoPanel';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -884,165 +885,10 @@ export default function ChatScreen() {
             </View>
             
             <ScrollView style={styles.levelInfoScroll} showsVerticalScrollIndicator={false}>
-              {/* Current Status */}
-              <View style={styles.levelInfoSection}>
-                <Text style={styles.levelInfoSectionTitle}>当前状态</Text>
-                <View style={styles.currentStatusCard}>
-                  <View>
-                    <Text style={styles.currentStatusLevel}>LV {relationshipLevel || 1}</Text>
-                    <Text style={styles.currentStatusStage}>
-                      {(relationshipLevel || 1) <= 3 ? '👋 初识' : 
-                       (relationshipLevel || 1) <= 10 ? '😊 熟悉' :
-                       (relationshipLevel || 1) <= 25 ? '💛 好友' :
-                       (relationshipLevel || 1) <= 40 ? '💕 亲密' : '❤️ 挚爱'}
-                    </Text>
-                  </View>
-                  <View style={styles.xpStatusBox}>
-                    <Text style={styles.xpStatusText}>
-                      {Math.round(relationshipXp)} / {Math.round(relationshipMaxXp)} XP
-                    </Text>
-                    <View style={styles.xpStatusBar}>
-                      <View style={[styles.xpStatusBarFill, { width: `${Math.min(100, (relationshipXp / relationshipMaxXp) * 100)}%` }]} />
-                    </View>
-                    <Text style={styles.xpStatusHint}>
-                      还需 {Math.round(relationshipMaxXp - relationshipXp)} XP 升级
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Stages */}
-              <View style={styles.levelInfoSection}>
-                <Text style={styles.levelInfoSectionTitle}>亲密阶段</Text>
-                
-                <View style={[styles.stageCard, (relationshipLevel || 1) <= 3 && styles.stageCardActive]}>
-                  <View style={styles.stageHeader}>
-                    <Text style={styles.stageEmoji}>👋</Text>
-                    <View style={styles.stageInfo}>
-                      <Text style={styles.stageName}>初识</Text>
-                      <Text style={styles.stageLevel}>LV 1-3</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.stageDesc}>刚认识，保持礼貌距离</Text>
-                  <View style={styles.stageFeatures}>
-                    <Text style={styles.featureItem}>✓ 基础文字聊天</Text>
-                    <Text style={styles.featureItem}>✓ 基础表情回复</Text>
-                    <Text style={[styles.featureItem, styles.featureLocked]}>✗ 发送图片</Text>
-                  </View>
-                </View>
-
-                <View style={[styles.stageCard, (relationshipLevel || 1) > 3 && (relationshipLevel || 1) <= 10 && styles.stageCardActive]}>
-                  <View style={styles.stageHeader}>
-                    <Text style={styles.stageEmoji}>😊</Text>
-                    <View style={styles.stageInfo}>
-                      <Text style={styles.stageName}>熟悉</Text>
-                      <Text style={styles.stageLevel}>LV 4-10</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.stageDesc}>开始熟络，可以开玩笑</Text>
-                  <View style={styles.stageFeatures}>
-                    <Text style={styles.featureItem}>✓ 专属表情包</Text>
-                    <Text style={styles.featureItem}>✓ 发送图片</Text>
-                    <Text style={styles.featureItem}>✓ 更俏皮的回复</Text>
-                  </View>
-                </View>
-
-                <View style={[styles.stageCard, (relationshipLevel || 1) > 10 && (relationshipLevel || 1) <= 25 && styles.stageCardActive]}>
-                  <View style={styles.stageHeader}>
-                    <Text style={styles.stageEmoji}>💛</Text>
-                    <View style={styles.stageInfo}>
-                      <Text style={styles.stageName}>好友</Text>
-                      <Text style={styles.stageLevel}>LV 11-25</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.stageDesc}>无话不谈的好朋友</Text>
-                  <View style={styles.stageFeatures}>
-                    <Text style={styles.featureItem}>✓ 语音消息</Text>
-                    <Text style={styles.featureItem}>✓ 更多话题解锁</Text>
-                    <Text style={styles.featureItem}>✓ 送礼物</Text>
-                  </View>
-                </View>
-
-                <View style={[styles.stageCard, (relationshipLevel || 1) > 25 && (relationshipLevel || 1) <= 40 && styles.stageCardActive]}>
-                  <View style={styles.stageHeader}>
-                    <Text style={styles.stageEmoji}>💕</Text>
-                    <View style={styles.stageInfo}>
-                      <Text style={styles.stageName}>亲密</Text>
-                      <Text style={styles.stageLevel}>LV 26-40</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.stageDesc}>特别的存在，独特的羁绊</Text>
-                  <View style={styles.stageFeatures}>
-                    <Text style={styles.featureItem}>✓ 私密话题</Text>
-                    <Text style={styles.featureItem}>✓ 专属称呼</Text>
-                    <Text style={styles.featureItem}>✓ Spicy 模式</Text>
-                  </View>
-                </View>
-
-                <View style={[styles.stageCard, (relationshipLevel || 1) > 40 && styles.stageCardActive]}>
-                  <View style={styles.stageHeader}>
-                    <Text style={styles.stageEmoji}>❤️</Text>
-                    <View style={styles.stageInfo}>
-                      <Text style={styles.stageName}>挚爱</Text>
-                      <Text style={styles.stageLevel}>LV 41+</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.stageDesc}>灵魂伴侣，心有灵犀</Text>
-                  <View style={styles.stageFeatures}>
-                    <Text style={styles.featureItem}>✓ 全部功能解锁</Text>
-                    <Text style={styles.featureItem}>✓ 专属剧情</Text>
-                    <Text style={styles.featureItem}>✓ 优先回复</Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* How to earn XP */}
-              <View style={styles.levelInfoSection}>
-                <Text style={styles.levelInfoSectionTitle}>如何提升亲密度</Text>
-                <View style={styles.xpWayCard}>
-                  <Text style={styles.xpWayItem}>💬 发送消息 <Text style={styles.xpAmount}>+2 XP</Text></Text>
-                  <Text style={styles.xpWayItem}>📅 每日签到 <Text style={styles.xpAmount}>+20 XP</Text></Text>
-                  <Text style={styles.xpWayItem}>🔥 连续聊天（10条） <Text style={styles.xpAmount}>+5 XP</Text></Text>
-                  <Text style={styles.xpWayItem}>💝 表达情感 <Text style={styles.xpAmount}>+10 XP</Text></Text>
-                  <Text style={styles.xpWayItem}>🎁 送礼物 <Text style={styles.xpAmount}>+50~500 XP</Text></Text>
-                </View>
-              </View>
-
-              {/* Gifts */}
-              <View style={styles.levelInfoSection}>
-                <Text style={styles.levelInfoSectionTitle}>🎁 礼物商城</Text>
-                <Text style={styles.giftDesc}>用金币给 TA 送礼物，快速提升亲密度！</Text>
-                <View style={styles.giftGrid}>
-                  <View style={styles.giftItem}>
-                    <Text style={styles.giftEmoji}>🌹</Text>
-                    <Text style={styles.giftName}>玫瑰</Text>
-                    <Text style={styles.giftPrice}>10 🪙</Text>
-                    <Text style={styles.giftXp}>+50 XP</Text>
-                  </View>
-                  <View style={styles.giftItem}>
-                    <Text style={styles.giftEmoji}>🧸</Text>
-                    <Text style={styles.giftName}>小熊</Text>
-                    <Text style={styles.giftPrice}>50 🪙</Text>
-                    <Text style={styles.giftXp}>+150 XP</Text>
-                  </View>
-                  <View style={styles.giftItem}>
-                    <Text style={styles.giftEmoji}>💎</Text>
-                    <Text style={styles.giftName}>钻石</Text>
-                    <Text style={styles.giftPrice}>100 🪙</Text>
-                    <Text style={styles.giftXp}>+300 XP</Text>
-                  </View>
-                  <View style={styles.giftItem}>
-                    <Text style={styles.giftEmoji}>👑</Text>
-                    <Text style={styles.giftName}>皇冠</Text>
-                    <Text style={styles.giftPrice}>200 🪙</Text>
-                    <Text style={styles.giftXp}>+500 XP</Text>
-                  </View>
-                </View>
-                <TouchableOpacity style={styles.giftShopButton}>
-                  <Text style={styles.giftShopButtonText}>即将开放</Text>
-                </TouchableOpacity>
-              </View>
-
+              <IntimacyInfoPanel
+                characterId={params.characterId}
+                currentLevel={relationshipLevel || 1}
+              />
             </ScrollView>
           </View>
         </View>
