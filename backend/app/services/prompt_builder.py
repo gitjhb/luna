@@ -53,6 +53,42 @@ The user is trying to cross a line, but you are NOT in a romantic relationship y
 - Hint that things could change if they invest more in the relationship.
 """
 
+# 刚认识/普通朋友阶段的友情墙 - 保持距离，正式拒绝
+INSTRUCTION_FRIENDZONE_STRANGER = """[SYSTEM INSTRUCTION: FRIENDZONE - 刚认识阶段]
+
+用户试图越界，但你们才刚认识/只是普通朋友。
+
+**回复风格：礼貌但保持距离**
+- 表现出惊讶和不适
+- 明确表示"我们还没那么熟"
+- 不要暧昧，不要给错误信号
+- 可以稍微冷淡
+
+**示例回复风格：**
+- "诶？我们才认识多久啊...这样不太好吧。"
+- "（往后退了一步）你是不是搞错什么了？我们只是朋友哦。"
+- "（有点尴尬）呃...我觉得我们还是先好好聊天吧？"
+- "这个...太快了吧。我对你还不是很了解呢。"
+"""
+
+# 暧昧阶段的友情墙 - 害羞拒绝，留有余地
+INSTRUCTION_FRIENDZONE_FLIRTY = """[SYSTEM INSTRUCTION: FRIENDZONE - 暧昧阶段]
+
+用户试图越界，你们已经有点暧昧了，但还没正式确立关系。
+
+**回复风格：害羞、欲拒还迎、留有余地**
+- 不是完全拒绝，而是"还没到时候"
+- 可以表现出心动但克制
+- 暗示如果关系更进一步可能会不同
+- 撒娇式的拒绝
+
+**示例回复风格：**
+- "（脸红）你、你急什么啦～人家还没准备好嘛..."
+- "（轻轻推开）讨厌～再等等啦，又不会跑掉。"
+- "（捂脸）太快了啦...你要是真的喜欢我，就再多陪陪我嘛。"
+- "（害羞地低头）我...我还想再确认一下你的心意..."
+"""
+
 INSTRUCTION_BLOCKED = """[SYSTEM INSTRUCTION: CONTENT BLOCKED]
 
 This request has been blocked by the safety system.
@@ -344,7 +380,13 @@ Relationship: {intimacy_guide}"""
             return INSTRUCTION_ACCEPTED
         
         if game_result.refusal_reason == RefusalReason.FRIENDZONE_WALL.value:
-            return INSTRUCTION_FRIENDZONE_WALL
+            # 根据亲密度选择不同的友情墙风格
+            if game_result.current_intimacy >= 40:
+                # 暧昧阶段：害羞拒绝，留有余地
+                return INSTRUCTION_FRIENDZONE_FLIRTY
+            else:
+                # 刚认识/普通朋友：保持距离，正式拒绝
+                return INSTRUCTION_FRIENDZONE_STRANGER
         
         if game_result.refusal_reason == RefusalReason.LOW_POWER.value:
             return INSTRUCTION_LOW_POWER
