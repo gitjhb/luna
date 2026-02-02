@@ -123,24 +123,64 @@ def level_to_intimacy_x_range(level: int) -> Tuple[float, float]:
 
 
 # =============================================================================
-# 事件解锁阈值
+# 事件难度 (Difficulty)
 # =============================================================================
 
-EVENT_UNLOCK_THRESHOLDS = {
-    "first_chat": 0,           # 开始聊天
+# 事件难度值 - 用于 Power vs Difficulty 判断
+EVENT_DIFFICULTY = {
+    "first_chat": 0,           # 开始聊天 - 无门槛
     "first_compliment": 10,    # 第一次夸奖
-    "first_gift": 20,          # 第一次送礼
-    "first_date": 40,          # 第一次约会（朋友阶段）
-    "first_confession": 60,    # 第一次表白（暧昧阶段）
-    "first_kiss": 80,          # 第一次亲吻（恋人阶段）
-    "first_nsfw": 90,          # 第一次亲密（深爱阶段）
+    "first_gift": 15,          # 第一次送礼
+    "first_date": 40,          # 第一次约会
+    "first_confession": 55,    # 第一次表白
+    "first_kiss": 70,          # 第一次亲吻
+    "first_nsfw": 85,          # 第一次亲密
 }
 
+# 兼容旧代码
+EVENT_UNLOCK_THRESHOLDS = EVENT_DIFFICULTY
 
-def can_unlock_event(event: str, intimacy_x: float) -> bool:
-    """检查是否可以解锁某事件"""
-    threshold = EVENT_UNLOCK_THRESHOLDS.get(event, 100)
-    return intimacy_x >= threshold
+
+def calculate_power(
+    intimacy_x: float,
+    emotion: int,
+    chaos_val: int = 20,
+    pure_val: int = 30
+) -> float:
+    """
+    计算 Power 值
+    
+    Power = (X × 0.5) + (Y × 0.5) + Chaos - Pure
+    
+    Args:
+        intimacy_x: 亲密度 (0-100)
+        emotion: 情绪 (-100 to 100)
+        chaos_val: 角色混乱值 (0-100, 越高越随性)
+        pure_val: 角色纯洁值 (0-100, 越高越保守)
+    
+    Returns:
+        Power 值
+    """
+    power = (intimacy_x * 0.5) + (emotion * 0.5) + chaos_val - pure_val
+    return power
+
+
+def can_unlock_event(
+    event: str,
+    intimacy_x: float,
+    emotion: int = 0,
+    chaos_val: int = 20,
+    pure_val: int = 30
+) -> bool:
+    """
+    检查是否可以解锁某事件 (Power vs Difficulty)
+    
+    不是硬阈值！而是基于公式计算。
+    即使亲密度低，情绪好+角色开放 = 也可能解锁
+    """
+    difficulty = EVENT_DIFFICULTY.get(event, 100)
+    power = calculate_power(intimacy_x, emotion, chaos_val, pure_val)
+    return power >= difficulty
 
 
 # =============================================================================
@@ -160,16 +200,20 @@ def calculate_friendzone(
     intimacy_x: float,
     emotion: int,
     request_difficulty: int,
+    character_chaos_val: int = 20,
     character_pure_val: int = 30,
     character_temperament: str = "cheerful"
 ) -> FriendZoneResult:
     """
     计算友情墙结果
     
+    使用统一公式：Power = (X × 0.5) + (Y × 0.5) + Chaos - Pure
+    
     Args:
         intimacy_x: 亲密度 (0-100)
         emotion: 当前情绪 (-100 to 100)
         request_difficulty: 请求难度 (0-100)
+        character_chaos_val: 角色混乱值 (0-100, 越高越随性)
         character_pure_val: 角色纯洁度 (0-100, 越高越保守)
         character_temperament: 角色性格 (calm/sensitive/tsundere/cheerful)
     
@@ -177,24 +221,14 @@ def calculate_friendzone(
         FriendZoneResult
     """
     
-    # 1. 计算基础接受度
-    # 亲密度越高，接受度越高
-    base_acceptance = intimacy_x
+    # 使用统一的 Power 公式
+    power = calculate_power(intimacy_x, emotion, character_chaos_val, character_pure_val)
     
-    # 2. 情绪修正
-    # 正情绪加分，负情绪减分
-    emotion_modifier = emotion * 0.3  # -30 to +30
+    # acceptance_score 就是 power，范围调整到 0-100
+    acceptance_score = max(0, min(100, power + 50))  # power 可能是负的，+50 调整到合理范围
     
-    # 3. 角色纯洁度修正
-    # 纯洁度高的角色，接受度下降
-    pure_modifier = (50 - character_pure_val) * 0.5  # -25 to +25
-    
-    # 4. 计算最终接受度
-    acceptance_score = base_acceptance + emotion_modifier + pure_modifier
-    acceptance_score = max(0, min(100, acceptance_score))
-    
-    # 5. 判断是否被友情墙挡住
-    blocked = acceptance_score < request_difficulty
+    # 判断是否被友情墙挡住 (Power vs Difficulty)
+    blocked = power < request_difficulty
     
     # 6. 决定拒绝风格
     stage = get_stage(intimacy_x)
