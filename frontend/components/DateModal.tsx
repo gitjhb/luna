@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { API_BASE_URL } from '../services/api';
+import { api } from '../services/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -47,45 +47,23 @@ interface DateModalProps {
   activeDateInfo?: DateInfo | null;
 }
 
-// API helpers
+// API helpers (using api service for auth)
 const dateApi = {
   getScenarios: async (): Promise<DateScenario[]> => {
-    const res = await fetch(`${API_BASE_URL}/dates/scenarios`);
-    if (!res.ok) throw new Error('Failed to fetch scenarios');
-    const data = await res.json();
+    const data = await api.get<{ scenarios: DateScenario[] }>('/dates/scenarios');
     return data.scenarios;
   },
   
   checkUnlock: async (characterId: string): Promise<{ is_unlocked: boolean; reason: string }> => {
-    const res = await fetch(`${API_BASE_URL}/dates/unlock-status/${characterId}`);
-    if (!res.ok) throw new Error('Failed to check unlock status');
-    return res.json();
+    return api.get(`/dates/unlock-status/${characterId}`);
   },
   
   startDate: async (characterId: string, scenarioId: string): Promise<any> => {
-    const res = await fetch(`${API_BASE_URL}/dates/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: characterId, scenario_id: scenarioId }),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || 'Failed to start date');
-    }
-    return res.json();
+    return api.post('/dates/start', { character_id: characterId, scenario_id: scenarioId });
   },
   
   completeDate: async (characterId: string): Promise<any> => {
-    const res = await fetch(`${API_BASE_URL}/dates/complete`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: characterId }),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || 'Failed to complete date');
-    }
-    return res.json();
+    return api.post('/dates/complete', { character_id: characterId });
   },
 };
 
