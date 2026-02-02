@@ -199,55 +199,214 @@ def get_stage_info(intimacy: int) -> dict:
 # 三、关键事件 (Gate Events) - 阶段突破条件
 # =============================================================================
 
+# Power 及格线
+POWER_PASS_THRESHOLD = 60  # Power >= 60 即可发生 NSFW
+
+
 class GateEvent(str, Enum):
     """关键门槛事件"""
-    FIRST_CHAT = "first_chat"           # S0 → S1 自动触发
-    FIRST_GIFT = "first_gift"           # S1 → S2 送礼后突破
-    FIRST_DATE = "first_date"           # S2 深化
-    CONFESSION = "confession"           # S2 → S3 表白成功
-    FIRST_KISS = "first_kiss"           # S3 深化
-    FIRST_NSFW = "first_nsfw"           # S3 深化
-    PROPOSAL = "proposal"               # S3 → S4 求婚/钻戒
+    FIRST_CHAT = "first_chat"           # 初识
+    FIRST_GIFT = "first_gift"           # 送礼
+    FIRST_DATE = "first_date"           # 约会
+    CONFESSION = "confession"           # 表白
+    FIRST_KISS = "first_kiss"           # 初吻
+    FIRST_NSFW = "first_nsfw"           # 亲密
+    PROPOSAL = "proposal"               # 求婚
 
 
-# 事件触发条件
-EVENT_REQUIREMENTS = {
-    GateEvent.FIRST_CHAT: {
-        "min_intimacy": 0,
-        "prerequisites": [],
-        "auto_trigger": True,
-    },
-    GateEvent.FIRST_GIFT: {
-        "min_intimacy": 10,
-        "prerequisites": [GateEvent.FIRST_CHAT],
-        "auto_trigger": False,
-    },
-    GateEvent.FIRST_DATE: {
-        "min_intimacy": 30,
-        "prerequisites": [GateEvent.FIRST_GIFT],
-        "difficulty": 40,  # Power vs Difficulty
-    },
-    GateEvent.CONFESSION: {
-        "min_intimacy": 50,
-        "prerequisites": [GateEvent.FIRST_DATE],
-        "difficulty": 55,
-    },
-    GateEvent.FIRST_KISS: {
-        "min_intimacy": 55,
-        "prerequisites": [GateEvent.CONFESSION],
-        "difficulty": 60,
-    },
-    GateEvent.FIRST_NSFW: {
-        "min_intimacy": 60,
-        "prerequisites": [GateEvent.CONFESSION],
-        "difficulty": 70,
-    },
-    GateEvent.PROPOSAL: {
-        "min_intimacy": 75,
-        "prerequisites": [GateEvent.FIRST_NSFW],
-        "difficulty": 85,
+class CharacterArchetype(str, Enum):
+    """角色原型 - 决定状态机类型"""
+    NORMAL = "normal"       # 标准型：有向图，正常流程
+    PHANTOM = "phantom"     # 魅魔型：随意跳跃，容易攻略
+    YUKI = "yuki"           # 高冷型：最高难度，氪金大佬专属
+
+
+# =============================================================================
+# 三种状态机配置
+# =============================================================================
+
+# 事件难度 (Power vs Difficulty，60 = 及格线)
+EVENT_DIFFICULTY = {
+    GateEvent.FIRST_CHAT: 0,
+    GateEvent.FIRST_GIFT: 20,
+    GateEvent.FIRST_DATE: 40,
+    GateEvent.CONFESSION: 50,
+    GateEvent.FIRST_KISS: 55,
+    GateEvent.FIRST_NSFW: 60,   # 及格线！
+    GateEvent.PROPOSAL: 80,
+}
+
+# ------------------------------------------------------------------
+# NORMAL (标准型) - 有向图
+# ------------------------------------------------------------------
+NORMAL_STATE_MACHINE = {
+    "archetype": CharacterArchetype.NORMAL,
+    "description": "标准流程，按部就班谈恋爱",
+    "difficulty_modifier": 1.0,  # 难度系数
+    "events": {
+        GateEvent.FIRST_CHAT: {
+            "prerequisites": [],
+            "difficulty": 0,
+        },
+        GateEvent.FIRST_GIFT: {
+            "prerequisites": [GateEvent.FIRST_CHAT],
+            "difficulty": 20,
+        },
+        GateEvent.FIRST_DATE: {
+            "prerequisites": [GateEvent.FIRST_GIFT],
+            "difficulty": 40,
+        },
+        GateEvent.CONFESSION: {
+            "prerequisites": [GateEvent.FIRST_DATE],
+            "difficulty": 50,
+        },
+        GateEvent.FIRST_KISS: {
+            "prerequisites": [GateEvent.CONFESSION],
+            "difficulty": 55,
+        },
+        GateEvent.FIRST_NSFW: {
+            "prerequisites": [GateEvent.CONFESSION],  # 表白后才能 NSFW
+            "difficulty": 60,
+        },
+        GateEvent.PROPOSAL: {
+            "prerequisites": [GateEvent.FIRST_NSFW],
+            "difficulty": 80,
+        },
     },
 }
+
+# ------------------------------------------------------------------
+# PHANTOM (魅魔型) - 随意跳跃
+# ------------------------------------------------------------------
+PHANTOM_STATE_MACHINE = {
+    "archetype": CharacterArchetype.PHANTOM,
+    "description": "魅魔角色，可以跳过大部分前置",
+    "difficulty_modifier": 0.7,  # 难度降低 30%
+    "events": {
+        GateEvent.FIRST_CHAT: {
+            "prerequisites": [],
+            "difficulty": 0,
+        },
+        GateEvent.FIRST_GIFT: {
+            "prerequisites": [GateEvent.FIRST_CHAT],
+            "difficulty": 15,  # 更低
+        },
+        GateEvent.FIRST_DATE: {
+            "prerequisites": [GateEvent.FIRST_CHAT],  # 只需聊过
+            "difficulty": 30,
+        },
+        GateEvent.CONFESSION: {
+            "prerequisites": [GateEvent.FIRST_CHAT],  # 可以直接表白
+            "difficulty": 40,
+        },
+        GateEvent.FIRST_KISS: {
+            "prerequisites": [GateEvent.FIRST_CHAT],  # 聊过就能亲
+            "difficulty": 45,
+        },
+        GateEvent.FIRST_NSFW: {
+            "prerequisites": [GateEvent.FIRST_CHAT],  # 聊过就能睡！
+            "difficulty": 50,  # 难度大幅降低
+        },
+        GateEvent.PROPOSAL: {
+            "prerequisites": [GateEvent.FIRST_NSFW],
+            "difficulty": 70,
+        },
+    },
+}
+
+# ------------------------------------------------------------------
+# YUKI (高冷型) - 最高难度
+# ------------------------------------------------------------------
+YUKI_STATE_MACHINE = {
+    "archetype": CharacterArchetype.YUKI,
+    "description": "高冷角色，需要漫长攻略，氪金大佬专属",
+    "difficulty_modifier": 1.5,  # 难度提升 50%
+    "events": {
+        GateEvent.FIRST_CHAT: {
+            "prerequisites": [],
+            "difficulty": 0,
+        },
+        GateEvent.FIRST_GIFT: {
+            "prerequisites": [GateEvent.FIRST_CHAT],
+            "difficulty": 30,  # 更高
+        },
+        GateEvent.FIRST_DATE: {
+            "prerequisites": [GateEvent.FIRST_GIFT],
+            "difficulty": 50,  # 必须送礼后才能约会
+        },
+        GateEvent.CONFESSION: {
+            "prerequisites": [GateEvent.FIRST_DATE],
+            "difficulty": 65,  # 必须约会后才能表白
+        },
+        GateEvent.FIRST_KISS: {
+            "prerequisites": [GateEvent.CONFESSION],
+            "difficulty": 75,  # 必须表白后才能亲
+        },
+        GateEvent.FIRST_NSFW: {
+            "prerequisites": [GateEvent.FIRST_KISS],  # 必须亲过才能睡！
+            "difficulty": 85,  # 最高难度
+        },
+        GateEvent.PROPOSAL: {
+            "prerequisites": [GateEvent.FIRST_NSFW],
+            "difficulty": 95,  # 接近极限
+        },
+    },
+}
+
+# 角色原型映射
+ARCHETYPE_STATE_MACHINES = {
+    CharacterArchetype.NORMAL: NORMAL_STATE_MACHINE,
+    CharacterArchetype.PHANTOM: PHANTOM_STATE_MACHINE,
+    CharacterArchetype.YUKI: YUKI_STATE_MACHINE,
+}
+
+
+def get_state_machine(archetype: CharacterArchetype) -> dict:
+    """获取角色的状态机配置"""
+    return ARCHETYPE_STATE_MACHINES.get(archetype, NORMAL_STATE_MACHINE)
+
+
+def get_event_difficulty(archetype: CharacterArchetype, event: GateEvent) -> int:
+    """获取特定角色特定事件的难度"""
+    sm = get_state_machine(archetype)
+    event_config = sm["events"].get(event, {})
+    base_difficulty = event_config.get("difficulty", 60)
+    return base_difficulty
+
+
+def can_trigger_event(
+    archetype: CharacterArchetype,
+    event: GateEvent,
+    completed_events: list,
+    power: float
+) -> tuple:
+    """
+    检查是否可以触发事件
+    
+    Returns:
+        (can_trigger, reason)
+    """
+    sm = get_state_machine(archetype)
+    event_config = sm["events"].get(event)
+    
+    if not event_config:
+        return False, "unknown_event"
+    
+    # 已完成不能重复
+    if event.value in completed_events:
+        return False, "already_completed"
+    
+    # 检查前置条件
+    for prereq in event_config.get("prerequisites", []):
+        if prereq.value not in completed_events:
+            return False, f"missing_prereq:{prereq.value}"
+    
+    # 检查 Power
+    difficulty = event_config.get("difficulty", 60)
+    if power < difficulty:
+        return False, f"power_insufficient:{power:.0f}<{difficulty}"
+    
+    return True, "ok"
 
 
 # =============================================================================
