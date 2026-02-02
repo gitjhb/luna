@@ -1148,6 +1148,20 @@ export default function ChatScreen() {
               setRelationshipXp(newXp);
             }
             
+            // 5. 刷新情绪状态（礼物会影响情绪）
+            try {
+              const updatedEmotion = await emotionService.getStatus(params.characterId);
+              if (updatedEmotion) {
+                const negativeStates = ['angry', 'annoyed', 'cold', 'hurt', 'silent'];
+                const isNegative = negativeStates.includes(updatedEmotion.emotionalState);
+                const score = isNegative ? -updatedEmotion.emotionIntensity : updatedEmotion.emotionIntensity;
+                setEmotionScore(score);
+                setEmotionState(updatedEmotion.emotionalState);
+              }
+            } catch (e) {
+              console.warn('Failed to refresh emotion after gift:', e);
+            }
+            
           } catch (error: any) {
             Alert.alert('送礼失败', error.message || '请稍后重试');
           }
