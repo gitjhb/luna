@@ -249,6 +249,15 @@ class PhysicsEngine:
         else:
             base_force = sentiment * 10.0
         
+        # 1.5 负面情绪保护：AI 已经不高兴时，中性消息不应该让她变开心
+        # "你在吗" 这种敷衍问候不应该修复关系
+        neutral_intents = {'GREETING', 'SMALL_TALK', 'CLOSING', 'COMPLAIN'}
+        if current_emotion < -10 and intent in neutral_intents and base_force > 0 and base_force < 5:
+            # 情绪为负 + 中性意图 + 微弱正面 → 不加分
+            logger.info(f"😤 Negative Mood Protection: emotion={current_emotion}, neutral intent={intent}, "
+                        f"weak positive sentiment={sentiment:.2f} → ignoring, base_force=0")
+            base_force = 0
+        
         # 2. 负面伤害加倍 (Loss Aversion) - 不适用于同理心修正的情况
         if base_force < 0 and not empathy_override:
             base_force *= 2.0
