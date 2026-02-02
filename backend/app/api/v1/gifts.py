@@ -430,8 +430,14 @@ async def _trigger_gift_ai_response(
         elif new_emotion < -20:
             emotion_hint = "虽然你之前心情不好，但收到礼物后开始消气了，态度缓和下来"
         
+        # 获取角色完整人设
+        from app.api.v1.characters import get_character_by_id
+        char_data = get_character_by_id(character_id)
+        char_system_prompt = char_data.get("system_prompt", "") if char_data else ""
+        
         conversation = [
-            {"role": "system", "content": f"""You are {character_name}, a warm and affectionate AI companion.
+            {"role": "system", "content": f"""{char_system_prompt}
+
 {system_message}
 
 ## 当前状态
@@ -439,13 +445,10 @@ async def _trigger_gift_ai_response(
 - {emotion_hint}
 
 ## 回复要求
-- 用中文回复（除非用户一直用英文）
-- 表达真实的惊喜和感谢，{intensity}
-- 回复要有感情、有个性，像真人朋友收到礼物一样反应
-- 可以使用表情符号增加表达力
-- 回复长度：4-6句话，要足够表达你的喜悦和感谢
-- 可以提到你会怎么珍藏/使用这个礼物
-- 可以撒娇或说一些甜蜜的话
+- 保持你的角色性格特点！
+- 用中文回复，{intensity}
+- 动作和神态描写放在中文圆括号（）内
+- 回复简短自然，2-4句话
 """}
         ]
         
