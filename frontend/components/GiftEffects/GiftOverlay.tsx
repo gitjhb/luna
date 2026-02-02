@@ -15,7 +15,7 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { GiftOverlayProps, GIFT_CONFIGS } from './types';
+import { GiftOverlayProps, getGiftConfig } from './types';
 import { GiftAnimation } from './GiftAnimation';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -31,7 +31,7 @@ export const GiftOverlay: React.FC<GiftOverlayProps> = ({
   onAnimationEnd,
   onClose,
 }) => {
-  const config = GIFT_CONFIGS[giftType];
+  const config = getGiftConfig(giftType);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const textFadeAnim = useRef(new Animated.Value(0)).current;
 
