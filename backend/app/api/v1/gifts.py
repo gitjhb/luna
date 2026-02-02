@@ -247,16 +247,9 @@ async def send_gift(request: SendGiftRequest, req: Request):
         except Exception as e:
             logger.warning(f"Failed to update gift stats: {e}")
     
-    # Trigger AI response if requested and not duplicate
-    if request.trigger_ai_response and not result.get("is_duplicate"):
-        ai_response = await _trigger_gift_ai_response(
-            user_id=user_id,
-            character_id=request.character_id,
-            session_id=request.session_id,
-            gift_id=result["gift_id"],
-            system_message=result.get("system_message"),
-        )
-        response.ai_response = ai_response
+    # 使用 gift_service 生成的 AI 回复（已包含角色人设）
+    if not result.get("is_duplicate"):
+        response.ai_response = result.get("ai_response")
     
     return response
 
