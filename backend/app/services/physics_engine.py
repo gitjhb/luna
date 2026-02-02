@@ -1,5 +1,5 @@
 """
-Luna Physics Engine v2.2
+Luna Physics Engine v2.3
 ========================
 
 基于"阻尼滑块"模型的情绪计算引擎，集成状态机。
@@ -11,14 +11,53 @@ Luna Physics Engine v2.2
 - 每轮自然衰减向 0 回归 (decay_factor)
 - 角色敏感度放大/缩小所有情绪变化
 - 状态锁：冷战/拉黑时普通对话无效，需要礼物/道歉解锁
+
+v2.3 新增：
+- 智能防刷系统：区分闲聊刷屏（严惩）和调情连击（宽容）
+- 复读机检测：完全相同消息连发会被惩罚
+- 配置中心：方便调参
 """
 
 import math
 import logging
-from typing import Dict, Any, Optional
-from dataclasses import dataclass
+import re
+from typing import Dict, Any, Optional, Tuple, List
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# 配置中心 (Game Config)
+# =============================================================================
+
+@dataclass
+class EmotionConfig:
+    """
+    情绪系统配置中心
+    把硬编码提取出来，方便调整和测试
+    """
+    # --- 1. 复读机检测 (String Spam) ---
+    # 完全相同的消息连发会被惩罚
+    spam_trigger_count: int = 2           # 连续几次完全一样触发惩罚
+    spam_penalty: int = -5                # 复读惩罚值
+    
+    # --- 2. 闲聊防刷 (Small Talk Spam) ---
+    # 针对 GREETING, SMALL_TALK 这种低价值意图
+    # 阶梯式衰减：[第1次, 第2次, 第3次, 第4次+]
+    small_talk_multipliers: List[float] = field(default_factory=lambda: [1.0, 0.5, 0.0, -0.5])
+    
+    # --- 3. 调情连击 (Flirt Escalation) ---
+    # 允许用户在兴头上连续调情，阈值要宽容得多
+    flirt_soft_cap: int = 5               # 连续调情5次后，收益才开始衰减
+    flirt_decay_rate: float = 0.8         # 衰减倍率 (依然是正向，不会变0)
+    
+    # --- 4. 负面情绪保护 ---
+    negative_mood_threshold: int = -10    # 低于此值时，中性消息不加分
+
+
+# 全局默认配置
+DEFAULT_CONFIG = EmotionConfig()
 
 
 # =============================================================================
@@ -145,7 +184,13 @@ INTENT_MODIFIERS = {
 # 同理心修正：这些意图会忽略 sentiment 的负值
 EMPATHY_OVERRIDE_INTENTS = ["EXPRESS_SADNESS"]
 
-# 防刷意图：连续使用会递减效果
+# 闲聊意图：连续使用严厉惩罚
+SMALL_TALK_INTENTS = {"GREETING", "SMALL_TALK", "CLOSING"}
+
+# 调情意图：连续使用宽容对待
+ESCALATION_INTENTS = {"FLIRT", "COMPLIMENT", "LOVE_CONFESSION", "REQUEST_NSFW"}
+
+# 旧的防刷意图（兼容）
 ANTI_GRIND_INTENTS = ["FLIRT", "COMPLIMENT", "LOVE_CONFESSION", "EXPRESS_SADNESS"]
 
 
@@ -155,18 +200,135 @@ ANTI_GRIND_INTENTS = ["FLIRT", "COMPLIMENT", "LOVE_CONFESSION", "EXPRESS_SADNESS
 
 class PhysicsEngine:
     """
-    Luna 核心物理引擎 v2.2 (集成状态机版)
+    Luna 核心物理引擎 v2.3 (集成状态机+智能防刷版)
     
     Features:
     - 状态锁逻辑：冷战/拉黑时普通对话无效
     - 礼物/道歉是解锁钥匙
     - 破冰奖励机制
     - 阻尼滑块物理模型
+    - [v2.3] 复读机检测：相同消息连发惩罚
+    - [v2.3] 智能意图防刷：闲聊严惩，调情宽容
     """
     
     # 破冰奖励阈值
     ICE_BREAK_THRESHOLD = 30
     ICE_BREAK_BONUS = 20
+    
+    # =========================================================================
+    # 防刷检测方法 (Anti-Spam Detection)
+    # =========================================================================
+    
+    @staticmethod
+    def normalize_message(message: str) -> str:
+        """
+        标准化消息用于比较
+        去除标点、空格、大小写
+        """
+        if not message:
+            return ""
+        # 去除所有标点和空格
+        normalized = re.sub(r'[^\w]', '', message.lower())
+        return normalized
+    
+    @staticmethod
+    def detect_string_spam(
+        message_history: List[str],
+        current_message: str,
+        config: EmotionConfig = None
+    ) -> Tuple[bool, int]:
+        """
+        复读机检测：完全相同的消息连发
+        
+        Args:
+            message_history: 历史消息列表（已标准化）
+            current_message: 当前消息
+            config: 配置
+            
+        Returns:
+            (is_spam, spam_level)
+            - is_spam: 是否是复读
+            - spam_level: 0=正常, 1=轻微复读, 2=严重复读
+        """
+        if config is None:
+            config = DEFAULT_CONFIG
+        
+        current_norm = PhysicsEngine.normalize_message(current_message)
+        if not current_norm:
+            return False, 0
+        
+        # 检查最近5条消息
+        repeat_count = 0
+        for old_msg in reversed(message_history[-5:]):
+            if old_msg == current_norm:
+                repeat_count += 1
+            else:
+                break  # 连续性中断
+        
+        if repeat_count == 0:
+            return False, 0
+        elif repeat_count < config.spam_trigger_count:
+            return True, 1  # 轻微复读，警告
+        else:
+            return True, 2  # 严重复读，惩罚
+    
+    @staticmethod
+    def detect_intent_spam(
+        last_intents: List[str],
+        current_intent: str,
+        config: EmotionConfig = None
+    ) -> Tuple[bool, float]:
+        """
+        意图防刷检测：区分闲聊刷屏和调情连击
+        
+        Args:
+            last_intents: 最近的意图历史
+            current_intent: 当前意图
+            config: 配置
+            
+        Returns:
+            (is_spam, multiplier)
+            - is_spam: 是否触发防刷
+            - multiplier: 收益倍率 (1.0=正常, 0.5=减半, 0=无效, -0.5=倒扣)
+        """
+        if config is None:
+            config = DEFAULT_CONFIG
+        
+        # 统计连续相同意图次数
+        consecutive = 0
+        for old_intent in reversed(last_intents):
+            if old_intent == current_intent:
+                consecutive += 1
+            else:
+                break
+        
+        # --- 闲聊防刷：严厉 ---
+        if current_intent in SMALL_TALK_INTENTS:
+            if consecutive == 0:
+                return False, 1.0
+            
+            # 使用阶梯式倍率
+            idx = min(consecutive, len(config.small_talk_multipliers) - 1)
+            multiplier = config.small_talk_multipliers[idx]
+            
+            logger.info(f"🔇 Small talk spam: {current_intent} x{consecutive+1}, multiplier={multiplier}")
+            return True, multiplier
+        
+        # --- 调情连击：宽容 ---
+        if current_intent in ESCALATION_INTENTS:
+            if consecutive < config.flirt_soft_cap:
+                return False, 1.0
+            
+            # 超过阈值后，每次额外衰减
+            excess = consecutive - config.flirt_soft_cap
+            multiplier = config.flirt_decay_rate ** excess
+            multiplier = max(0.3, multiplier)  # 最低 30%，不会归零
+            
+            logger.info(f"💕 Flirt streak: {current_intent} x{consecutive+1}, multiplier={multiplier:.2f}")
+            return True, multiplier
+        
+        # 其他意图不做限制
+        return False, 1.0
     
     @staticmethod
     def calculate_emotion_delta(
@@ -293,43 +455,100 @@ class PhysicsEngine:
     def update_state(
         user_state: Dict[str, Any],
         l1_result: Dict[str, Any],
-        char_config: CharacterZAxis
+        char_config: CharacterZAxis,
+        current_message: str = "",
+        config: EmotionConfig = None
     ) -> int:
         """
         更新情绪状态 (返回新的情绪值)
         
         Args:
-            user_state: 用户状态 {'emotion': int, 'last_intents': list}
+            user_state: 用户状态 {'emotion': int, 'last_intents': list, 'message_history': list}
             l1_result: L1 分析结果
             char_config: 角色 Z轴配置
+            current_message: 当前用户消息（用于复读检测）
+            config: 情绪配置
             
         Returns:
             新的情绪值 (int)
         """
+        if config is None:
+            config = DEFAULT_CONFIG
+        
         current_y = user_state.get('emotion', 0)
         old_state = EmotionState.get_state(current_y)
-        
-        # 1. 计算推力
-        delta = PhysicsEngine.calculate_emotion_delta(current_y, l1_result, char_config)
-        
-        # 2. 防刷检查：连续同一正向意图会递减
         intent = l1_result.get('intent_category', 'SMALL_TALK')
         last_intents = user_state.get('last_intents', [])
+        message_history = user_state.get('message_history', [])
         
-        if intent in ANTI_GRIND_INTENTS and delta > 0:
-            recent_same = last_intents[-3:].count(intent) if len(last_intents) >= 3 else 0
-            if recent_same >= 2:
-                # 连续3次同一意图，效果降到 10%
-                original_delta = delta
-                delta = int(delta * 0.1)
-                logger.info(f"🔄 Anti-grind: {intent} repeated {recent_same+1}x, delta {original_delta} → {delta}")
+        # =====================================================================
+        # 防刷系统 (Anti-Spam System)
+        # =====================================================================
         
-        # 3. 破冰奖励：冷战中送大礼，额外加成
+        # 1. 复读机检测 (优先级最高)
+        if current_message:
+            is_string_spam, spam_level = PhysicsEngine.detect_string_spam(
+                message_history, current_message, config
+            )
+            
+            if is_string_spam:
+                if spam_level >= 2:
+                    # 严重复读：直接惩罚
+                    penalty = int(config.spam_penalty * char_config.sensitivity)
+                    logger.info(f"🚫 String spam detected (level {spam_level}): penalty={penalty}")
+                    
+                    # 更新消息历史
+                    norm_msg = PhysicsEngine.normalize_message(current_message)
+                    message_history.append(norm_msg)
+                    if len(message_history) > 10:
+                        message_history.pop(0)
+                    user_state['message_history'] = message_history
+                    
+                    # 应用惩罚
+                    new_y = max(-100, min(100, current_y + penalty))
+                    return new_y
+                else:
+                    # 轻微复读：警告，不加分也不扣分
+                    logger.info(f"⚠️ String spam warning (level {spam_level}): no change")
+                    
+                    # 更新历史但返回原值
+                    norm_msg = PhysicsEngine.normalize_message(current_message)
+                    message_history.append(norm_msg)
+                    if len(message_history) > 10:
+                        message_history.pop(0)
+                    user_state['message_history'] = message_history
+                    
+                    return current_y
+        
+        # 2. 计算基础推力
+        delta = PhysicsEngine.calculate_emotion_delta(current_y, l1_result, char_config)
+        
+        # 3. 意图防刷检测
+        is_intent_spam, spam_multiplier = PhysicsEngine.detect_intent_spam(
+            last_intents, intent, config
+        )
+        
+        if is_intent_spam:
+            original_delta = delta
+            
+            if spam_multiplier < 0:
+                # 倒扣分（闲聊刷屏太严重）
+                delta = int(config.spam_penalty * char_config.sensitivity)
+            elif spam_multiplier == 0:
+                # 0 收益
+                delta = 0
+            else:
+                # 正常衰减
+                delta = int(delta * spam_multiplier)
+            
+            logger.info(f"🔄 Intent spam: {intent}, multiplier={spam_multiplier}, delta {original_delta} → {delta}")
+        
+        # 4. 破冰奖励：冷战中送大礼，额外加成
         if old_state == EmotionState.COLD_WAR and delta > PhysicsEngine.ICE_BREAK_THRESHOLD:
             delta += PhysicsEngine.ICE_BREAK_BONUS
-            logger.info(f"Ice break bonus applied: +{PhysicsEngine.ICE_BREAK_BONUS}")
+            logger.info(f"🧊 Ice break bonus applied: +{PhysicsEngine.ICE_BREAK_BONUS}")
         
-        # 3. Z轴物理模拟 (阻尼衰减)
+        # 5. Z轴物理模拟 (阻尼衰减)
         bias = char_config.optimism
         decay = char_config.decay_rate
         
@@ -342,6 +561,22 @@ class PhysicsEngine:
         new_y = max(-100, min(100, int(new_y)))
         
         new_state = EmotionState.get_state(new_y)
+        
+        # 6. 更新历史记录
+        # 更新消息历史
+        if current_message:
+            norm_msg = PhysicsEngine.normalize_message(current_message)
+            if norm_msg:
+                message_history.append(norm_msg)
+                if len(message_history) > 10:
+                    message_history.pop(0)
+                user_state['message_history'] = message_history
+        
+        # 更新意图历史
+        last_intents.append(intent)
+        if len(last_intents) > 10:
+            last_intents.pop(0)
+        user_state['last_intents'] = last_intents
         
         logger.info(f"📊 Emotion Physics: {current_y}({old_state}) → {new_y}({new_state}) | "
                     f"delta={delta}, decay={decay:.2f}, bias={bias:.1f}")

@@ -248,7 +248,8 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         game_result = await game_engine.process(
             user_id=user_id,
             character_id=character_id,
-            l1_result=l1_result
+            l1_result=l1_result,
+            user_message=request.message  # 传入用户消息用于复读检测
         )
         
         chat_debug.log_game_output(game_result)

@@ -65,6 +65,7 @@ class UserState:
     
     # 防刷机制
     last_intents: List[str] = field(default_factory=list)  # 最近10次意图
+    message_history: List[str] = field(default_factory=list)  # 最近10条消息哈希（用于复读检测）
     
     @property
     def intimacy_x(self) -> float:
@@ -151,7 +152,8 @@ class GameEngine:
         user_id: str,
         character_id: str,
         l1_result: L1Result,
-        user_state: UserState = None
+        user_state: UserState = None,
+        user_message: str = ""
     ) -> GameResult:
         """
         核心游戏循环
@@ -161,10 +163,12 @@ class GameEngine:
             character_id: 角色ID
             l1_result: L1 感知层输出
             user_state: 用户状态 (如果为None则从数据库加载)
+            user_message: 用户原始消息 (用于复读检测)
             
         Returns:
             GameResult
         """
+        self._current_user_message = user_message  # 暂存，供 _update_emotion 使用
         
         # 1. 加载用户状态
         if user_state is None:
@@ -255,13 +259,14 @@ class GameEngine:
     
     def _update_emotion(self, user_state: UserState, l1_result: L1Result, character_id: str) -> UserState:
         """
-        情绪物理学 (Y轴更新) - 使用 PhysicsEngine v2.2
+        情绪物理学 (Y轴更新) - 使用 PhysicsEngine v2.3
         
         基于"阻尼滑块"模型：
         - 衰减: 每轮向 0 回归 (decay_factor)
         - 推力: sentiment * 10 + intent_mod
         - 伤害加倍: 负面情绪 x2
         - 状态锁: 冷战/拉黑时普通对话无效
+        - [v2.3] 智能防刷: 复读检测 + 意图防刷
         """
         from app.services.physics_engine import PhysicsEngine, CharacterZAxis, EmotionState
         
@@ -277,20 +282,27 @@ class GameEngine:
             'intimacy_x': user_state.intimacy_x,  # 传给 PhysicsEngine 做流氓检测
         }
         
-        # 构建用户状态字典
+        # 构建用户状态字典（包含消息历史用于防刷检测）
         state_dict = {
             'emotion': user_state.emotion,
-            'last_intents': user_state.last_intents,
+            'last_intents': list(user_state.last_intents),  # 复制一份
+            'message_history': list(user_state.message_history),  # 复制一份
         }
         
         old_emotion = user_state.emotion
         old_state = EmotionState.get_state(old_emotion)
         
-        # 使用 PhysicsEngine 计算新情绪值
-        new_emotion = PhysicsEngine.update_state(state_dict, l1_dict, char_config)
+        # 获取用户消息（从 process 方法暂存）
+        user_message = getattr(self, '_current_user_message', '')
+        
+        # 使用 PhysicsEngine 计算新情绪值（传入用户消息用于复读检测）
+        new_emotion = PhysicsEngine.update_state(state_dict, l1_dict, char_config, user_message)
         new_state = EmotionState.get_state(new_emotion)
         
+        # 更新用户状态
         user_state.emotion = new_emotion
+        user_state.last_intents = state_dict.get('last_intents', user_state.last_intents)
+        user_state.message_history = state_dict.get('message_history', user_state.message_history)
         
         logger.info(f"📊 Emotion: {old_emotion}({old_state}) → {new_emotion}({new_state})")
         return user_state
