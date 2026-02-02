@@ -153,23 +153,8 @@ DEFAULT_GIFT_CATALOG = [
         "icon": "☕",
         "tier": GiftTier.CONSUMABLE,
         "category": GiftCategory.CONSUMABLE,
-        "emotion_boost": 2,
+        "emotion_boost": 10,  # 小礼物也要有明显效果
         "sort_order": 101,
-    },
-    {
-        "gift_type": "red_rose",
-        "name": "Red Rose",
-        "name_cn": "红玫瑰",
-        "description": "A beautiful red rose",
-        "description_cn": "一朵美丽的红玫瑰",
-        "price": 20,
-        "xp_reward": 20,
-        "xp_multiplier": 1.0,
-        "icon": "🌹",
-        "tier": GiftTier.CONSUMABLE,
-        "category": GiftCategory.CONSUMABLE,
-        "emotion_boost": 5,
-        "sort_order": 102,
     },
     {
         "gift_type": "small_cake",
@@ -183,7 +168,7 @@ DEFAULT_GIFT_CATALOG = [
         "icon": "🍰",
         "tier": GiftTier.CONSUMABLE,
         "category": GiftCategory.CONSUMABLE,
-        "emotion_boost": 10,
+        "emotion_boost": 25,
         "can_calm_anger": True,  # 特殊：可以让生气→平静
         "sort_order": 103,
     },
@@ -204,6 +189,26 @@ DEFAULT_GIFT_CATALOG = [
     },
     
     # ============ Tier 2: 状态触发器 (State Triggers) ⭐ MVP 重点 ============
+    {
+        "gift_type": "red_rose",
+        "name": "Red Rose",
+        "name_cn": "红玫瑰",
+        "description": "A romantic red rose... perfect for a date invitation",
+        "description_cn": "一朵浪漫的红玫瑰，用来邀请约会",
+        "price": 50,
+        "xp_reward": 50,
+        "xp_multiplier": 1.2,
+        "icon": "🌹",
+        "tier": GiftTier.STATE_TRIGGER,
+        "category": GiftCategory.STATE,
+        "emotion_boost": 20,
+        "status_effect": {
+            "type": "date_mode",
+            "duration_messages": 20,
+            "prompt_modifier": "用户刚刚送了你一朵红玫瑰邀请约会。你现在进入约会模式，心情愉悦，有点害羞但很期待。可以讨论约会去哪里、做什么，表现得更加浪漫和亲近。",
+        },
+        "sort_order": 200,
+    },
     {
         "gift_type": "tipsy_wine",
         "name": "Fine Red Wine",

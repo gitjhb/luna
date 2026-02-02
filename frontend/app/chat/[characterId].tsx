@@ -55,6 +55,8 @@ import EventStoryModal from '../../components/EventStoryModal';
 import MemoriesModal from '../../components/MemoriesModal';
 import { eventService, EventStoryPlaceholder, EventMemory } from '../../services/eventService';
 import { IntimacyInfoPanel } from '../../components/IntimacyInfoPanel';
+import { interactionsService } from '../../services/interactionsService';
+import DressupModal from '../../components/DressupModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -96,6 +98,8 @@ export default function ChatScreen() {
   const [characterName, setCharacterName] = useState(params.characterName || 'Companion');
   const [showLevelInfoModal, setShowLevelInfoModal] = useState(false);
   const [showGiftModal, setShowGiftModal] = useState(false);
+  const [showDressupModal, setShowDressupModal] = useState(false);
+  const [photoLoading, setPhotoLoading] = useState(false);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [showCharacterInfo, setShowCharacterInfo] = useState(false);
   const [emotionScore, setEmotionScore] = useState(0);
@@ -504,6 +508,48 @@ export default function ChatScreen() {
     }
   };
 
+  // 📸 新拍照功能 (消费月石)
+  const handleTakePhoto = async () => {
+    if (photoLoading) return;
+    
+    // 检查等级
+    if ((relationshipLevel || 1) < 3) {
+      Alert.alert('等级不足', '需要 Lv.3 解锁拍照功能');
+      return;
+    }
+    
+    setPhotoLoading(true);
+    try {
+      // 获取最近几条对话作为上下文
+      const recentMessages = messages.slice(-5).map(m => m.content).join('\n');
+      
+      const result = await interactionsService.takePhoto(params.characterId, recentMessages);
+      
+      // 更新钱包余额
+      refreshBalance();
+      
+      Alert.alert(
+        result.is_first ? '🎉 首次拍照！' : '📸 拍照成功！',
+        `已保存到相册\n消费 ${result.cost} 月石`,
+        [{ text: '查看', onPress: () => {/* TODO: 打开相册 */} }, { text: '好的' }]
+      );
+    } catch (e: any) {
+      Alert.alert('拍照失败', e.message);
+    } finally {
+      setPhotoLoading(false);
+    }
+  };
+
+  // 👗 换装功能
+  const handleDressup = () => {
+    // 检查等级
+    if ((relationshipLevel || 1) < 6) {
+      Alert.alert('等级不足', '需要 Lv.6 解锁换装功能');
+      return;
+    }
+    setShowDressupModal(true);
+  };
+
   // Toast state for copy feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   
@@ -757,17 +803,55 @@ export default function ChatScreen() {
           showsVerticalScrollIndicator={false}
         />
 
-        {/* Action Buttons */}
-        <View style={styles.actionButtonsRow}>
-          <TouchableOpacity style={styles.actionButton} onPress={handleAskForPhoto}>
-            <Text style={styles.actionButtonEmoji}>📸</Text>
-            <Text style={styles.actionButtonText}>Ask for Photo</Text>
-          </TouchableOpacity>
+        {/* Action Buttons - Horizontal Scroll */}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          style={styles.actionButtonsScroll}
+          contentContainerStyle={styles.actionButtonsRow}
+        >
+          {/* 送礼物 - 始终显示 */}
           <TouchableOpacity style={styles.actionButton} onPress={() => setShowGiftModal(true)}>
             <Text style={styles.actionButtonEmoji}>🎁</Text>
             <Text style={styles.actionButtonText}>送礼物</Text>
           </TouchableOpacity>
-        </View>
+          
+          {/* 拍照 - Lv3 解锁 */}
+          {(relationshipLevel || 1) >= 3 ? (
+            <TouchableOpacity 
+              style={[styles.actionButton, photoLoading && styles.actionButtonDisabled]} 
+              onPress={handleTakePhoto}
+              disabled={photoLoading}
+            >
+              <Text style={styles.actionButtonEmoji}>📸</Text>
+              <Text style={styles.actionButtonText}>{photoLoading ? '...' : '拍照'}</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.actionButtonLocked]}
+              onPress={() => Alert.alert('🔒 未解锁', '拍照功能需要 Lv.3 解锁')}
+            >
+              <Text style={styles.actionButtonEmoji}>📸</Text>
+              <Text style={styles.actionButtonTextLocked}>Lv3</Text>
+            </TouchableOpacity>
+          )}
+          
+          {/* 换装 - Lv6 解锁 */}
+          {(relationshipLevel || 1) >= 6 ? (
+            <TouchableOpacity style={styles.actionButton} onPress={handleDressup}>
+              <Text style={styles.actionButtonEmoji}>👗</Text>
+              <Text style={styles.actionButtonText}>换装</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.actionButtonLocked]}
+              onPress={() => Alert.alert('🔒 未解锁', '换装功能需要 Lv.6 解锁')}
+            >
+              <Text style={styles.actionButtonEmoji}>👗</Text>
+              <Text style={styles.actionButtonTextLocked}>Lv6</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
 
         {/* Input Area - moved up */}
         <KeyboardAvoidingView
@@ -817,6 +901,21 @@ export default function ChatScreen() {
             intimacyLevel={relationshipLevel || 1}
             isSubscribed={isSubscribed}
             tokensUsed={lastTokensUsed}
+            characterId={params.characterId}
+            onStateChanged={() => {
+              // 刷新亲密度和情绪状态
+              intimacyService.getStatus(params.characterId).then(status => {
+                setIntimacy(params.characterId, {
+                  level: status.current_level,
+                  progress: status.progress_percent,
+                  stage: status.intimacy_stage,
+                });
+              }).catch(() => {});
+              emotionService.getStatus(params.characterId).then(status => {
+                setEmotionScore(status.score);
+                setEmotionState(status.mood_state);
+              }).catch(() => {});
+            }}
           />
         )}
       </SafeAreaView>
@@ -1088,6 +1187,20 @@ export default function ChatScreen() {
         }}
       />
       
+      {/* 👗 换装模态框 */}
+      <DressupModal
+        visible={showDressupModal}
+        onClose={() => setShowDressupModal(false)}
+        characterId={params.characterId}
+        onSuccess={(result) => {
+          refreshBalance();
+          Alert.alert(
+            result.is_first ? '🎉 首次换装！' : '👗 换装成功！',
+            `已保存到相册\n消费 ${result.cost} 月石`
+          );
+        }}
+      />
+      
       {/* Toast Notification */}
       {toastMessage && (
         <View style={styles.toastContainer}>
@@ -1339,22 +1452,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontStyle: 'italic',
   },
+  actionButtonsScroll: {
+    maxHeight: 50,
+  },
   actionButtonsRow: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingBottom: 8,
-    gap: 10,
+    gap: 12,
+    alignItems: 'center',
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(139, 92, 246, 0.3)',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(139, 92, 246, 0.5)',
-    gap: 6,
+    gap: 8,
+    minWidth: 90,
+    flexShrink: 0,
+  },
+  actionButtonDisabled: {
+    opacity: 0.5,
+  },
+  actionButtonLocked: {
+    backgroundColor: 'rgba(100, 100, 100, 0.3)',
+    borderColor: 'rgba(100, 100, 100, 0.5)',
   },
   actionButtonEmoji: {
     fontSize: 16,
@@ -1363,6 +1489,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#fff',
+    flexShrink: 0,
+  },
+  actionButtonTextLocked: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.5)',
+    flexShrink: 0,
   },
   inputContainer: {
     flexDirection: 'row',

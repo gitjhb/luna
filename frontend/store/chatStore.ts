@@ -9,6 +9,16 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Power 计算明细
+export interface PowerBreakdown {
+  intimacy: number;    // Intimacy × 0.5
+  emotion: number;     // Emotion × 0.5
+  chaos: number;       // Chaos 值
+  pure: number;        // Pure 值
+  buff: number;        // 环境加成
+  effect: number;      // 道具效果 (Tier 2 礼物)
+}
+
 // Debug info from L1 perception + game engine
 export interface GameDebugInfo {
   check_passed: boolean;
@@ -18,10 +28,28 @@ export interface GameDebugInfo {
   emotion_delta?: number;
   emotion_state?: string;
   emotion_locked?: boolean;
-  intimacy: number;
+  intimacy: number;        // intimacy_x (0-100 mapped value)
+  level?: number;          // display level (1-50)
   events: string[];
   new_event: string | null;
   intent: string;
+  // v3.0 新增
+  power?: number;
+  stage?: string;
+  archetype?: string;
+  adjusted_difficulty?: number;
+  difficulty_modifier?: number;
+  is_nsfw?: boolean;
+  power_breakdown?: PowerBreakdown;
+}
+
+// 激活的道具效果
+export interface ActiveEffect {
+  type: string;
+  name: string;
+  icon: string;
+  color: string;
+  remaining: number;  // 剩余消息数
 }
 
 export interface ExtraData {
@@ -33,6 +61,7 @@ export interface ExtraData {
     sentiment: number;
     is_nsfw: boolean;
   };
+  active_effects?: ActiveEffect[];  // Tier 2 礼物激活效果
 }
 
 export interface Message {

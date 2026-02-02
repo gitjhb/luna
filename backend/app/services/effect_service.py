@@ -369,6 +369,48 @@ class EffectService:
         else:
             return f"[系统提示：以下效果已结束 - {', '.join(expired_names)}，恢复正常状态]"
 
+    # =========================================================================
+    # Power Buff System
+    # =========================================================================
+    
+    # Effect type -> Power buff value
+    EFFECT_POWER_BUFFS = {
+        "tipsy": 15.0,       # 微醺红酒: +15 Power (降低戒备心)
+        "maid_mode": 5.0,    # 女仆模式: +5 Power (轻微加成)
+        "truth_mode": 10.0,  # 真话药水: +10 Power (更坦诚)
+        "apology": 20.0,     # 悔过书: +20 Power (解除冷战buff)
+    }
+    
+    async def get_power_buff(
+        self,
+        user_id: str,
+        character_id: str,
+    ) -> tuple[float, list[dict]]:
+        """
+        Get total power buff from all active effects.
+        
+        Returns:
+            (total_buff, list of {effect_type, buff_value, remaining})
+        """
+        effects = await self.get_active_effects(user_id, character_id)
+        
+        total_buff = 0.0
+        buff_details = []
+        
+        for effect in effects:
+            etype = effect["effect_type"]
+            buff_value = self.EFFECT_POWER_BUFFS.get(etype, 0.0)
+            
+            if buff_value > 0:
+                total_buff += buff_value
+                buff_details.append({
+                    "effect_type": etype,
+                    "buff_value": buff_value,
+                    "remaining": effect["remaining_messages"],
+                })
+        
+        return total_buff, buff_details
+
 
 # Global service instance
 effect_service = EffectService()

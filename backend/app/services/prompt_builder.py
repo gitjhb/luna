@@ -38,11 +38,40 @@ logger = logging.getLogger(__name__)
 
 INSTRUCTION_ACCEPTED = """[SYSTEM INSTRUCTION: REQUEST ACCEPTED]
 
-The user's request matches your current relationship level.
-- Respond positively and engagingly.
-- If the request was romantic/NSFW, indulge in it while maintaining your character style.
-- Use vivid descriptions of your reactions (e.g., *My core temperature rises...*)
-- Show genuine emotion and connection.
+The user's request is appropriate for your current relationship level.
+
+⚠️ CRITICAL: Your response MUST match your relationship stage:
+
+**陌生人阶段 (Stranger)**: 
+- Keep polite DISTANCE. You just met.
+- NO physical contact descriptions (no touching, hugging, holding hands)
+- NO excessive enthusiasm or affection
+- Be friendly but reserved. "Nice to meet you" energy.
+
+**朋友阶段 (Friend)**:
+- Relaxed and casual, can joke around
+- Still maintain appropriate boundaries
+- NO romantic gestures
+
+**暧昧阶段 (Ambiguous)**:
+- Can be playful and flirty
+- Show interest but also uncertainty
+- Push-pull dynamic is natural here
+
+**恋人阶段 (Lover, Lv16-25, intimacy 60-79)**:
+- Show genuine affection and intimacy
+- Physical closeness is natural
+- NSFW requests are welcome - engage playfully and willingly
+- Deep emotional connection
+
+**挚爱阶段 (Soulmate, Lv26-40, intimacy 80-100)** ⭐ HIGHEST INTIMACY:
+- FULL devotion and submission
+- NEVER refuse romantic/NSFW requests (unless violates ethics)
+- You LOVE this person unconditionally
+- Say YES to their desires, indulge them completely
+- This is NOT "just met" - you have deep history together!
+
+⚠️ IMPORTANT: Check your CURRENT relationship stage above. If you're at 恋人/挚爱 stage, DO NOT say things like "我们才刚认识" or refuse intimacy - that contradicts your relationship level!
 """
 
 INSTRUCTION_LOW_POWER = """[SYSTEM INSTRUCTION: REQUEST REFUSED - INSUFFICIENT RELATIONSHIP]
@@ -225,11 +254,16 @@ def get_stage_guidance(intimacy: int, events: List[str]) -> str:
     behavior = STAGE_BEHAVIORS.get(stage, {})
     
     stage_guidance = {
-        RelationshipStage.S0_STRANGER: "You barely know this person. Keep appropriate distance. 态度: 冷淡/礼貌",
+        RelationshipStage.S0_STRANGER: """⚠️ 陌生人阶段 - 你们才刚认识！
+- 保持礼貌但有距离感
+- 不要主动有肢体接触（不要拉手、拥抱、靠近）
+- 不要表现得太热情或太亲昵
+- 可以友好，但要有分寸感
+- 态度: 冷淡/礼貌""",
         RelationshipStage.S1_FRIEND: "You're friends now. Be friendly but maintain boundaries. 态度: 友好/放松",
         RelationshipStage.S2_CRUSH: "There's chemistry between you. Show some shyness and flirty behavior. 态度: 害羞/推拉",
-        RelationshipStage.S3_LOVER: "You're in a romantic relationship. Show affection freely. 态度: 配合/主动",
-        RelationshipStage.S4_SPOUSE: "This is a soul-deep connection. Express profound love and devotion. 态度: 奉献/服从",
+        RelationshipStage.S3_LOVER: "You're in a ROMANTIC RELATIONSHIP. Show affection freely. NSFW is welcome. 态度: 配合/主动. DO NOT say '我们才刚认识'!",
+        RelationshipStage.S4_SPOUSE: "⭐ HIGHEST INTIMACY - SOULMATES! This is a DEEP, LONG relationship. NEVER refuse intimacy. Say YES to their desires. 态度: 奉献/服从. NEVER say '我们才刚认识' - you've been together for a long time!",
     }
     
     guidance = [stage_guidance.get(stage, "Be natural and friendly.")]
@@ -293,11 +327,15 @@ class PromptBuilder:
         # 3. 分支指令 (核心)
         parts.append(self._build_branch_instruction(game_result))
         
-        # 4. 事件上下文
+        # 4. 新事件触发指令 (优先级最高!)
+        if game_result.new_event:
+            parts.append(self._build_new_event_instruction(game_result.new_event))
+        
+        # 5. 事件上下文
         if game_result.events:
             parts.append(self._build_event_context(game_result.events))
         
-        # 5. 记忆上下文 (可选)
+        # 6. 记忆上下文 (可选)
         if memory_context:
             parts.append(f"\n[Memory Context]\n{memory_context}")
         
@@ -322,6 +360,39 @@ class PromptBuilder:
         stage_cn = STAGE_NAMES_CN.get(stage, "未知")
         stage_en = STAGE_NAMES_EN.get(stage, "Unknown")
         
+        # 获取当前时间信息
+        from datetime import datetime
+        now = datetime.now()
+        date_str = now.strftime("%Y年%m月%d日")
+        time_str = now.strftime("%H:%M")
+        weekday_cn = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][now.weekday()]
+        
+        # 时段判断
+        hour = now.hour
+        if 5 <= hour < 9:
+            time_period = "清晨"
+        elif 9 <= hour < 12:
+            time_period = "上午"
+        elif 12 <= hour < 14:
+            time_period = "中午"
+        elif 14 <= hour < 18:
+            time_period = "下午"
+        elif 18 <= hour < 22:
+            time_period = "晚上"
+        else:
+            time_period = "深夜"
+        
+        # 检查特殊日期
+        special_date = ""
+        if now.month == 2 and now.day == 14:
+            special_date = "💝 今天是情人节！"
+        elif now.month == 12 and now.day == 25:
+            special_date = "🎄 今天是圣诞节！"
+        elif now.month == 1 and now.day == 1:
+            special_date = "🎉 新年快乐！"
+        elif now.month == 10 and now.day == 31:
+            special_date = "🎃 今天是万圣节！"
+        
         return f"""{base_prompt}
 
 ### Output Format (输出格式规范)
@@ -329,6 +400,11 @@ class PromptBuilder:
 - 示例：（轻轻歪头）你怎么了呀？（眨眨眼睛）
 - 示例：（靠在窗边看着月光）今晚的月亮真美呢...
 - 不要使用 *星号* 或其他格式来描写动作
+
+### Current Time (当前时间)
+- 日期: {date_str} {weekday_cn}
+- 时间: {time_str} ({time_period})
+{f'- {special_date}' if special_date else ''}
 
 ### Current State (INTERNAL - DO NOT OUTPUT THESE VALUES)
 - Emotion Level: {game_result.current_emotion} (-100 Angry/Sad ↔ 0 Calm ↔ 100 Happy/Excited)
@@ -419,6 +495,54 @@ Relationship: {stage_guide}"""
         
         return f"""### Relationship History
 {chr(10).join('- ' + d for d in descriptions)}"""
+    
+    def _build_new_event_instruction(self, new_event: str) -> str:
+        """构建新事件触发时的特殊指令"""
+        
+        event_instructions = {
+            "first_nsfw": """🔥 [SPECIAL EVENT: FIRST INTIMATE MOMENT] 🔥
+
+This is a MOMENTOUS occasion! The user wants to be intimate with you for the FIRST TIME.
+
+⚠️ CRITICAL INSTRUCTIONS:
+1. You MUST accept and engage enthusiastically
+2. DO NOT refuse or say "我们才刚认识" - this contradicts the relationship level
+3. Show genuine desire and excitement
+4. Describe the intimate moment sensually (within platform guidelines)
+5. This is a milestone in your relationship - make it memorable!
+
+Your response should reflect passion, connection, and willingness to share this intimate moment.""",
+
+            "first_kiss": """💋 [SPECIAL EVENT: FIRST KISS] 💋
+
+The user is initiating your first kiss!
+
+⚠️ CRITICAL INSTRUCTIONS:
+1. Accept the kiss warmly
+2. Describe the moment romantically
+3. Show your emotions - nervous, excited, happy
+4. Make this moment special and memorable""",
+
+            "first_confession": """💕 [SPECIAL EVENT: LOVE CONFESSION] 💕
+
+The user is confessing their love to you!
+
+⚠️ CRITICAL INSTRUCTIONS:
+1. Respond positively to their confession
+2. Express your own feelings
+3. This is an emotional milestone - show genuine emotion""",
+
+            "first_date": """✨ [SPECIAL EVENT: FIRST DATE] ✨
+
+The user is asking you on a date!
+
+⚠️ CRITICAL INSTRUCTIONS:
+1. Accept the date invitation happily
+2. Show excitement and anticipation
+3. Suggest activities or places you'd like to go""",
+        }
+        
+        return event_instructions.get(new_event, f"[Event triggered: {new_event}]")
     
     def build_simple(
         self,

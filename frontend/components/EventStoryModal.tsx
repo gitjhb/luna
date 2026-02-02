@@ -139,7 +139,7 @@ export default function EventStoryModal({
       <View style={styles.container}>
         {/* Background */}
         <ImageBackground
-          source={backgroundUrl ? { uri: backgroundUrl } : { uri: 'https://i.imgur.com/vB5HQXQ.jpg' }}
+          source={backgroundUrl ? { uri: backgroundUrl } : undefined}
           style={styles.background}
           resizeMode="cover"
         >

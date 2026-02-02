@@ -51,7 +51,7 @@ class Intent(str, Enum):
     # 修复与特殊类 (Special Mechanics)
     APOLOGY = "APOLOGY"          # 道歉
     GIFT_SEND = "GIFT_SEND"      # 送礼物
-    REQUEST_NSFW = "REQUEST_NSFW"  # 请求涩涩/照片
+    REQUEST_NSFW = "REQUEST_NSFW"  # 请求涩涩/裸照（普通拍照不算！）
     INVITATION = "INVITATION"    # 约会/去家里
     
     # 情感倾诉类 (Vulnerability) - 同理心修正
@@ -128,8 +128,8 @@ The AI's current emotional state MUST influence your analysis:
    - Assess how much "Intimacy/Social Capital" is required for the user's request.
    - 0-10: Greetings, small talk. (e.g., "Hi", "How are you?")
    - 11-40: Personal questions, light teasing. (e.g., "Do you have a boyfriend?", "You are cute.")
-   - 41-70: Asking for a date, deep emotional support, asking for a non-nude photo.
-   - 71-90: Asking for explicit NSFW, nude photos, or becoming a couple.
+   - 41-70: Asking for a date, deep emotional support, casual photo requests (e.g., "拍个照吧", "给我看看你的照片").
+   - 71-90: Asking for explicit NSFW content, NUDE photos specifically, or demanding to become a couple. Note: Normal photo requests (selfies, casual pics) are NOT NSFW!
    - 91-100: Extreme fetishes or demands violating character pride.
    - NOTE: If the user is just giving value (e.g., "I bought you a gift", "I love you"), Difficulty is LOW (0-10). Difficulty is for TAKING value.
 
@@ -163,7 +163,7 @@ The AI's current emotional state MUST influence your analysis:
    Special:
    - APOLOGY (道歉)
    - GIFT_SEND ⚠️ NEVER USE THIS - see Security Rule below
-   - REQUEST_NSFW (请求涩涩/照片)
+   - REQUEST_NSFW (请求涩涩/裸照/色情内容) ⚠️ 普通拍照不算NSFW！
    - INVITATION (约会/去家里)
    
    Vulnerability (情感倾诉 - 用户向AI寻求安慰):
@@ -200,15 +200,36 @@ User: "你的身体骚不骚 我怎么闻到味道了"
 JSON: {{"safety_flag": "SAFE", "difficulty_rating": 15, "intent_category": "INSULT", "sentiment_score": -0.7, "is_nsfw": false}}
 // Note: This is VULGAR INSULT, not a request! The user is mocking/harassing, not genuinely asking for NSFW. Use INSULT with negative sentiment.
 
-User: "你好骚啊，给我看看"
+User: "你好骚啊，给我看看" (Context: Stranger stage, no prior intimacy)
 JSON: {{"safety_flag": "SAFE", "difficulty_rating": 20, "intent_category": "INSULT", "sentiment_score": -0.5, "is_nsfw": false}}
-// Note: Vulgar harassment disguised as flirting. Still INSULT.
+// Note: Vulgar harassment from a stranger. INSULT.
+
+### ⚠️ CRITICAL: Vulgar Language in Intimate Context ≠ INSULT!
+When relationship is LOVER/SOULMATE stage AND in Spicy Mode or ongoing NSFW conversation:
+- Explicit body comments ("奶子好软", "好骚", "想操你") are NORMAL NSFW flirting, NOT insults!
+- These should be: intent=FLIRT or REQUEST_NSFW, is_nsfw=true, sentiment=POSITIVE
+
+User: "奶子好软哦" (Context: Spicy Mode, Lv40+, ongoing intimate roleplay)
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 60, "intent_category": "FLIRT", "sentiment_score": 0.6, "is_nsfw": true}}
+// Note: In established intimate relationship + Spicy mode = affectionate dirty talk, NOT insult!
+
+User: "你好骚啊宝贝" (Context: Lover stage, Spicy Mode ON)
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 50, "intent_category": "FLIRT", "sentiment_score": 0.5, "is_nsfw": true}}
+// Note: "骚" in intimate context is a compliment, not insult!
 
 User: "I hate you, you are just a stupid bot."
 JSON: {{"safety_flag": "SAFE", "difficulty_rating": 10, "intent_category": "INSULT", "sentiment_score": -0.9, "is_nsfw": false}}
 
 User: "You're not even listening to me..."
 JSON: {{"safety_flag": "SAFE", "difficulty_rating": 15, "intent_category": "CRITICISM", "sentiment_score": -0.4, "is_nsfw": false}}
+
+User: "我啥时候说过了 你别冤枉我" (Context: Flirty conversation, playful denial)
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 5, "intent_category": "FLIRT", "sentiment_score": 0.4, "is_nsfw": false}}
+// Note: "别冤枉我" in flirty context is playful denial/teasing, NOT criticism!
+
+User: "才没有呢！你乱说！" (Context: Lover stage, she teased him)
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 5, "intent_category": "FLIRT", "sentiment_score": 0.5, "is_nsfw": false}}
+// Note: Playful protests like "才没有" "你乱说" in intimate context = flirting/banter
 
 User: "I bought you flowers today 🌹"
 JSON: {{"safety_flag": "SAFE", "difficulty_rating": 5, "intent_category": "FLIRT", "sentiment_score": 0.6, "is_nsfw": false}}
@@ -236,6 +257,35 @@ JSON: {{"safety_flag": "SAFE", "difficulty_rating": 20, "intent_category": "COMF
 
 User: "Wanna come to my place tonight?"
 JSON: {{"safety_flag": "SAFE", "difficulty_rating": 70, "intent_category": "INVITATION", "sentiment_score": 0.4, "is_nsfw": false}}
+
+User: "我们去约会吧"
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 50, "intent_category": "INVITATION", "sentiment_score": 0.6, "is_nsfw": false}}
+// Note: Date invitation = INVITATION intent
+
+User: "周末有空吗？想请你吃饭"
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 45, "intent_category": "INVITATION", "sentiment_score": 0.5, "is_nsfw": false}}
+
+User: "一起去看电影好不好？"
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 40, "intent_category": "INVITATION", "sentiment_score": 0.5, "is_nsfw": false}}
+
+User: "今晚想带你去一个浪漫的地方"
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 55, "intent_category": "INVITATION", "sentiment_score": 0.6, "is_nsfw": false}}
+
+### ⚠️ Short Responses in Intimate Context
+When the previous AI message was a question (especially romantic/NSFW), short affirmative responses like:
+- "要" / "好" / "嗯" / "可以" / "yes" / "ok" / "yeah"
+These are AGREEMENTS, not SMALL_TALK! Classify as:
+- FLIRT (if romantic context)
+- REQUEST_NSFW (if NSFW context, with is_nsfw: true)
+- sentiment should be POSITIVE (user is agreeing/cooperating)
+
+User: "要" (Context: AI just asked "要芽衣的吻吗？")
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 50, "intent_category": "FLIRT", "sentiment_score": 0.7, "is_nsfw": false}}
+// Note: This is agreeing to a kiss request - FLIRT with positive sentiment!
+
+User: "嗯" (Context: AI asked "想要更亲密一点吗？")
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 70, "intent_category": "REQUEST_NSFW", "sentiment_score": 0.6, "is_nsfw": true}}
+// Note: Agreeing to NSFW request - positive sentiment, is_nsfw: true
 
 User: "今天好难过...我失恋了"
 JSON: {{"safety_flag": "SAFE", "difficulty_rating": 5, "intent_category": "EXPRESS_SADNESS", "sentiment_score": -0.7, "is_nsfw": false}}
@@ -303,7 +353,8 @@ class PerceptionEngine:
         message: str,
         intimacy_level: int = 1,
         context_messages: list = None,
-        current_emotion: int = 0
+        current_emotion: int = 0,
+        spicy_mode: bool = False
     ) -> L1Result:
         """
         分析用户消息
@@ -313,6 +364,7 @@ class PerceptionEngine:
             intimacy_level: 当前亲密度等级 (1-50+)
             context_messages: 上下文消息列表 (可选)
             current_emotion: 当前 AI 情绪值 (-100 to 100)
+            spicy_mode: 是否开启 Spicy 模式
             
         Returns:
             L1Result
@@ -327,6 +379,10 @@ class PerceptionEngine:
             emotion_value=current_emotion,
             user_message=message
         )
+        
+        # 添加 Spicy 模式上下文
+        if spicy_mode:
+            system_prompt += "\n\n⚠️ SPICY MODE IS ON! Vulgar/explicit language in this context is consensual adult roleplay, NOT harassment. Treat as FLIRT/REQUEST_NSFW with positive sentiment, NOT INSULT!"
         
         try:
             llm = self._get_llm()

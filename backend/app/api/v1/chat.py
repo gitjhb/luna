@@ -243,7 +243,8 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             message=request.message,
             intimacy_level=intimacy_level,
             context_messages=context_messages,
-            current_emotion=current_emotion  # 传入当前情绪
+            current_emotion=current_emotion,  # 传入当前情绪
+            spicy_mode=spicy_mode  # 传入 Spicy 模式状态
         )
         
         chat_debug.log_l1_output(l1_result)
@@ -341,13 +342,14 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         
         # 检查状态效果 (Tier 2 礼物)
         effect_modifier = None
+        effects_status = None
         try:
             from app.services.effect_service import effect_service
             effect_modifier = await effect_service.get_combined_prompt_modifier(user_id, character_id)
+            # 获取效果状态 (用于日志和返回给前端)
+            effects_status = await effect_service.get_effect_status(user_id, character_id)
             if effect_modifier:
                 chat_debug.log_effect_modifier(effect_modifier)
-                # 获取效果状态用于日志
-                effects_status = await effect_service.get_effect_status(user_id, character_id)
                 chat_debug.log_effects(effects_status.get("effects", []))
         except Exception as e:
             logger.warning(f"Failed to get effect modifier: {e}")
@@ -364,6 +366,23 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         # 注入状态效果到 prompt
         if effect_modifier:
             system_prompt = f"{system_prompt}\n\n{effect_modifier}"
+        
+        # 检查是否在约会中，注入约会场景
+        date_info = None
+        try:
+            from app.services.date_service import date_service
+            date_info = await date_service.get_active_date(user_id, character_id)
+            if date_info:
+                date_prompt = date_info.get("prompt_modifier") or date_service._build_date_prompt(
+                    type("Scenario", (), {
+                        "name": date_info.get("scenario_name", "约会"),
+                        "context": date_info.get("scenario_context", ""),
+                    })()
+                )
+                system_prompt = f"{system_prompt}\n\n{date_prompt}"
+                logger.info(f"💕 Date mode active: {date_info.get('scenario_name')}")
+        except Exception as e:
+            logger.warning(f"Failed to check date status: {e}")
         
         chat_debug.log_prompt(system_prompt)
         
@@ -420,6 +439,17 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
                         chat_debug._log("INFO", "EFFECT_EXPIRED", f"效果已过期: {e['effect_type']}")
             except Exception as e:
                 logger.warning(f"Failed to decrement effects: {e}")
+            
+            # 约会进度更新
+            if date_info:
+                try:
+                    from app.services.date_service import date_service
+                    date_result = await date_service.increment_date_progress(user_id, character_id)
+                    if date_result and date_result.get("status") == "completed":
+                        chat_debug._log("INFO", "DATE_COMPLETED", "🎉 约会完成！first_date 事件已触发")
+                        logger.info(f"💕 Date completed! first_date event triggered")
+                except Exception as e:
+                    logger.warning(f"Failed to update date progress: {e}")
                 
         except Exception as e:
             logger.error(f"L2 Grok API error: {e}")
@@ -522,6 +552,19 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             "power": round(game_result.power, 1) if hasattr(game_result, 'power') else 0,
             "stage": game_result.stage if hasattr(game_result, 'stage') else "",
             "archetype": game_result.archetype if hasattr(game_result, 'archetype') else "",
+            "adjusted_difficulty": game_result.adjusted_difficulty if hasattr(game_result, 'adjusted_difficulty') else 0,
+            "difficulty_modifier": game_result.difficulty_modifier if hasattr(game_result, 'difficulty_modifier') else 1.0,
+            "is_nsfw": game_result.is_nsfw if hasattr(game_result, 'is_nsfw') else False,
+            "level": game_result.current_level if hasattr(game_result, 'current_level') else 1,
+            # Power 计算明细
+            "power_breakdown": {
+                "intimacy": round(game_result.power_intimacy, 1) if hasattr(game_result, 'power_intimacy') else 0,
+                "emotion": round(game_result.power_emotion, 1) if hasattr(game_result, 'power_emotion') else 0,
+                "chaos": round(game_result.power_chaos, 1) if hasattr(game_result, 'power_chaos') else 0,
+                "pure": round(game_result.power_pure, 1) if hasattr(game_result, 'power_pure') else 0,
+                "buff": round(game_result.power_buff, 1) if hasattr(game_result, 'power_buff') else 0,
+                "effect": round(game_result.power_effect, 1) if hasattr(game_result, 'power_effect') else 0,
+            },
         }
         # Add event story message ID if a new story event was triggered
         if 'event_story_message_id' in dir() and event_story_message_id:
@@ -529,6 +572,21 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
                 "message_id": event_story_message_id,
                 "event_type": game_result.new_event,
             }
+    
+    # 添加激活效果信息 (Tier 2 礼物状态)
+    if effects_status and effects_status.get("has_effects"):
+        extra_data["active_effects"] = effects_status.get("effects", [])
+    
+    # 添加约会状态信息
+    if date_info:
+        extra_data["date"] = {
+            "is_active": True,
+            "scenario_name": date_info.get("scenario_name"),
+            "scenario_icon": date_info.get("scenario_icon"),
+            "message_count": date_info.get("message_count", 0),
+            "required_messages": date_info.get("required_messages", 5),
+            "status": date_info.get("status"),
+        }
     
     return ChatCompletionResponse(
         message_id=msg_id,

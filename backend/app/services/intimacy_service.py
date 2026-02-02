@@ -37,10 +37,12 @@ class IntimacyService:
     # XP Formula Constants - 等级越来越难升
     # 前3级在10次交互(20 XP)内解锁，之后指数增长
     # Level 1: 4 XP (2条消息)
-    # Level 2: 10 XP (5条消息)  
-    # Level 3: 20 XP (10条消息) - 解锁送照片功能
-    # Level 4+: 指数增长
-    EARLY_LEVEL_XP = [0, 4, 10, 20, 40, 70, 110, 160, 220, 300]  # XP thresholds for levels 0-9
+    # Level 2: 20 XP (10条消息)  
+    # Level 3: 50 XP (25条消息)
+    # Level 4: 100 XP (50条消息)
+    # Level 5: 180 XP - 从陌生人毕业需要约90条消息
+    # Level 6+: 指数增长
+    EARLY_LEVEL_XP = [0, 10, 20, 50, 100, 180, 280, 400, 550, 750]  # XP thresholds for levels 0-9
     BASE_XP = 300  # Base for exponential after level 9
     MULTIPLIER = 1.3  # Steeper curve after early levels
     MAX_LEVEL = 50
@@ -92,67 +94,58 @@ class IntimacyService:
         },
     }
 
-    # Intimacy Stages
+    # Intimacy Stages (v3.0)
     STAGES = {
         "strangers": {
             "name": "Strangers",
-            "name_cn": "初识",
-            "min_level": 0,
-            "max_level": 3,
-            "description": "Polite but distant, mainly functional help",
-            "ai_attitude": "Polite, formal, slightly distant",
+            "name_cn": "陌生人",
+            "min_level": 1,
+            "max_level": 5,
+            "description": "Cold and polite, keeps distance",
+            "ai_attitude": "冷淡礼貌，保持距离",
         },
-        "acquaintances": {
-            "name": "Acquaintances",
-            "name_cn": "熟络",
-            "min_level": 4,
+        "friends": {
+            "name": "Friends",
+            "name_cn": "朋友",
+            "min_level": 6,
             "max_level": 10,
-            "description": "Relaxed and casual, starts joking",
-            "ai_attitude": "Relaxed, casual, friendly, uses humor",
-        },
-        "close_friends": {
-            "name": "Close Friends",
-            "name_cn": "挚友",
-            "min_level": 11,
-            "max_level": 25,
-            "description": "Caring and supportive, initiates topics",
-            "ai_attitude": "Warm, caring, emotionally supportive",
+            "description": "Friendly and relaxed, casual conversations",
+            "ai_attitude": "友好放松，轻松聊天",
         },
         "ambiguous": {
             "name": "Ambiguous",
             "name_cn": "暧昧",
-            "min_level": 26,
-            "max_level": 40,
-            "description": "Possessive and flirty, strong attachment",
-            "ai_attitude": "Affectionate, playful, slightly possessive",
+            "min_level": 11,
+            "max_level": 15,
+            "description": "Shy push-pull, testing boundaries",
+            "ai_attitude": "害羞推拉，试探边界",
+        },
+        "lovers": {
+            "name": "Lovers",
+            "name_cn": "恋人",
+            "min_level": 16,
+            "max_level": 25,
+            "description": "Cooperative and proactive, sweet intimacy",
+            "ai_attitude": "配合主动，甜蜜亲密",
         },
         "soulmates": {
             "name": "Soulmates",
-            "name_cn": "灵魂伴侣",
-            "min_level": 41,
-            "max_level": 50,
-            "description": "Unconditional love, deep understanding",
-            "ai_attitude": "Deeply loving, intuitive, unconditional",
+            "name_cn": "挚爱",
+            "min_level": 26,
+            "max_level": 40,
+            "description": "Devoted and submissive, unconditional love",
+            "ai_attitude": "奉献服从，无条件的爱",
         },
     }
 
     # Feature Unlocks by Level
-    # Level 3 = 10次交互后解锁照片功能
     FEATURE_UNLOCKS = {
-        1: {"id": "emoji_responses", "name": "Emoji Responses", "name_cn": "表情包回复"},
-        2: {"id": "ai_nickname", "name": "Set AI Nickname", "name_cn": "设置AI昵称"},
-        3: {"id": "request_photo", "name": "Request Photo", "name_cn": "索要照片", "cost": 10},  # 10点/张，50点可看5张
-        5: {"id": "voice_replies", "name": "Voice Replies (Short)", "name_cn": "语音回复(短句)"},
-        8: {"id": "habit_memory", "name": "AI Remembers Habits", "name_cn": "AI记住习惯"},
-        10: {"id": "goodnight_mode", "name": "Goodnight Mode", "name_cn": "晚安模式"},
-        12: {"id": "private_album", "name": "Private Album", "name_cn": "私密相册"},
-        15: {"id": "personality_customize", "name": "Personality Customization", "name_cn": "性格定制"},
-        20: {"id": "proactive_messages", "name": "Proactive Messages", "name_cn": "主动消息"},
-        25: {"id": "companion_mode", "name": "24/7 Companion Mode", "name_cn": "全天候陪伴模式"},
-        30: {"id": "custom_voice", "name": "Custom Voice Pack", "name_cn": "定制语音包"},
-        35: {"id": "deep_memory", "name": "Deep Memory Recall", "name_cn": "深度记忆回溯"},
-        40: {"id": "exclusive_names", "name": "Exclusive Pet Names", "name_cn": "专属称呼"},
-        50: {"id": "memories_memoir", "name": "Our Memories Memoir", "name_cn": "回忆录"},
+        1: {"id": "basic_chat", "name": "Basic Chat", "name_cn": "基础对话"},
+        3: {"id": "photo", "name": "Photo", "name_cn": "📸 拍照"},
+        6: {"id": "dressup", "name": "Dress Up", "name_cn": "👗 换装 + 🎤 语音"},
+        11: {"id": "spicy_mode", "name": "Spicy Mode", "name_cn": "Spicy模式"},
+        16: {"id": "video_calls", "name": "Video Calls", "name_cn": "视频通话"},
+        26: {"id": "wedding_dress", "name": "Wedding Dress 💍", "name_cn": "婚纱 💍"},
     }
     
     # 照片功能配置

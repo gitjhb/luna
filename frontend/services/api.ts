@@ -9,7 +9,7 @@ import { useUserStore } from '../store/userStore';
 import { ApiError } from '../types';
 
 // API Configuration - MUST be set in .env
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.125:8000/api/v1';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.125:8000/api/v1';
 const API_TIMEOUT = 30000;
 
 console.log('[API] Base URL:', API_BASE_URL);
@@ -53,7 +53,10 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error: AxiosError<ApiError>) => {
-    console.error('[API] Error:', error.message, error.config?.url);
+    // 404 is expected for some endpoints (e.g., checking if resource exists)
+    if (error.response?.status !== 404) {
+      console.error('[API] Error:', error.message, error.config?.url);
+    }
     
     const originalRequest = error.config;
     

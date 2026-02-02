@@ -143,6 +143,16 @@ class GameResult:
     power: float = 0.0             # 当前 Power 值
     stage: str = ""                # 当前关系阶段
     archetype: str = ""            # 角色原型
+    adjusted_difficulty: int = 0   # 调整后的难度 (base × archetype modifier)
+    difficulty_modifier: float = 1.0  # 角色难度系数
+    
+    # Power 计算明细
+    power_intimacy: float = 0.0    # Intimacy × 0.5
+    power_emotion: float = 0.0     # Emotion × 0.5
+    power_chaos: float = 0.0       # Chaos 值
+    power_pure: float = 0.0        # Pure 值 (会被减掉)
+    power_buff: float = 0.0        # 环境加成 (深夜等)
+    power_effect: float = 0.0      # 道具效果加成 (Tier 2 礼物)
     
     def to_dict(self) -> dict:
         return {
@@ -250,13 +260,24 @@ class GameEngine:
         user_state = self._update_emotion(user_state, l1_result, character_id)
         emotion_delta = user_state.emotion - emotion_before
         
+        # 4.5. 获取道具效果 buff (Tier 2 礼物)
+        effect_buff = 0.0
+        effect_buff_details = []
+        try:
+            from app.services.effect_service import effect_service
+            effect_buff, effect_buff_details = await effect_service.get_power_buff(user_id, character_id)
+            if effect_buff > 0:
+                logger.info(f"📊 Effect Buff: +{effect_buff:.1f} from {[e['effect_type'] for e in effect_buff_details]}")
+        except Exception as e:
+            logger.warning(f"Failed to get effect buff: {e}")
+        
         # 5. 核心冲突判定 (v3.0 Power 公式)
-        check_passed, refusal_reason, total_power = self._check_power_v3(
-            user_state, l1_result, z_axis, archetype, difficulty_mod
+        check_passed, refusal_reason, total_power, adjusted_difficulty, power_breakdown = self._check_power_v3(
+            user_state, l1_result, z_axis, archetype, difficulty_mod, effect_buff
         )
         
         logger.info(
-            f"Game Engine: power={total_power:.1f}, difficulty={l1_result.difficulty_rating}, "
+            f"Game Engine: power={total_power:.1f}, difficulty={l1_result.difficulty_rating}×{difficulty_mod}={adjusted_difficulty}, "
             f"passed={check_passed}, reason={refusal_reason}, archetype={archetype.value}"
         )
         
@@ -298,6 +319,14 @@ class GameEngine:
             power=total_power,
             stage=stage.value,
             archetype=archetype.value,
+            adjusted_difficulty=adjusted_difficulty,
+            difficulty_modifier=difficulty_mod,
+            power_intimacy=power_breakdown['intimacy'],
+            power_emotion=power_breakdown['emotion'],
+            power_chaos=power_breakdown['chaos'],
+            power_pure=power_breakdown['pure'],
+            power_buff=power_breakdown['buff'],
+            power_effect=power_breakdown['effect'],
         )
     
     def _update_emotion(self, user_state: UserState, l1_result: L1Result, character_id: str) -> UserState:
@@ -349,15 +378,16 @@ class GameEngine:
         l1_result: L1Result,
         z_axis: ZAxisConfig,
         archetype: CharacterArchetype,
-        difficulty_mod: float
+        difficulty_mod: float,
+        effect_buff: float = 0.0
     ) -> tuple:
         """
         核心冲突判定 (Power vs Difficulty) - v3.0 公式
         
-        Power = (Intimacy × 0.5) + (Emotion × 0.5) + Chaos - Pure + Buff
+        Power = (Intimacy × 0.5) + (Emotion × 0.5) + Chaos - Pure + Buff + EffectBuff
         
         Returns:
-            (check_passed, refusal_reason, total_power)
+            (check_passed, refusal_reason, total_power, adjusted_difficulty, power_breakdown)
         """
         # 原始难度
         base_difficulty = l1_result.difficulty_rating
@@ -380,11 +410,29 @@ class GameEngine:
         # 环境加成 (Buff)
         buff_bonus = self._get_context_bonus()
         
-        total_power = calc_power_v3(intimacy, emotion, chaos_val, pure_val, buff_bonus)
+        # 计算各项贡献
+        intimacy_contrib = intimacy * 0.5
+        emotion_contrib = emotion * 0.5
         
-        logger.info(f"📊 Power Calc: intimacy={intimacy}×0.5={intimacy*0.5:.1f} | "
-                    f"emotion={emotion}×0.5={emotion*0.5:.1f} | "
-                    f"chaos={chaos_val} | pure=-{pure_val} | buff={buff_bonus} → total={total_power:.1f}")
+        # 基础 Power (不含 effect buff)
+        base_power = calc_power_v3(intimacy, emotion, chaos_val, pure_val, buff_bonus)
+        
+        # 总 Power = 基础 + 道具效果
+        total_power = base_power + effect_buff
+        
+        # Power 计算明细
+        power_breakdown = {
+            'intimacy': intimacy_contrib,
+            'emotion': emotion_contrib,
+            'chaos': chaos_val,
+            'pure': pure_val,
+            'buff': buff_bonus,
+            'effect': effect_buff,  # 道具效果加成
+        }
+        
+        logger.info(f"📊 Power Calc: intimacy={intimacy}×0.5={intimacy_contrib:.1f} | "
+                    f"emotion={emotion}×0.5={emotion_contrib:.1f} | "
+                    f"chaos={chaos_val} | pure=-{pure_val} | buff={buff_bonus} | effect=+{effect_buff:.1f} → total={total_power:.1f}")
         
         # --- 判定结果 ---
         
@@ -403,7 +451,7 @@ class GameEngine:
                 check_passed = False
                 refusal_reason = RefusalReason.FRIENDZONE_WALL.value
                 logger.info(f"📊 Friendzone Wall: stage={stage.value}, no confession event")
-                return check_passed, refusal_reason, total_power
+                return check_passed, refusal_reason, total_power, adjusted_difficulty, power_breakdown
         
         # Power vs Difficulty 判定
         if total_power >= adjusted_difficulty:
@@ -412,7 +460,7 @@ class GameEngine:
             check_passed = False
             refusal_reason = RefusalReason.LOW_POWER.value
         
-        return check_passed, refusal_reason, total_power
+        return check_passed, refusal_reason, total_power, adjusted_difficulty, power_breakdown
     
     def _get_context_bonus(self) -> float:
         """
@@ -458,7 +506,7 @@ class GameEngine:
         event_triggers = {
             GateEvent.FIRST_CHAT: lambda: True,
             GateEvent.FIRST_GIFT: lambda: l1_result.intent in ["GIFT", "GIFT_SEND"],
-            GateEvent.FIRST_DATE: lambda: l1_result.intent in ["REQUEST_DATE", "INVITATION"] and check_passed,
+            GateEvent.FIRST_DATE: lambda: l1_result.intent in ["INVITATION", "DATE_REQUEST"] and check_passed,
             GateEvent.CONFESSION: lambda: l1_result.intent in ["CONFESSION", "LOVE_CONFESSION"] and check_passed,
             GateEvent.FIRST_KISS: lambda: l1_result.intent in ["REQUEST_KISS", "KISS"] and check_passed,
             GateEvent.FIRST_NSFW: lambda: l1_result.is_nsfw and check_passed,

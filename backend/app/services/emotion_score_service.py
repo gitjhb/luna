@@ -142,12 +142,14 @@ class EmotionScoreService:
         old_score = data["score"]
         old_state = data["state"]
         
-        # 根据亲密度调整恢复速度
+        # 根据亲密度调整效果
         # 高亲密度：正面情绪恢复快，负面情绪恶化慢
-        # 低亲密度：正面情绪恢复慢，负面情绪恶化快
+        # 低亲密度：正面情绪恢复正常，负面情绪恶化快
+        # 注意：礼物增益不应被削减，最低 multiplier = 1.0
         if delta > 0:
-            # 正面变化（恢复）
-            recovery_multiplier = min(1.5, 0.5 + intimacy_level / 20)
+            # 正面变化（恢复/礼物）
+            # 最低 1.0，最高 1.5（高亲密度时有加成）
+            recovery_multiplier = min(1.5, max(1.0, 0.8 + intimacy_level / 20))
             delta = int(delta * recovery_multiplier)
         else:
             # 负面变化（恶化）

@@ -25,13 +25,13 @@ export interface IntimacyConfig {
   current_level?: number;
 }
 
-// 阶段对应的emoji
+// 阶段对应的emoji (v3.0)
 const STAGE_EMOJIS: Record<string, string> = {
-  strangers: '👋',
-  acquaintances: '😊',
-  close_friends: '💛',
-  ambiguous: '💕',
-  soulmates: '❤️',
+  strangers: '👋',     // S0 陌生人 Lv1-5
+  friends: '😊',       // S1 朋友 Lv6-10
+  ambiguous: '💕',     // S2 暧昧 Lv11-15
+  lovers: '❤️',        // S3 恋人 Lv16-25
+  soulmates: '💍',     // S4 挚爱 Lv26-40
 };
 
 // 缓存配置

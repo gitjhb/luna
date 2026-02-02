@@ -3,7 +3,7 @@
  */
 
 import { api } from './api';
-import { Message, ChatSession } from '../store/chatStore';
+import { Message, ChatSession, GameDebugInfo, ExtraData } from '../store/chatStore';
 
 interface SendMessageRequest {
   sessionId: string;
@@ -13,27 +13,8 @@ interface SendMessageRequest {
   intimacyLevel?: number;
 }
 
-// Debug info from L1 perception + game engine
-export interface GameDebugInfo {
-  check_passed: boolean;
-  refusal_reason: string | null;
-  emotion: string;
-  intimacy: number;
-  events: string[];
-  new_event: string | null;
-  intent: string;
-}
-
-export interface ExtraData {
-  game?: GameDebugInfo;
-  l1?: {
-    safety_flag: string;
-    intent: string;
-    difficulty_rating: number;
-    sentiment: number;
-    is_nsfw: boolean;
-  };
-}
+// Re-export types for convenience
+export type { GameDebugInfo, ExtraData };
 
 interface SendMessageResponse {
   messageId: string;
