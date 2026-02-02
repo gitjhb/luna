@@ -664,15 +664,6 @@ export default function ChatScreen() {
       />
 
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        {/* 情绪指示器 */}
-        {emotionMode !== 'neutral' && (
-          <EmotionIndicator
-            mode={emotionMode}
-            score={emotionScore}
-            style={{ position: 'absolute', top: 60, zIndex: 100 }}
-          />
-        )}
-        
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -680,6 +671,14 @@ export default function ChatScreen() {
           </TouchableOpacity>
           
           <View style={styles.headerCenter}>
+            {/* 情绪指示器 + 角色名 */}
+            {emotionMode !== 'neutral' && (
+              <EmotionIndicator
+                mode={emotionMode}
+                score={emotionScore}
+                style={{ marginBottom: 2 }}
+              />
+            )}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Text style={styles.characterName}>{characterName}</Text>
               <MockModeBanner compact />
