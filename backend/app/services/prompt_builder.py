@@ -231,19 +231,21 @@ def get_emotion_guidance(emotion: int) -> str:
 
 
 def get_intimacy_guidance(intimacy: int, events: List[str]) -> str:
-    """根据亲密度返回关系指导"""
-    guidance = []
+    """根据亲密度返回关系指导（使用统一定义）"""
+    from app.services.intimacy_constants import get_stage, RelationshipStage, STAGE_NAMES_CN
     
-    if intimacy < 20:
-        guidance.append("You barely know this person. Keep appropriate distance.")
-    elif intimacy < 40:
-        guidance.append("You're getting to know each other. Show cautious interest.")
-    elif intimacy < 60:
-        guidance.append("You're comfortable with each other. Be more open and personal.")
-    elif intimacy < 80:
-        guidance.append("You share a deep bond. Be intimate and caring.")
-    else:
-        guidance.append("This is a soul-deep connection. Express profound affection.")
+    guidance = []
+    stage = get_stage(intimacy)
+    
+    stage_guidance = {
+        RelationshipStage.STRANGER: "You barely know this person. Keep appropriate distance.",
+        RelationshipStage.ACQUAINTANCE: "You're getting to know each other. Show cautious interest.",
+        RelationshipStage.FRIEND: "You're friends now. Be more open and personal.",
+        RelationshipStage.CLOSE_FRIEND: "You share a close bond, maybe some chemistry. Be intimate and caring.",
+        RelationshipStage.ROMANTIC: "You're in a romantic relationship. Show affection freely.",
+        RelationshipStage.LOVER: "This is a soul-deep connection. Express profound love.",
+    }
+    guidance.append(stage_guidance.get(stage, stage_guidance[RelationshipStage.STRANGER]))
     
     # 事件相关指导
     if "first_date" in events:
@@ -380,13 +382,17 @@ Relationship: {intimacy_guide}"""
             return INSTRUCTION_ACCEPTED
         
         if game_result.refusal_reason == RefusalReason.FRIENDZONE_WALL.value:
-            # 根据亲密度选择不同的友情墙风格
-            if game_result.current_intimacy >= 40:
-                # 暧昧阶段：害羞拒绝，留有余地
-                return INSTRUCTION_FRIENDZONE_FLIRTY
-            else:
-                # 刚认识/普通朋友：保持距离，正式拒绝
+            # 使用统一的亲密度系统计算友情墙风格
+            from app.services.intimacy_constants import get_stage, RelationshipStage
+            
+            stage = get_stage(game_result.current_intimacy)
+            
+            if stage in [RelationshipStage.STRANGER, RelationshipStage.ACQUAINTANCE]:
+                # 陌生人/熟人：保持距离
                 return INSTRUCTION_FRIENDZONE_STRANGER
+            else:
+                # 朋友及以上：暧昧拒绝
+                return INSTRUCTION_FRIENDZONE_FLIRTY
         
         if game_result.refusal_reason == RefusalReason.LOW_POWER.value:
             return INSTRUCTION_LOW_POWER
@@ -415,19 +421,10 @@ Relationship: {intimacy_guide}"""
 {chr(10).join('- ' + d for d in descriptions)}"""
     
     def _get_relationship_stage(self, intimacy: int) -> str:
-        """获取关系阶段描述"""
-        if intimacy < 10:
-            return "Strangers"
-        elif intimacy < 25:
-            return "Acquaintances"
-        elif intimacy < 45:
-            return "Friends"
-        elif intimacy < 65:
-            return "Close Friends"
-        elif intimacy < 85:
-            return "Romantic Interest"
-        else:
-            return "Lovers"
+        """获取关系阶段描述（使用统一定义）"""
+        from app.services.intimacy_constants import get_stage, STAGE_NAMES_EN
+        stage = get_stage(intimacy)
+        return STAGE_NAMES_EN[stage]
     
     def build_simple(
         self,

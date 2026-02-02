@@ -26,6 +26,7 @@ from app.services.character_config import (
     ThresholdsConfig
 )
 from app.services.perception_engine import L1Result
+from app.services.intimacy_constants import EVENT_UNLOCK_THRESHOLDS as EVENT_THRESHOLDS
 from app.services.event_state_machine import (
     event_state_machine,
     EventType,
@@ -434,27 +435,28 @@ class GameEngine:
                 getattr(l1_result, 'transaction_verified', False)
             ),
             
-            # first_date: 约会请求成功且亲密度足够
+            # first_date: 约会请求成功且亲密度足够（使用统一阈值）
             EventType.FIRST_DATE: lambda: (
                 l1_result.intent in ["REQUEST_DATE", "INVITATION"] and 
-                check_passed and user_state.intimacy_x >= 40
+                check_passed and user_state.intimacy_x >= EVENT_THRESHOLDS["first_date"]
             ),
             
-            # first_kiss: 亲吻请求成功（需要高亲密度）
+            # first_kiss: 亲吻请求成功（使用统一阈值）
             EventType.FIRST_KISS: lambda: (
                 l1_result.intent in ["REQUEST_KISS", "KISS"] and 
-                check_passed and user_state.intimacy_x >= 60
+                check_passed and user_state.intimacy_x >= EVENT_THRESHOLDS["first_kiss"]
             ),
             
-            # first_confession: 表白成功
+            # first_confession: 表白成功（使用统一阈值）
             EventType.FIRST_CONFESSION: lambda: (
                 l1_result.intent in ["CONFESSION", "LOVE_CONFESSION"] and 
-                check_passed and user_state.intimacy_x >= 70
+                check_passed and user_state.intimacy_x >= EVENT_THRESHOLDS["first_confession"]
             ),
             
-            # first_nsfw: NSFW请求成功
+            # first_nsfw: NSFW请求成功（使用统一阈值）
             EventType.FIRST_NSFW: lambda: (
-                l1_result.is_nsfw and check_passed
+                l1_result.is_nsfw and check_passed and 
+                user_state.intimacy_x >= EVENT_THRESHOLDS["first_nsfw"]
             ),
         }
         

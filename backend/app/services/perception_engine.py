@@ -273,17 +273,15 @@ class PerceptionEngine:
         return self.llm_service
     
     def _get_relationship_level(self, intimacy_level: int) -> str:
-        """将亲密度等级转换为关系描述"""
-        if intimacy_level <= 3:
-            return "Stranger (just met)"
-        elif intimacy_level <= 10:
-            return "Acquaintance (getting to know each other)"
-        elif intimacy_level <= 25:
-            return "Friend (comfortable with each other)"
-        elif intimacy_level <= 40:
-            return "Close Friend (share personal things)"
-        else:
-            return "Intimate (deep emotional bond)"
+        """将亲密度等级转换为关系描述（使用统一定义）"""
+        from app.services.intimacy_constants import level_to_intimacy_x_range, get_stage, STAGE_NAMES_EN
+        
+        # 从 level 估算 intimacy_x
+        x_range = level_to_intimacy_x_range(intimacy_level)
+        intimacy_x = (x_range[0] + x_range[1]) / 2
+        
+        stage = get_stage(intimacy_x)
+        return STAGE_NAMES_EN[stage]
     
     def _get_emotion_state(self, emotion_value: int) -> str:
         """将情绪值转换为状态描述"""
