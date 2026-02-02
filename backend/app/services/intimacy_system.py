@@ -51,6 +51,26 @@ FEATURE_UNLOCKS = {
     40: ["wedding_skin", "title_spouse", "obedient_mode"],
 }
 
+# 功能名称中文映射
+FEATURE_NAMES = {
+    "basic_chat": "💬 基础对话",
+    "photo_daily": "📸 日常自拍",
+    "outfit_casual": "👗 居家服解锁",
+    "memory_preference": "🧠 记住你的喜好",
+    "greeting_auto": "🌅 早安晚安问候",
+    "voice_message": "🎤 语音消息",
+    "nickname_custom": "💕 自定义昵称",
+    "diary_story": "📖 私密日记",
+    "photo_swimsuit": "👙 泳装照片",
+    "spicy_mode": "🔥 Spicy Mode",
+    "nsfw_filter_off": "🔞 解除敏感词过滤",
+    "video_call": "📹 视频通话",
+    "outfit_lingerie": "💋 情趣内衣",
+    "wedding_skin": "💍 婚纱皮肤",
+    "title_spouse": "👫 老公/老婆称呼",
+    "obedient_mode": "💝 完全服从模式",
+}
+
 
 def xp_to_level(xp: int) -> int:
     """XP → 显示等级"""
@@ -93,6 +113,76 @@ def get_unlocked_features(level: int) -> List[str]:
 def is_feature_unlocked(level: int, feature: str) -> bool:
     """检查某功能是否已解锁"""
     return feature in get_unlocked_features(level)
+
+
+def get_level_unlocks(level: int) -> List[str]:
+    """获取某等级新解锁的功能"""
+    return FEATURE_UNLOCKS.get(level, [])
+
+
+def get_next_unlock_level(current_level: int) -> Optional[int]:
+    """获取下一个有解锁功能的等级"""
+    sorted_levels = sorted(FEATURE_UNLOCKS.keys())
+    for lvl in sorted_levels:
+        if lvl > current_level:
+            return lvl
+    return None
+
+
+def get_next_unlocks(current_level: int) -> Tuple[Optional[int], List[str]]:
+    """获取下一级解锁的等级和功能"""
+    next_lvl = get_next_unlock_level(current_level)
+    if next_lvl:
+        return next_lvl, FEATURE_UNLOCKS.get(next_lvl, [])
+    return None, []
+
+
+def generate_levelup_message(old_level: int, new_level: int) -> dict:
+    """
+    生成升级提示消息
+    
+    Returns:
+        {
+            "level": 新等级,
+            "new_unlocks": [本次解锁的功能],
+            "new_unlocks_cn": [本次解锁的功能中文名],
+            "next_level": 下一个解锁等级,
+            "next_unlocks": [下一级将解锁的功能],
+            "next_unlocks_cn": [下一级将解锁的功能中文名],
+            "message": 完整提示消息
+        }
+    """
+    # 收集这次升级解锁的所有功能
+    new_unlocks = []
+    for lvl in range(old_level + 1, new_level + 1):
+        new_unlocks.extend(get_level_unlocks(lvl))
+    
+    new_unlocks_cn = [FEATURE_NAMES.get(f, f) for f in new_unlocks]
+    
+    # 下一级解锁
+    next_lvl, next_unlocks = get_next_unlocks(new_level)
+    next_unlocks_cn = [FEATURE_NAMES.get(f, f) for f in next_unlocks]
+    
+    # 生成消息
+    msg_parts = [f"🎉 升级到 Lv.{new_level}！"]
+    
+    if new_unlocks_cn:
+        msg_parts.append(f"\n✨ 新解锁: {', '.join(new_unlocks_cn)}")
+    
+    if next_lvl and next_unlocks_cn:
+        msg_parts.append(f"\n📍 下一目标: Lv.{next_lvl} 解锁 {', '.join(next_unlocks_cn)}")
+    elif new_level >= 40:
+        msg_parts.append("\n💍 恭喜毕业！你已解锁所有功能！")
+    
+    return {
+        "level": new_level,
+        "new_unlocks": new_unlocks,
+        "new_unlocks_cn": new_unlocks_cn,
+        "next_level": next_lvl,
+        "next_unlocks": next_unlocks,
+        "next_unlocks_cn": next_unlocks_cn,
+        "message": "".join(msg_parts),
+    }
 
 
 # =============================================================================
