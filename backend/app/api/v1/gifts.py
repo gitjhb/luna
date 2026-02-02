@@ -322,7 +322,7 @@ async def _trigger_gift_ai_response(
         from app.services.intimacy_service import intimacy_service
         
         # 获取当前亲密度等级
-        intimacy_status = await intimacy_service.get_status(user_id, character_id)
+        intimacy_status = await intimacy_service.get_intimacy_status(user_id, character_id)
         intimacy_level = intimacy_status.get("current_level", 1) if intimacy_status else 1
         
         # 获取最近对话上下文
