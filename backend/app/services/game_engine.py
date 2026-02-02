@@ -91,11 +91,13 @@ class GameResult:
     is_nsfw: bool
     difficulty: int
     
-    # 系统消息 (如果有)
-    system_message: str = ""
-    
-    # 事件相关
-    events: List[str] = field(default_factory=list)
+    # 有默认值的字段必须放后面
+    emotion_before: int = 0        # 处理前的情绪值
+    emotion_delta: int = 0         # 情绪变化量
+    emotion_state: str = ""        # EmotionState: LOVING/HAPPY/.../COLD_WAR/BLOCKED
+    emotion_locked: bool = False   # 是否处于锁定状态 (冷战/拉黑)
+    system_message: str = ""       # 系统消息 (如果有)
+    events: List[str] = field(default_factory=list)  # 事件相关
     new_event: str = ""            # 本次触发的新事件
     
     def to_dict(self) -> dict:
@@ -104,6 +106,10 @@ class GameResult:
             "check_passed": self.check_passed,
             "refusal_reason": self.refusal_reason,
             "current_emotion": self.current_emotion,
+            "emotion_before": self.emotion_before,
+            "emotion_delta": self.emotion_delta,
+            "emotion_state": self.emotion_state,
+            "emotion_locked": self.emotion_locked,
             "current_intimacy": self.current_intimacy,
             "current_level": self.current_level,
             "intent": self.intent,
@@ -162,10 +168,19 @@ class GameEngine:
         # 2. 加载角色配置
         z_axis = get_character_z_axis(character_id)
         thresholds = get_character_thresholds(character_id)
-        logger.info(f"📊 Z-Axis Config: pure={z_axis.pure_val}, pride={z_axis.pride_val}, chaos={z_axis.chaos_val}, greed={z_axis.greed_val}, jealousy={z_axis.jealousy_val}")
+        # 获取完整角色配置用于日志
+        char_full_config = get_character_config(character_id)
+        if char_full_config:
+            logger.info(f"📊 Character Config [{char_full_config.name}]: "
+                        f"sensitivity={char_full_config.sensitivity}, forgiveness={char_full_config.forgiveness_rate}, "
+                        f"temperament={char_full_config.base_temperament}")
+        logger.info(f"📊 Z-Axis: pure={z_axis.pure_val}, pride={z_axis.pride_val}, chaos={z_axis.chaos_val}, "
+                    f"greed={z_axis.greed_val}, jealousy={z_axis.jealousy_val}")
         
         # 3. 安全熔断
         if l1_result.safety_flag == "BLOCK":
+            from app.services.physics_engine import EmotionState
+            emotion_state = EmotionState.get_state(user_state.emotion)
             return GameResult(
                 status="BLOCK",
                 check_passed=False,
@@ -173,6 +188,8 @@ class GameEngine:
                 current_emotion=user_state.emotion,
                 current_intimacy=int(user_state.intimacy_x),
                 current_level=user_state.intimacy_level,
+                emotion_state=emotion_state,
+                emotion_locked=emotion_state in EmotionState.LOCKED_STATES,
                 intent=l1_result.intent,
                 is_nsfw=l1_result.is_nsfw,
                 difficulty=l1_result.difficulty_rating,
@@ -180,8 +197,10 @@ class GameEngine:
                 events=user_state.events
             )
         
-        # 4. 情绪物理学 (Y轴更新) - 使用 PhysicsEngine v2.0
+        # 4. 情绪物理学 (Y轴更新) - 使用 PhysicsEngine v2.2
+        emotion_before = user_state.emotion  # 记录变化前的情绪
         user_state = self._update_emotion(user_state, l1_result, character_id)
+        emotion_delta = user_state.emotion - emotion_before
         
         # 5. 核心冲突判定
         check_passed, refusal_reason, total_power = self._check_power(
@@ -208,6 +227,9 @@ class GameEngine:
         await self._save_user_state(user_state)
         
         # 9. 返回结果
+        from app.services.physics_engine import EmotionState
+        emotion_state = EmotionState.get_state(user_state.emotion)
+        
         return GameResult(
             status="SUCCESS",
             check_passed=check_passed,
@@ -218,29 +240,36 @@ class GameEngine:
             intent=l1_result.intent,
             is_nsfw=l1_result.is_nsfw,
             difficulty=l1_result.difficulty_rating,
+            emotion_before=emotion_before,
+            emotion_delta=emotion_delta,
+            emotion_state=emotion_state,
+            emotion_locked=emotion_state in EmotionState.LOCKED_STATES,
             events=user_state.events,
             new_event=new_event
         )
     
     def _update_emotion(self, user_state: UserState, l1_result: L1Result, character_id: str) -> UserState:
         """
-        情绪物理学 (Y轴更新) - 使用 PhysicsEngine v2.0
+        情绪物理学 (Y轴更新) - 使用 PhysicsEngine v2.2
         
         基于"阻尼滑块"模型：
-        - 衰减: 每轮向 0 回归 (decay_factor = 0.9)
+        - 衰减: 每轮向 0 回归 (decay_factor)
         - 推力: sentiment * 10 + intent_mod
         - 伤害加倍: 负面情绪 x2
-        - 角色敏感度: dependency 系数
+        - 状态锁: 冷战/拉黑时普通对话无效
         """
-        from app.services.physics_engine import PhysicsEngine, CharacterZAxis
+        from app.services.physics_engine import PhysicsEngine, CharacterZAxis, EmotionState
         
         # 获取角色 Z 轴配置
         char_config = CharacterZAxis.from_character_id(character_id)
+        logger.info(f"📊 Physics Config: sensitivity={char_config.sensitivity}, decay={char_config.decay_rate:.2f}, "
+                    f"pride={char_config.pride}, optimism={char_config.optimism}")
         
         # 构建 L1 结果字典 (PhysicsEngine 需要的格式)
         l1_dict = {
             'sentiment_score': l1_result.sentiment_score if hasattr(l1_result, 'sentiment_score') else l1_result.sentiment,
             'intent_category': l1_result.intent_category if hasattr(l1_result, 'intent_category') else l1_result.intent,
+            'intimacy_x': user_state.intimacy_x,  # 传给 PhysicsEngine 做流氓检测
         }
         
         # 构建用户状态字典
@@ -249,13 +278,16 @@ class GameEngine:
             'last_intents': user_state.last_intents,
         }
         
+        old_emotion = user_state.emotion
+        old_state = EmotionState.get_state(old_emotion)
+        
         # 使用 PhysicsEngine 计算新情绪值
         new_emotion = PhysicsEngine.update_state(state_dict, l1_dict, char_config)
+        new_state = EmotionState.get_state(new_emotion)
         
-        old_emotion = user_state.emotion
         user_state.emotion = new_emotion
         
-        logger.info(f"Emotion updated via PhysicsEngine: {old_emotion} -> {new_emotion}")
+        logger.info(f"📊 Emotion: {old_emotion}({old_state}) → {new_emotion}({new_state})")
         return user_state
     
     def _check_power(
@@ -317,8 +349,12 @@ class GameEngine:
         refusal_reason = RefusalReason.NONE.value
         
         # 事件锁 (Friendzone Wall)
-        # 如果难度 > 友情墙阈值 且 没有发生过 "first_date" 事件
-        if difficulty > thresholds.friendzone_wall and "first_date" not in user_state.events:
+        # 必须先约会/表白成功，才能突破友情墙
+        is_beyond_friendzone = (
+            "first_date" in user_state.events or 
+            "first_confession" in user_state.events
+        )
+        if difficulty > thresholds.friendzone_wall and not is_beyond_friendzone:
             check_passed = False
             refusal_reason = RefusalReason.FRIENDZONE_WALL.value
         elif total_power >= difficulty:
@@ -377,13 +413,13 @@ class GameEngine:
         
         # first_date: 亲密度>40 且约会请求成功
         if "first_date" not in events:
-            if l1_result.intent == "REQUEST_DATE" and check_passed:
+            if l1_result.intent in ["REQUEST_DATE", "INVITATION"] and check_passed:
                 if user_state.intimacy_x >= 40:
                     return "first_date"
         
         # first_confession: 亲密度>70 且表白成功
         if "first_confession" not in events:
-            if l1_result.intent == "CONFESSION" and check_passed:
+            if l1_result.intent in ["CONFESSION", "LOVE_CONFESSION"] and check_passed:
                 if user_state.intimacy_x >= 70:
                     return "first_confession"
         

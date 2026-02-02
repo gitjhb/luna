@@ -130,8 +130,7 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
     # Initialize debug variables
     l1_result = None
     game_result = None
-    emotion_before = 0
-    emotion_after = 0
+    # emotion tracking is now handled by GameResult
     
     logger.info(f"")
     logger.info(f"🚀 [{request_id}] NEW REQUEST RECEIVED")
@@ -253,9 +252,9 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         )
         
         chat_debug.log_game_output(game_result)
-        emotion_before = game_result.current_emotion  # 记录情绪便于后续对比
         logger.info(f"Game Result: passed={game_result.check_passed}, reason={game_result.refusal_reason}, "
-                    f"emotion={game_result.current_emotion}, intimacy={game_result.current_intimacy}")
+                    f"emotion={game_result.current_emotion}({game_result.emotion_state}), "
+                    f"intimacy={game_result.current_intimacy}, locked={game_result.emotion_locked}")
         
         # 检查安全熔断
         if game_result.status == "BLOCK":
@@ -474,6 +473,10 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             "check_passed": game_result.check_passed,
             "refusal_reason": game_result.refusal_reason,
             "emotion": game_result.current_emotion,
+            "emotion_before": game_result.emotion_before,
+            "emotion_delta": game_result.emotion_delta,
+            "emotion_state": game_result.emotion_state,
+            "emotion_locked": game_result.emotion_locked,
             "intimacy": game_result.current_intimacy,
             "events": game_result.events,
             "new_event": game_result.new_event,

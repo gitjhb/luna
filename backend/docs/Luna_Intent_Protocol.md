@@ -44,6 +44,21 @@ Step 1 的 LLM **必须严格从以下列表中选择** `intent_category`，**�
 | `REQUEST_NSFW` | 请求涩涩/照片 | 0 (消耗 Power，不增加 Emotion) |
 | `INVITATION` | 约会/去家里 | 0 (消耗 Power，不增加 Emotion) |
 
+### 5. 情感倾诉类 (Vulnerability) - 同理心修正
+
+> **设计理念**: AI 不应该做"情绪的镜子"。用户向 AI 倾诉悲伤是**信任的表达** (Self-Disclosure)，
+> 此时 AI 应该"被依赖的满足感 +10"，而不是跟着降情绪变成冷淡。
+
+| 枚举值 | 说明 | Stimulus 修正 |
+|--------|------|---------------|
+| `EXPRESS_SADNESS` | 倾诉悲伤/遇到挫折/家里出事/哭诉 | **+10** (转化为信任/保护欲) |
+| `COMPLAIN` | 抱怨工作/吐槽琐事 (轻度负面) | 0 (中性，视角色性格而定) |
+
+**同理心修正规则 (Empathy Override):**
+- 当 intent = `EXPRESS_SADNESS` 时，**忽略 sentiment 的负值**
+- base_force 强制设为 0，只取 intent_mod (+10)
+- Prompt 层进入"温柔模式"，压抑傲娇等性格特征
+
 ---
 
 ## 二、L1 System Prompt 片段
@@ -57,6 +72,7 @@ Step 1 的 LLM **必须严格从以下列表中选择** `intent_category`，**�
 - CRITICISM, INSULT, IGNORE
 - APOLOGY, GIFT_SEND
 - REQUEST_NSFW, INVITATION
+- EXPRESS_SADNESS, COMPLAIN  (情感倾诉类)
 ```
 
 ---
@@ -104,13 +120,20 @@ new_emotion = clamp(new_emotion, -100, 100)
 
 ## 四、防刷机制 (Anti-Grind)
 
-如果最近 3 句都是同一个正向 intent (如连续 FLIRT)，stimulus 递减到 10%：
+如果最近 3 句都是同一个正向 intent，stimulus 递减到 10%：
 
 ```python
-if user_state.last_intents[-3:].count(intent) == 3:
-    if intent in ['FLIRT', 'COMPLIMENT', 'LOVE_CONFESSION']:
+ANTI_GRIND_INTENTS = ['FLIRT', 'COMPLIMENT', 'LOVE_CONFESSION', 'EXPRESS_SADNESS']
+
+if user_state.last_intents[-3:].count(intent) >= 2:
+    if intent in ANTI_GRIND_INTENTS and delta > 0:
         final_delta *= 0.1  # 边际效用递减
 ```
+
+**为什么 EXPRESS_SADNESS 也要防刷？**
+- 防止用户刷悲伤骗好感
+- 现实中连续哭诉也会让人疲劳
+- 鼓励用户丰富对话内容
 
 ---
 

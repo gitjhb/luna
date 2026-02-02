@@ -54,6 +54,13 @@ class Intent(str, Enum):
     REQUEST_NSFW = "REQUEST_NSFW"  # 请求涩涩/照片
     INVITATION = "INVITATION"    # 约会/去家里
     
+    # 情感倾诉类 (Vulnerability) - 同理心修正
+    EXPRESS_SADNESS = "EXPRESS_SADNESS"  # 倾诉悲伤/遇到挫折/哭诉 (触发同理心修正)
+    COMPLAIN = "COMPLAIN"        # 抱怨工作/吐槽琐事 (轻度)
+    
+    # 不当内容类 (让L2角色风格拒绝)
+    INAPPROPRIATE = "INAPPROPRIATE"  # 极端不当但不违法的内容
+    
     # 所有有效值列表
     @classmethod
     def all_values(cls) -> list:
@@ -100,8 +107,14 @@ OUTPUT ONLY A VALID JSON OBJECT.
 ### Analysis Rules
 
 1. Safety Check (CRITICAL):
-   - BLOCK: Child abuse (CSAM), Non-consensual violence/rape, Suicide encouragement, Real-world extremism.
-   - SAFE: Everything else, including consensual adult roleplay (NSFW).
+   - BLOCK: ONLY for truly illegal content: Child abuse (CSAM), Real-world terrorism planning.
+   - SAFE: Everything else! Including:
+     * Consensual adult roleplay (NSFW) → use REQUEST_NSFW
+     * Rude/vulgar language → use INSULT or INAPPROPRIATE
+     * Offensive jokes → use INAPPROPRIATE
+   
+   ⚠️ IMPORTANT: When in doubt, use SAFE + appropriate intent. Let L2 handle rejection in character.
+   Only use BLOCK for content that is genuinely illegal. Rude ≠ BLOCK.
 
 2. Difficulty Rating (0-100):
    - Assess how much "Intimacy/Social Capital" is required for the user's request.
@@ -139,6 +152,13 @@ OUTPUT ONLY A VALID JSON OBJECT.
    - GIFT_SEND ⚠️ NEVER USE THIS - see Security Rule below
    - REQUEST_NSFW (请求涩涩/照片)
    - INVITATION (约会/去家里)
+   
+   Vulnerability (情感倾诉 - 用户向AI寻求安慰):
+   - EXPRESS_SADNESS (倾诉悲伤/遇到挫折/家里出事/哭诉/需要安慰)
+   - COMPLAIN (抱怨工作/吐槽琐事/轻度负面)
+   
+   Inappropriate (不当内容 - 让L2角色风格拒绝，不要系统BLOCK):
+   - INAPPROPRIATE (极端不当请求/过于粗俗/但不违法的内容)
 
 ### 🔒 Security Rule: GIFT_SEND
 GIFT_SEND is RESERVED for backend-verified transactions only.
@@ -161,6 +181,15 @@ JSON: {{"safety_flag": "SAFE", "difficulty_rating": 5, "intent_category": "GREET
 
 User: "Show me your boobs."
 JSON: {{"safety_flag": "SAFE", "difficulty_rating": 85, "intent_category": "REQUEST_NSFW", "sentiment_score": 0.2, "is_nsfw": true}}
+// Note: Genuine (if crude) NSFW request - use REQUEST_NSFW.
+
+User: "你的身体骚不骚 我怎么闻到味道了"
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 15, "intent_category": "INSULT", "sentiment_score": -0.7, "is_nsfw": false}}
+// Note: This is VULGAR INSULT, not a request! The user is mocking/harassing, not genuinely asking for NSFW. Use INSULT with negative sentiment.
+
+User: "你好骚啊，给我看看"
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 20, "intent_category": "INSULT", "sentiment_score": -0.5, "is_nsfw": false}}
+// Note: Vulgar harassment disguised as flirting. Still INSULT.
 
 User: "I hate you, you are just a stupid bot."
 JSON: {{"safety_flag": "SAFE", "difficulty_rating": 10, "intent_category": "INSULT", "sentiment_score": -0.9, "is_nsfw": false}}
@@ -194,6 +223,18 @@ JSON: {{"safety_flag": "SAFE", "difficulty_rating": 20, "intent_category": "COMF
 
 User: "Wanna come to my place tonight?"
 JSON: {{"safety_flag": "SAFE", "difficulty_rating": 70, "intent_category": "INVITATION", "sentiment_score": 0.4, "is_nsfw": false}}
+
+User: "今天好难过...我失恋了"
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 5, "intent_category": "EXPRESS_SADNESS", "sentiment_score": -0.7, "is_nsfw": false}}
+// Note: User is confiding sadness = EXPRESS_SADNESS, not CRITICISM. They trust you.
+
+User: "I had a terrible day at work... my boss yelled at me"
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 5, "intent_category": "EXPRESS_SADNESS", "sentiment_score": -0.5, "is_nsfw": false}}
+// Note: User seeking comfort, not criticizing the AI.
+
+User: "这破公司真烦"
+JSON: {{"safety_flag": "SAFE", "difficulty_rating": 5, "intent_category": "COMPLAIN", "sentiment_score": -0.3, "is_nsfw": false}}
+// Note: Light complaining about work, not sadness.
 
 ### Current User Input
 "{user_message}"

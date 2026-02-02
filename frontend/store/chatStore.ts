@@ -13,7 +13,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export interface GameDebugInfo {
   check_passed: boolean;
   refusal_reason: string | null;
-  emotion: string;
+  emotion: number;
+  emotion_before?: number;
+  emotion_delta?: number;
+  emotion_state?: string;
+  emotion_locked?: boolean;
   intimacy: number;
   events: string[];
   new_event: string | null;

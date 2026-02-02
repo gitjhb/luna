@@ -81,15 +81,17 @@ export const DebugButton: React.FC<DebugPanelProps> = (props) => {
             </View>
             
             <ScrollView style={styles.panelContent} showsVerticalScrollIndicator={false}>
-              {/* Current State */}
+              {/* Current State (Before This Message) */}
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>📊 Current State</Text>
                 <View style={styles.row}>
                   <Text style={styles.label}>Emotion:</Text>
-                  <View style={[styles.badge, { backgroundColor: getEmotionColor(emotion) }]}>
-                    <Text style={styles.badgeText}>{emotion}</Text>
+                  <View style={[styles.badge, { backgroundColor: getEmotionColor(props.extraData?.game?.emotion_state || emotion) }]}>
+                    <Text style={styles.badgeText}>
+                      {props.extraData?.game?.emotion_before ?? props.emotionScore}
+                    </Text>
                   </View>
-                  <Text style={styles.value}>{props.emotionScore}</Text>
+                  <Text style={styles.grayText}>(before)</Text>
                 </View>
                 <View style={styles.row}>
                   <Text style={styles.label}>Intimacy:</Text>
@@ -128,17 +130,47 @@ export const DebugButton: React.FC<DebugPanelProps> = (props) => {
                     <Text style={styles.label}>Intent:</Text>
                     <Text style={styles.value}>{props.extraData.game.intent}</Text>
                   </View>
+                  {/* Emotion with before/delta */}
                   <View style={styles.row}>
                     <Text style={styles.label}>Emotion:</Text>
-                    <View style={[styles.badge, { backgroundColor: getEmotionColor(props.extraData.game.emotion) }]}>
+                    <View style={[styles.badge, { backgroundColor: getEmotionColor(props.extraData.game.emotion_state || '') }]}>
                       <Text style={styles.badgeText}>{props.extraData.game.emotion}</Text>
                     </View>
+                    {props.extraData.game.emotion_delta !== undefined && (
+                      <Text style={[
+                        styles.deltaText,
+                        props.extraData.game.emotion_delta > 0 ? styles.greenText : 
+                        props.extraData.game.emotion_delta < 0 ? styles.redText : styles.grayText
+                      ]}>
+                        {props.extraData.game.emotion_delta > 0 ? '+' : ''}{props.extraData.game.emotion_delta}
+                      </Text>
+                    )}
                   </View>
+                  {/* Emotion State */}
+                  {props.extraData.game.emotion_state && (
+                    <View style={styles.row}>
+                      <Text style={styles.label}>State:</Text>
+                      <Text style={[
+                        styles.value,
+                        props.extraData.game.emotion_locked ? styles.redText : styles.value
+                      ]}>
+                        {props.extraData.game.emotion_state}
+                        {props.extraData.game.emotion_locked ? ' 🔒' : ''}
+                      </Text>
+                    </View>
+                  )}
+                  {/* Emotion Before (for debugging delta calc) */}
+                  {props.extraData.game.emotion_before !== undefined && (
+                    <View style={styles.row}>
+                      <Text style={styles.label}>Before:</Text>
+                      <Text style={styles.grayText}>{props.extraData.game.emotion_before}</Text>
+                    </View>
+                  )}
                   <View style={styles.row}>
                     <Text style={styles.label}>Intimacy:</Text>
                     <Text style={styles.value}>LV {props.extraData.game.intimacy}</Text>
                   </View>
-                  {props.extraData.game.events.length > 0 && (
+                  {props.extraData.game.events && props.extraData.game.events.length > 0 && (
                     <View style={styles.row}>
                       <Text style={styles.label}>Events:</Text>
                       <Text style={styles.value}>{props.extraData.game.events.join(', ')}</Text>
@@ -330,6 +362,11 @@ const styles = StyleSheet.create({
   },
   grayText: {
     color: 'rgba(255, 255, 255, 0.4)',
+  },
+  deltaText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 8,
   },
   noDataText: {
     fontSize: 13,
