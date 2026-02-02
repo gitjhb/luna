@@ -6,7 +6,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
-import { GiftAnimationProps, GIFT_CONFIGS } from './types';
+import { GiftAnimationProps, getGiftConfig } from './types';
 
 // 尝试导入 Lottie（可选依赖）
 let LottieView: any = null;
@@ -41,7 +41,7 @@ const FallbackAnimation: React.FC<GiftAnimationProps> = ({
   autoPlay = true,
   onAnimationFinish,
 }) => {
-  const config = GIFT_CONFIGS[type];
+  const config = getGiftConfig(type);
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
