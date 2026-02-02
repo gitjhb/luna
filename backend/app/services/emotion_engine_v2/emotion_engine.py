@@ -836,15 +836,24 @@ class EmotionEngineV2:
         if key in self._scores:
             return self._scores[key]
         
-        # 从数据库加载
-        if self.db:
-            try:
-                data = await self.db.get_emotion_score(user_id, character_id)
-                if data:
-                    self._scores[key] = data.get("score", 0)
+        # 从数据库加载（直接使用 get_db）
+        try:
+            from app.core.database import get_db
+            from sqlalchemy import select, text
+            
+            async with get_db() as session:
+                # 尝试从 emotion_scores 表读取
+                result = await session.execute(
+                    text("SELECT score FROM emotion_scores WHERE user_id = :user_id AND character_id = :char_id"),
+                    {"user_id": user_id, "char_id": character_id}
+                )
+                row = result.fetchone()
+                if row:
+                    self._scores[key] = row[0]
+                    logger.info(f"Loaded emotion score from DB: {user_id}:{character_id} = {row[0]}")
                     return self._scores[key]
-            except Exception as e:
-                logger.error(f"Failed to load emotion score: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to load emotion score from DB: {e}")
         
         # 默认 0
         self._scores[key] = 0
@@ -866,18 +875,37 @@ class EmotionEngineV2:
         self._scores[key] = new_score
         self._last_update[key] = datetime.now()
         
-        # 持久化到数据库
-        if self.db:
-            try:
-                await self.db.update_emotion_score(
-                    user_id=user_id,
-                    character_id=character_id,
-                    score=new_score,
-                    delta=delta,
-                    reason=reason,
+        # 持久化到数据库（直接使用 get_db）
+        try:
+            from app.core.database import get_db
+            from sqlalchemy import text
+            
+            state_name = self.score_to_state(new_score).value
+            
+            async with get_db() as session:
+                # SQLite Upsert 语法
+                await session.execute(
+                    text("""
+                        INSERT INTO emotion_scores (user_id, character_id, score, state, created_at, updated_at, last_interaction_at)
+                        VALUES (:user_id, :char_id, :score, :state, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        ON CONFLICT (user_id, character_id) 
+                        DO UPDATE SET 
+                            score = excluded.score, 
+                            state = excluded.state, 
+                            updated_at = CURRENT_TIMESTAMP, 
+                            last_interaction_at = CURRENT_TIMESTAMP
+                    """),
+                    {
+                        "user_id": user_id, 
+                        "char_id": character_id, 
+                        "score": new_score,
+                        "state": state_name
+                    }
                 )
-            except Exception as e:
-                logger.error(f"Failed to persist emotion score: {e}")
+                await session.commit()
+                logger.info(f"Persisted emotion score to DB: {user_id}:{character_id} = {new_score}")
+        except Exception as e:
+            logger.error(f"Failed to persist emotion score: {e}")
         
         logger.info(f"Emotion score updated: {current} -> {new_score} (delta={delta}, reason={reason})")
         
