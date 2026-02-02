@@ -429,7 +429,7 @@ class EmotionEngineV2:
         # 检查是否在冷战/拉黑状态
         if current_state in [EmotionState.COLD_WAR, EmotionState.BLOCKED]:
             return await self._handle_cold_war_message(
-                user_id, character_id, message, current_score, current_state
+                user_id, character_id, message, current_score, current_state, intimacy_level
             )
         
         # 默认角色性格
@@ -583,43 +583,92 @@ class EmotionEngineV2:
         message: str,
         current_score: int,
         current_state: EmotionState,
+        intimacy_level: int = 1,
     ) -> Dict[str, Any]:
-        """处理冷战状态下的消息"""
+        """
+        处理冷战状态下的消息
+        
+        亲密度影响道歉效果：
+        - 1-3级：道歉无效，必须送礼物
+        - 4-6级：道歉效果极微（+1分），上限-78
+        - 7+级：道歉有一点效果（+3分），上限-75
+        """
         
         # 冷战状态下，只有特定方式能恢复
         quick = self.quick_detect(message)
-        
-        # 检查是否是真诚道歉
         is_apology = "apology" in quick["patterns_matched"]
         
-        # 冷战时道歉只能小幅恢复，需要礼物才能完全解除
-        if is_apology and current_state == EmotionState.COLD_WAR:
-            small_recovery = 5
-            new_score = min(current_score + small_recovery, -50)  # 最多恢复到 -50
-            await self.update_score(user_id, character_id, small_recovery, "apology_in_cold_war")
-            
+        # 拉黑状态：任何消息都无效
+        if current_state == EmotionState.BLOCKED:
             return {
                 "previous_score": current_score,
-                "new_score": new_score,
-                "delta_applied": small_recovery,
+                "new_score": current_score,
+                "delta_applied": 0,
                 "previous_state": current_state.value,
-                "new_state": self.score_to_state(new_score).value,
+                "new_state": current_state.value,
                 "state_changed": False,
-                "cold_war_hint": "道歉收到了...但你还是得用行动证明。",
+                "cold_war_active": True,
                 "requires_gift": True,
+                "hint": "你已被删除好友，需要「真诚道歉礼盒」才能挽回。",
             }
         
-        # 冷战/拉黑状态下其他消息无效
+        # 亲密度低（1-3级）：道歉无效，必须送礼物
+        if intimacy_level <= 3:
+            hint = "她看都不看你一眼。" if is_apology else "对方不想理你。"
+            return {
+                "previous_score": current_score,
+                "new_score": current_score,
+                "delta_applied": 0,
+                "previous_state": current_state.value,
+                "new_state": current_state.value,
+                "state_changed": False,
+                "cold_war_active": True,
+                "requires_gift": True,
+                "hint": hint + "也许送份礼物能表达诚意？",
+            }
+        
+        # 非道歉消息：冷战状态下无效
+        if not is_apology:
+            return {
+                "previous_score": current_score,
+                "new_score": current_score,
+                "delta_applied": 0,
+                "previous_state": current_state.value,
+                "new_state": current_state.value,
+                "state_changed": False,
+                "cold_war_active": True,
+                "requires_gift": True,
+                "hint": "对方不想理你，或许送份礼物？",
+            }
+        
+        # 道歉消息：根据亲密度决定效果
+        if intimacy_level <= 6:
+            # 中亲密度（4-6级）：效果极微
+            tiny_recovery = 1
+            score_cap = -78  # 最多到-78，仍是冷战
+            hint = "......"  # 冷淡回应
+        else:
+            # 高亲密度（7+级）：有一点效果
+            tiny_recovery = 3
+            score_cap = -75  # 最多到-75，仍是冷战边缘
+            hint = "道歉收到了...但你还是得用行动证明。"
+        
+        new_score = min(current_score + tiny_recovery, score_cap)
+        
+        # 只有实际恢复了才更新数据库
+        if new_score > current_score:
+            await self.update_score(user_id, character_id, new_score - current_score, "apology_in_cold_war")
+        
         return {
             "previous_score": current_score,
-            "new_score": current_score,
-            "delta_applied": 0,
+            "new_score": new_score,
+            "delta_applied": new_score - current_score,
             "previous_state": current_state.value,
-            "new_state": current_state.value,
+            "new_state": self.score_to_state(new_score).value,
             "state_changed": False,
             "cold_war_active": True,
+            "cold_war_hint": hint,
             "requires_gift": True,
-            "hint": "对方不想理你，或许送份礼物？" if current_state == EmotionState.COLD_WAR else "你已被删除好友",
         }
     
     # =========================================================================
