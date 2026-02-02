@@ -57,6 +57,7 @@ import { eventService, EventStoryPlaceholder, EventMemory } from '../../services
 import { IntimacyInfoPanel } from '../../components/IntimacyInfoPanel';
 import { interactionsService } from '../../services/interactionsService';
 import DressupModal from '../../components/DressupModal';
+import DateModal from '../../components/DateModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -99,6 +100,8 @@ export default function ChatScreen() {
   const [showLevelInfoModal, setShowLevelInfoModal] = useState(false);
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [showDressupModal, setShowDressupModal] = useState(false);
+  const [showDateModal, setShowDateModal] = useState(false);
+  const [activeDateInfo, setActiveDateInfo] = useState<any>(null);
   const [photoLoading, setPhotoLoading] = useState(false);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [showCharacterInfo, setShowCharacterInfo] = useState(false);
@@ -370,6 +373,19 @@ export default function ChatScreen() {
       // Update debug info for DebugPanel
       if (response.extraData) {
         setLastExtraData(response.extraData);
+        
+        // Update date info if present
+        if (response.extraData.date) {
+          setActiveDateInfo(response.extraData.date);
+          // Check if date just completed
+          if (response.extraData.date.status === 'completed') {
+            Alert.alert(
+              '🎉 约会成功！',
+              `和${characterName}度过了美好的时光！\n关系更近了一步 💕`,
+            );
+            setActiveDateInfo(null);
+          }
+        }
       }
       if (response.tokensUsed) {
         setLastTokensUsed(response.tokensUsed);
@@ -525,8 +541,10 @@ export default function ChatScreen() {
       
       const result = await interactionsService.takePhoto(params.characterId, recentMessages);
       
-      // 更新钱包余额
-      refreshBalance();
+      // 余额已在后端扣除，更新本地状态
+      if (result.new_balance !== undefined) {
+        updateWallet({ totalCredits: result.new_balance });
+      }
       
       Alert.alert(
         result.is_first ? '🎉 首次拍照！' : '📸 拍照成功！',
@@ -849,6 +867,27 @@ export default function ChatScreen() {
             >
               <Text style={styles.actionButtonEmoji}>👗</Text>
               <Text style={styles.actionButtonTextLocked}>Lv6</Text>
+            </TouchableOpacity>
+          )}
+          
+          {/* 约会 - Lv10 解锁 */}
+          {(relationshipLevel || 1) >= 10 ? (
+            <TouchableOpacity 
+              style={[styles.actionButton, activeDateInfo?.is_active && styles.actionButtonActive]} 
+              onPress={() => setShowDateModal(true)}
+            >
+              <Text style={styles.actionButtonEmoji}>💕</Text>
+              <Text style={styles.actionButtonText}>
+                {activeDateInfo?.is_active ? '约会中' : '约会'}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.actionButtonLocked]}
+              onPress={() => Alert.alert('🔒 未解锁', '约会功能需要 Lv.10 解锁')}
+            >
+              <Text style={styles.actionButtonEmoji}>💕</Text>
+              <Text style={styles.actionButtonTextLocked}>Lv10</Text>
             </TouchableOpacity>
           )}
         </ScrollView>
@@ -1193,11 +1232,41 @@ export default function ChatScreen() {
         onClose={() => setShowDressupModal(false)}
         characterId={params.characterId}
         onSuccess={(result) => {
-          refreshBalance();
+          if (result.new_balance !== undefined) {
+            updateWallet({ totalCredits: result.new_balance });
+          }
           Alert.alert(
             result.is_first ? '🎉 首次换装！' : '👗 换装成功！',
             `已保存到相册\n消费 ${result.cost} 月石`
           );
+        }}
+      />
+      
+      {/* 💕 约会模态框 */}
+      <DateModal
+        visible={showDateModal}
+        onClose={() => setShowDateModal(false)}
+        characterId={params.characterId}
+        characterName={characterName}
+        currentLevel={relationshipLevel || 1}
+        activeDateInfo={activeDateInfo}
+        onDateStarted={(dateInfo) => {
+          setActiveDateInfo({ ...dateInfo, is_active: true });
+        }}
+        onDateCompleted={async (result) => {
+          setActiveDateInfo(null);
+          // 刷新亲密度和情绪
+          try {
+            const updatedIntimacy = await intimacyService.getStatus(params.characterId);
+            setRelationshipLevel(updatedIntimacy.currentLevel);
+            const updatedEmotion = await emotionService.getStatus(params.characterId);
+            if (updatedEmotion) {
+              setEmotionScore(updatedEmotion.emotionIntensity ?? 0);
+              setEmotionState(updatedEmotion.emotionalState ?? 'neutral');
+            }
+          } catch (e) {
+            console.warn('Failed to refresh after date:', e);
+          }
         }}
       />
       
@@ -1481,6 +1550,10 @@ const styles = StyleSheet.create({
   actionButtonLocked: {
     backgroundColor: 'rgba(100, 100, 100, 0.3)',
     borderColor: 'rgba(100, 100, 100, 0.5)',
+  },
+  actionButtonActive: {
+    backgroundColor: 'rgba(255, 107, 157, 0.3)',
+    borderColor: '#FF6B9D',
   },
   actionButtonEmoji: {
     fontSize: 16,

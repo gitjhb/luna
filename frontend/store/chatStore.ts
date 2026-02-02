@@ -52,6 +52,16 @@ export interface ActiveEffect {
   remaining: number;  // 剩余消息数
 }
 
+// 约会状态
+export interface DateInfo {
+  is_active: boolean;
+  scenario_name?: string;
+  scenario_icon?: string;
+  message_count?: number;
+  required_messages?: number;
+  status?: string;
+}
+
 export interface ExtraData {
   game?: GameDebugInfo;
   l1?: {
@@ -62,6 +72,7 @@ export interface ExtraData {
     is_nsfw: boolean;
   };
   active_effects?: ActiveEffect[];  // Tier 2 礼物激活效果
+  date?: DateInfo;  // 约会状态
 }
 
 export interface Message {
