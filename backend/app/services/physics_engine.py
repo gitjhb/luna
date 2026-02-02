@@ -119,17 +119,18 @@ class EmotionState:
 
 @dataclass
 class CharacterZAxis:
-    """角色性格参数 (Z轴)"""
+    """角色性格参数 (Z轴) v3.0"""
     sensitivity: float = 1.0    # 情绪敏感度 (放大系数)
     decay_rate: float = 0.9     # 衰减率 (向0回归的速度)
     optimism: float = 0.0       # 乐观偏置 (正值=更乐观)
     pride: float = 10.0         # 自尊心 (影响道歉效果)
     pure_val: int = 30          # 纯洁度 (NSFW阻力)
+    chaos_val: int = 20         # 混乱度 (v3.0: 用于 Power 计算)
     jealousy_val: int = 10      # 嫉妒值
     
     @classmethod
     def from_character_id(cls, character_id: str) -> "CharacterZAxis":
-        """从角色配置加载 Z轴参数"""
+        """从角色配置加载 Z轴参数 (v3.0)"""
         from app.services.character_config import get_character_config
         
         config = get_character_config(character_id)
@@ -141,6 +142,7 @@ class CharacterZAxis:
                 optimism=0,
                 pride=z.pride_val,
                 pure_val=z.pure_val,
+                chaos_val=z.chaos_val,  # v3.0
                 jealousy_val=z.jealousy_val,
             )
         return cls()  # 默认值

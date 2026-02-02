@@ -504,7 +504,7 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             "is_nsfw": l1_result.is_nsfw,
         }
     
-    # Game Engine results
+    # Game Engine results (v3.0)
     if game_result is not None:
         extra_data["game"] = {
             "check_passed": game_result.check_passed,
@@ -518,6 +518,10 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             "events": game_result.events,
             "new_event": game_result.new_event,
             "intent": game_result.intent,
+            # v3.0 新增
+            "power": round(game_result.power, 1) if hasattr(game_result, 'power') else 0,
+            "stage": game_result.stage if hasattr(game_result, 'stage') else "",
+            "archetype": game_result.archetype if hasattr(game_result, 'archetype') else "",
         }
         # Add event story message ID if a new story event was triggered
         if 'event_story_message_id' in dir() and event_story_message_id:

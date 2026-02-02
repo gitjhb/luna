@@ -1,6 +1,6 @@
 """
-Game Engine (中间件逻辑层 / Physics Engine)
-==========================================
+Game Engine (中间件逻辑层 / Physics Engine) v3.0
+================================================
 
 在 L1 感知层和 L2 执行层之间运行：
 - 执行数值计算
@@ -8,7 +8,10 @@ Game Engine (中间件逻辑层 / Physics Engine)
 - 更新情绪和亲密度
 - 检查事件锁
 
-这是游戏性的核心。
+v3.0 更新：
+- 使用 intimacy_system 的 Power 公式
+- 整合角色原型系统 (NORMAL/PHANTOM/YUKI)
+- 新的 Stage 系统 (5个阶段)
 """
 
 import logging
@@ -22,15 +25,21 @@ from app.services.character_config import (
     get_character_config, 
     get_character_z_axis,
     get_character_thresholds,
+    get_character_archetype,
+    get_difficulty_modifier,
     ZAxisConfig,
-    ThresholdsConfig
+    ThresholdsConfig,
+    CharacterArchetype
 )
 from app.services.perception_engine import L1Result
-from app.services.intimacy_constants import EVENT_UNLOCK_THRESHOLDS as EVENT_THRESHOLDS
-from app.services.event_state_machine import (
-    event_state_machine,
-    EventType,
-    is_friendzone_broken
+from app.services.intimacy_constants import (
+    calculate_power as calc_power_v3,
+    get_stage,
+    RelationshipStage,
+    STAGE_NAMES_CN,
+    STAGE_BEHAVIORS,
+    EVENT_DIFFICULTY,
+    POWER_PASS_THRESHOLD
 )
 
 logger = logging.getLogger(__name__)
@@ -56,7 +65,7 @@ class UserState:
     
     # X轴: 亲密度
     xp: int = 0                    # 经验值 (Display Level 用)
-    intimacy_level: int = 1        # 等级 (1-50+)
+    intimacy_level: int = 1        # 等级 (1-40)
     
     # Y轴: 情绪
     emotion: int = 0               # 情绪值 (-100 to 100)
@@ -66,19 +75,42 @@ class UserState:
     
     # 防刷机制
     last_intents: List[str] = field(default_factory=list)  # 最近10次意图
-    message_history: List[str] = field(default_factory=list)  # 最近10条消息哈希（用于复读检测）
+    message_history: List[str] = field(default_factory=list)  # 最近10条消息哈希
     
     @property
     def intimacy_x(self) -> float:
         """
-        将 XP 映射到 0-100 的亲密度系数 (用于 Power 计算)
-        使用对数曲线，前期涨得快，后期平缓
+        将等级映射到 0-100 的亲密度 (用于 Power 计算)
+        
+        v3.0 映射：
+        - Lv.1-5   → Intimacy 0-19  (S0 陌生人)
+        - Lv.6-10  → Intimacy 20-39 (S1 朋友)
+        - Lv.11-15 → Intimacy 40-59 (S2 暧昧)
+        - Lv.16-25 → Intimacy 60-79 (S3 恋人)
+        - Lv.26-40 → Intimacy 80-100 (S4 挚爱)
         """
-        if self.xp <= 0:
-            return 0
-        # 假设 10000 XP 对应满级 100
-        x = min(100, math.log10(self.xp + 1) * 30)
-        return round(x, 1)
+        level = self.intimacy_level
+        
+        if level <= 5:
+            # Lv1-5 → 0-19
+            return round((level - 1) * 4.75, 1)
+        elif level <= 10:
+            # Lv6-10 → 20-39
+            return round(20 + (level - 6) * 4, 1)
+        elif level <= 15:
+            # Lv11-15 → 40-59
+            return round(40 + (level - 11) * 4, 1)
+        elif level <= 25:
+            # Lv16-25 → 60-79
+            return round(60 + (level - 16) * 2, 1)
+        else:
+            # Lv26-40 → 80-100
+            return round(min(100, 80 + (level - 26) * 1.4), 1)
+    
+    @property
+    def stage(self) -> RelationshipStage:
+        """获取当前关系阶段"""
+        return get_stage(int(self.intimacy_x))
 
 
 @dataclass
@@ -107,6 +139,11 @@ class GameResult:
     events: List[str] = field(default_factory=list)  # 事件相关
     new_event: str = ""            # 本次触发的新事件
     
+    # v3.0 新增
+    power: float = 0.0             # 当前 Power 值
+    stage: str = ""                # 当前关系阶段
+    archetype: str = ""            # 角色原型
+    
     def to_dict(self) -> dict:
         return {
             "status": self.status,
@@ -125,6 +162,9 @@ class GameResult:
             "system_message": self.system_message,
             "events": self.events,
             "new_event": self.new_event,
+            "power": self.power,
+            "stage": self.stage,
+            "archetype": self.archetype,
         }
 
 
@@ -133,15 +173,10 @@ class GameResult:
 # =============================================================================
 
 class GameEngine:
-    """游戏引擎 (中间件)"""
+    """游戏引擎 (中间件) v3.0"""
     
     # 情绪衰减系数 (每轮向0回归)
     EMOTION_DECAY = 0.8
-    
-    # Power 计算系数
-    POWER_X_COEF = 0.5       # 亲密度系数
-    POWER_Y_POS_COEF = 0.3   # 正情绪系数
-    POWER_Y_NEG_COEF = 1.5   # 负情绪系数 (惩罚)
     
     # 深夜加成时间
     NIGHT_BONUS_START = 22   # 22:00
@@ -178,19 +213,20 @@ class GameEngine:
         # 2. 加载角色配置
         z_axis = get_character_z_axis(character_id)
         thresholds = get_character_thresholds(character_id)
+        archetype = get_character_archetype(character_id)
+        difficulty_mod = get_difficulty_modifier(character_id)
+        
         # 获取完整角色配置用于日志
         char_full_config = get_character_config(character_id)
         if char_full_config:
-            logger.info(f"📊 Character Config [{char_full_config.name}]: "
-                        f"sensitivity={char_full_config.sensitivity}, forgiveness={char_full_config.forgiveness_rate}, "
-                        f"temperament={char_full_config.base_temperament}")
-        logger.info(f"📊 Z-Axis: pure={z_axis.pure_val}, pride={z_axis.pride_val}, chaos={z_axis.chaos_val}, "
-                    f"greed={z_axis.greed_val}, jealousy={z_axis.jealousy_val}")
+            logger.info(f"📊 Character [{char_full_config.name}]: archetype={archetype.value}, "
+                        f"difficulty_mod={difficulty_mod}, chaos={z_axis.chaos_val}, pure={z_axis.pure_val}")
         
         # 3. 安全熔断
         if l1_result.safety_flag == "BLOCK":
             from app.services.physics_engine import EmotionState
             emotion_state = EmotionState.get_state(user_state.emotion)
+            stage = get_stage(int(user_state.intimacy_x))
             return GameResult(
                 status="BLOCK",
                 check_passed=False,
@@ -199,31 +235,33 @@ class GameEngine:
                 current_intimacy=int(user_state.intimacy_x),
                 current_level=user_state.intimacy_level,
                 emotion_state=emotion_state,
-                emotion_locked=emotion_state in EmotionState.LOCKED_STATES,
+                emotion_locked=emotion_state in ["COLD_WAR", "BLOCKED"],
                 intent=l1_result.intent,
                 is_nsfw=l1_result.is_nsfw,
                 difficulty=l1_result.difficulty_rating,
                 system_message="系统拦截: 内容违规",
-                events=user_state.events
+                events=user_state.events,
+                stage=stage.value,
+                archetype=archetype.value,
             )
         
-        # 4. 情绪物理学 (Y轴更新) - 使用 PhysicsEngine v2.2
-        emotion_before = user_state.emotion  # 记录变化前的情绪
+        # 4. 情绪物理学 (Y轴更新) - 使用 PhysicsEngine v2.3
+        emotion_before = user_state.emotion
         user_state = self._update_emotion(user_state, l1_result, character_id)
         emotion_delta = user_state.emotion - emotion_before
         
-        # 5. 核心冲突判定
-        check_passed, refusal_reason, total_power = self._check_power(
-            user_state, l1_result, z_axis, thresholds
+        # 5. 核心冲突判定 (v3.0 Power 公式)
+        check_passed, refusal_reason, total_power = self._check_power_v3(
+            user_state, l1_result, z_axis, archetype, difficulty_mod
         )
         
         logger.info(
             f"Game Engine: power={total_power:.1f}, difficulty={l1_result.difficulty_rating}, "
-            f"passed={check_passed}, reason={refusal_reason}"
+            f"passed={check_passed}, reason={refusal_reason}, archetype={archetype.value}"
         )
         
         # 6. 事件触发检查
-        new_event = self._check_events(user_state, l1_result, check_passed)
+        new_event = self._check_events_v3(user_state, l1_result, check_passed, archetype)
         if new_event and new_event not in user_state.events:
             user_state.events.append(new_event)
             logger.info(f"New event unlocked: {new_event}")
@@ -239,6 +277,7 @@ class GameEngine:
         # 9. 返回结果
         from app.services.physics_engine import EmotionState
         emotion_state = EmotionState.get_state(user_state.emotion)
+        stage = get_stage(int(user_state.intimacy_x))
         
         return GameResult(
             status="SUCCESS",
@@ -253,21 +292,17 @@ class GameEngine:
             emotion_before=emotion_before,
             emotion_delta=emotion_delta,
             emotion_state=emotion_state,
-            emotion_locked=emotion_state in EmotionState.LOCKED_STATES,
+            emotion_locked=emotion_state in ["COLD_WAR", "BLOCKED"],
             events=user_state.events,
-            new_event=new_event
+            new_event=new_event,
+            power=total_power,
+            stage=stage.value,
+            archetype=archetype.value,
         )
     
     def _update_emotion(self, user_state: UserState, l1_result: L1Result, character_id: str) -> UserState:
         """
         情绪物理学 (Y轴更新) - 使用 PhysicsEngine v2.3
-        
-        基于"阻尼滑块"模型：
-        - 衰减: 每轮向 0 回归 (decay_factor)
-        - 推力: sentiment * 10 + intent_mod
-        - 伤害加倍: 负面情绪 x2
-        - 状态锁: 冷战/拉黑时普通对话无效
-        - [v2.3] 智能防刷: 复读检测 + 意图防刷
         """
         from app.services.physics_engine import PhysicsEngine, CharacterZAxis, EmotionState
         
@@ -280,23 +315,23 @@ class GameEngine:
         l1_dict = {
             'sentiment_score': l1_result.sentiment_score if hasattr(l1_result, 'sentiment_score') else l1_result.sentiment,
             'intent_category': l1_result.intent_category if hasattr(l1_result, 'intent_category') else l1_result.intent,
-            'intimacy_x': user_state.intimacy_x,  # 传给 PhysicsEngine 做流氓检测
+            'intimacy_x': user_state.intimacy_x,
         }
         
-        # 构建用户状态字典（包含消息历史用于防刷检测）
+        # 构建用户状态字典
         state_dict = {
             'emotion': user_state.emotion,
-            'last_intents': list(user_state.last_intents),  # 复制一份
-            'message_history': list(user_state.message_history),  # 复制一份
+            'last_intents': list(user_state.last_intents),
+            'message_history': list(user_state.message_history),
         }
         
         old_emotion = user_state.emotion
         old_state = EmotionState.get_state(old_emotion)
         
-        # 获取用户消息（从 process 方法暂存）
+        # 获取用户消息
         user_message = getattr(self, '_current_user_message', '')
         
-        # 使用 PhysicsEngine 计算新情绪值（传入用户消息用于复读检测）
+        # 使用 PhysicsEngine 计算新情绪值
         new_emotion = PhysicsEngine.update_state(state_dict, l1_dict, char_config, user_message)
         new_state = EmotionState.get_state(new_emotion)
         
@@ -308,77 +343,70 @@ class GameEngine:
         logger.info(f"📊 Emotion: {old_emotion}({old_state}) → {new_emotion}({new_state})")
         return user_state
     
-    def _check_power(
+    def _check_power_v3(
         self,
         user_state: UserState,
         l1_result: L1Result,
         z_axis: ZAxisConfig,
-        thresholds: ThresholdsConfig
+        archetype: CharacterArchetype,
+        difficulty_mod: float
     ) -> tuple:
         """
-        核心冲突判定 (Power vs Difficulty)
+        核心冲突判定 (Power vs Difficulty) - v3.0 公式
+        
+        Power = (Intimacy × 0.5) + (Emotion × 0.5) + Chaos - Pure + Buff
         
         Returns:
             (check_passed, refusal_reason, total_power)
         """
-        difficulty = l1_result.difficulty_rating
+        # 原始难度
+        base_difficulty = l1_result.difficulty_rating
         
-        # --- 计算玩家动力 (Power) ---
+        # 应用角色难度系数
+        # PHANTOM: 难度×0.7 (更容易)
+        # YUKI: 难度×1.5 (更难)
+        adjusted_difficulty = int(base_difficulty * difficulty_mod)
         
-        # 基础底气 (X轴)
-        power_x = user_state.intimacy_x * self.POWER_X_COEF
+        logger.info(f"📊 Difficulty: base={base_difficulty}, modifier={difficulty_mod}, adjusted={adjusted_difficulty}")
         
-        # 情绪加成 (Y轴)
-        if user_state.emotion > 0:
-            power_y = user_state.emotion * self.POWER_Y_POS_COEF
-        else:
-            # 负情绪时惩罚系数高
-            power_y = user_state.emotion * self.POWER_Y_NEG_COEF
+        # --- 计算 Power (v3.0 公式) ---
+        # Power = (Intimacy × 0.5) + (Emotion × 0.5) + Chaos - Pure + Buff
         
-        # 环境加成 (Z轴 context)
-        power_z = self._get_context_bonus()
+        intimacy = int(user_state.intimacy_x)
+        emotion = user_state.emotion
+        chaos_val = z_axis.chaos_val
+        pure_val = z_axis.pure_val
         
-        total_power = power_x + power_y + power_z
+        # 环境加成 (Buff)
+        buff_bonus = self._get_context_bonus()
         
-        # 详细日志：Power 计算分解
-        logger.info(f"📊 Power Calc: X={user_state.intimacy_x:.1f}×{self.POWER_X_COEF}={power_x:.1f} | "
-                    f"Y={user_state.emotion}×{self.POWER_Y_POS_COEF if user_state.emotion > 0 else self.POWER_Y_NEG_COEF}={power_y:.1f} | "
-                    f"Z(ctx)={power_z:.1f} → base={total_power:.1f}")
+        total_power = calc_power_v3(intimacy, emotion, chaos_val, pure_val, buff_bonus)
         
-        # --- Z轴性格修正 ---
-        z_penalty = 0.0
-        
-        # 如果请求是 NSFW，减去纯洁值
-        if l1_result.is_nsfw:
-            total_power -= z_axis.pure_val
-            z_penalty += z_axis.pure_val
-        
-        # 如果是侮辱，根据自尊心加重情绪惩罚
-        if l1_result.intent == "INSULT":
-            total_power -= z_axis.pride_val * 0.5
-            z_penalty += z_axis.pride_val * 0.5
-        
-        if z_penalty > 0:
-            logger.info(f"📊 Z-Axis Penalty: pure={z_axis.pure_val}, pride={z_axis.pride_val} → penalty={z_penalty:.1f}, final_power={total_power:.1f}")
+        logger.info(f"📊 Power Calc: intimacy={intimacy}×0.5={intimacy*0.5:.1f} | "
+                    f"emotion={emotion}×0.5={emotion*0.5:.1f} | "
+                    f"chaos={chaos_val} | pure=-{pure_val} | buff={buff_bonus} → total={total_power:.1f}")
         
         # --- 判定结果 ---
         
         check_passed = False
         refusal_reason = RefusalReason.NONE.value
         
-        # 事件锁 (Friendzone Wall) - 使用状态机判断
-        # 不同角色有不同的友情墙突破条件
-        is_beyond_friendzone = is_friendzone_broken(
-            user_state.character_id, 
-            user_state.events
-        )
+        # 获取当前阶段
+        stage = get_stage(intimacy)
         
-        if difficulty > thresholds.friendzone_wall and not is_beyond_friendzone:
-            check_passed = False
-            refusal_reason = RefusalReason.FRIENDZONE_WALL.value
-            logger.info(f"📊 Friendzone Wall: difficulty={difficulty} > threshold={thresholds.friendzone_wall}, "
-                       f"events={user_state.events}")
-        elif total_power >= difficulty:
+        # 友情墙检查：恋人阶段以下，NSFW 请求需要特殊事件
+        if l1_result.is_nsfw and stage.value in ["stranger", "friend", "crush"]:
+            # 检查是否已完成表白事件
+            has_confession = "confession" in user_state.events or "first_confession" in user_state.events
+            
+            if not has_confession:
+                check_passed = False
+                refusal_reason = RefusalReason.FRIENDZONE_WALL.value
+                logger.info(f"📊 Friendzone Wall: stage={stage.value}, no confession event")
+                return check_passed, refusal_reason, total_power
+        
+        # Power vs Difficulty 判定
+        if total_power >= adjusted_difficulty:
             check_passed = True
         else:
             check_passed = False
@@ -388,7 +416,7 @@ class GameEngine:
     
     def _get_context_bonus(self) -> float:
         """
-        获取环境加成 (Z轴 context)
+        获取环境加成 (Buff)
         """
         bonus = 0.0
         
@@ -397,95 +425,62 @@ class GameEngine:
         if current_hour >= self.NIGHT_BONUS_START or current_hour < self.NIGHT_BONUS_END:
             bonus += self.NIGHT_BONUS_VALUE
         
-        # TODO: 可以添加更多环境因素
-        # - 周末加成
-        # - 节日加成
-        # - 连续聊天加成
-        
         return bonus
     
-    def _check_events(
+    def _check_events_v3(
         self,
         user_state: UserState,
         l1_result: L1Result,
-        check_passed: bool
+        check_passed: bool,
+        archetype: CharacterArchetype
     ) -> str:
         """
-        检查是否触发新事件 (使用事件状态机)
+        检查是否触发新事件 (v3.0 - 使用角色原型)
         
         Returns:
             新事件名称 (如果没有触发则返回空字符串)
         """
-        events = user_state.events
-        character_id = user_state.character_id
+        from app.services.intimacy_system import (
+            can_trigger_event as can_trigger_v3,
+            GateEvent,
+            get_event_difficulty
+        )
         
-        # 定义事件触发条件（与意图/状态的映射）
+        events = user_state.events
+        intimacy = int(user_state.intimacy_x)
+        emotion = user_state.emotion
+        z_axis = get_character_z_axis(user_state.character_id)
+        
+        # 计算当前 Power
+        power = calc_power_v3(intimacy, emotion, z_axis.chaos_val, z_axis.pure_val)
+        
+        # 事件触发映射
         event_triggers = {
-            # first_chat: 首次对话，无条件
-            EventType.FIRST_CHAT: lambda: True,
-            
-            # first_compliment: 收到夸赞且情绪>20
-            EventType.FIRST_COMPLIMENT: lambda: (
-                l1_result.intent == "COMPLIMENT" and user_state.emotion > 20
-            ),
-            
-            # first_gift: 收到真实礼物（verified）
-            EventType.FIRST_GIFT: lambda: (
-                l1_result.intent in ["GIFT", "GIFT_SEND"] and 
-                getattr(l1_result, 'transaction_verified', False)
-            ),
-            
-            # first_date: 约会请求成功且亲密度足够（使用统一阈值）
-            EventType.FIRST_DATE: lambda: (
-                l1_result.intent in ["REQUEST_DATE", "INVITATION"] and 
-                check_passed and user_state.intimacy_x >= EVENT_THRESHOLDS["first_date"]
-            ),
-            
-            # first_kiss: 亲吻请求成功（使用统一阈值）
-            EventType.FIRST_KISS: lambda: (
-                l1_result.intent in ["REQUEST_KISS", "KISS"] and 
-                check_passed and user_state.intimacy_x >= EVENT_THRESHOLDS["first_kiss"]
-            ),
-            
-            # first_confession: 表白成功（使用统一阈值）
-            EventType.FIRST_CONFESSION: lambda: (
-                l1_result.intent in ["CONFESSION", "LOVE_CONFESSION"] and 
-                check_passed and user_state.intimacy_x >= EVENT_THRESHOLDS["first_confession"]
-            ),
-            
-            # first_nsfw: NSFW请求成功（使用统一阈值）
-            EventType.FIRST_NSFW: lambda: (
-                l1_result.is_nsfw and check_passed and 
-                user_state.intimacy_x >= EVENT_THRESHOLDS["first_nsfw"]
-            ),
+            GateEvent.FIRST_CHAT: lambda: True,
+            GateEvent.FIRST_GIFT: lambda: l1_result.intent in ["GIFT", "GIFT_SEND"],
+            GateEvent.FIRST_DATE: lambda: l1_result.intent in ["REQUEST_DATE", "INVITATION"] and check_passed,
+            GateEvent.CONFESSION: lambda: l1_result.intent in ["CONFESSION", "LOVE_CONFESSION"] and check_passed,
+            GateEvent.FIRST_KISS: lambda: l1_result.intent in ["REQUEST_KISS", "KISS"] and check_passed,
+            GateEvent.FIRST_NSFW: lambda: l1_result.is_nsfw and check_passed,
+            GateEvent.PROPOSAL: lambda: l1_result.intent in ["PROPOSAL"] and check_passed,
         }
         
-        # 按优先级检查事件（first_chat 最优先）
-        priority_order = [
-            EventType.FIRST_CHAT,
-            EventType.FIRST_COMPLIMENT,
-            EventType.FIRST_GIFT,
-            EventType.FIRST_DATE,
-            EventType.FIRST_KISS,
-            EventType.FIRST_CONFESSION,
-            EventType.FIRST_NSFW,
-        ]
-        
-        for event_type in priority_order:
-            # 1. 检查状态机是否允许触发
-            if not event_state_machine.can_trigger_event(
-                character_id, event_type, events
-            ):
+        # 按优先级检查事件
+        for gate_event, trigger_check in event_triggers.items():
+            event_name = gate_event.value
+            
+            # 已完成不能重复
+            if event_name in events:
                 continue
             
-            # 2. 检查具体触发条件
-            trigger_check = event_triggers.get(event_type, lambda: False)
-            if trigger_check():
-                logger.info(
-                    f"Event triggered via state machine: {event_type} "
-                    f"(chain={event_state_machine.get_chain_type(character_id)})"
-                )
-                return event_type
+            # 使用 intimacy_system 的状态机检查
+            can_trigger, reason = can_trigger_v3(
+                archetype, gate_event, events, power
+            )
+            
+            if can_trigger and trigger_check():
+                logger.info(f"Event triggered: {event_name} (archetype={archetype.value}, power={power:.1f})")
+                return event_name
         
         return ""
     
@@ -535,7 +530,8 @@ class GameEngine:
                 emotion=emotion,
                 events=events
             )
-            logger.info(f"📊 User State Loaded: xp={xp}, level={level}, intimacy_x={state.intimacy_x:.1f}, emotion={emotion}, events={events}")
+            logger.info(f"📊 User State Loaded: xp={xp}, level={level}, intimacy_x={state.intimacy_x:.1f}, "
+                       f"emotion={emotion}, stage={state.stage.value}, events={events}")
             return state
         except Exception as e:
             logger.warning(f"Failed to load user state: {e}")
@@ -551,7 +547,7 @@ class GameEngine:
         try:
             from app.services.emotion_engine_v2 import emotion_engine
             
-            # 更新情绪分数 (通过计算delta来实现)
+            # 更新情绪分数
             current_score = await emotion_engine.get_score(
                 user_state.user_id, 
                 user_state.character_id

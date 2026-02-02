@@ -273,14 +273,14 @@ class PerceptionEngine:
         return self.llm_service
     
     def _get_relationship_level(self, intimacy_level: int) -> str:
-        """将亲密度等级转换为关系描述（使用统一定义）"""
-        from app.services.intimacy_constants import level_to_intimacy_x_range, get_stage, STAGE_NAMES_EN
+        """将亲密度等级转换为关系描述（使用 v3.0 阶段系统）"""
+        from app.services.intimacy_constants import get_stage, STAGE_NAMES_EN
         
-        # 从 level 估算 intimacy_x
-        x_range = level_to_intimacy_x_range(intimacy_level)
-        intimacy_x = (x_range[0] + x_range[1]) / 2
+        # v3.0: level 直接映射到 intimacy (0-100)
+        # level 1-40 → intimacy 0-100
+        intimacy = min(100, max(0, int(intimacy_level * 2.5)))
         
-        stage = get_stage(intimacy_x)
+        stage = get_stage(intimacy)
         return STAGE_NAMES_EN[stage]
     
     def _get_emotion_state(self, emotion_value: int) -> str:

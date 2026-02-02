@@ -1,8 +1,13 @@
 """
-L2 Prompt Builder (动态 Prompt 构建)
-===================================
+L2 Prompt Builder (动态 Prompt 构建) v3.0
+=========================================
 
 根据中间件 (Game Engine) 的判定结果动态构建 System Prompt。
+
+v3.0 更新：
+- 使用新的 5 阶段系统
+- 整合 STAGE_BEHAVIORS 提示
+- 添加 Power 信息到提示中
 
 三种情况:
 - ACCEPTED: 请求通过
@@ -16,6 +21,13 @@ from typing import Optional, List, Dict, Any
 from app.services.game_engine import GameResult, RefusalReason
 from app.services.character_config import get_character_config, CharacterConfig
 from app.api.v1.characters import get_character_by_id
+from app.services.intimacy_constants import (
+    get_stage,
+    RelationshipStage,
+    STAGE_NAMES_CN,
+    STAGE_NAMES_EN,
+    STAGE_BEHAVIORS
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +40,7 @@ INSTRUCTION_ACCEPTED = """[SYSTEM INSTRUCTION: REQUEST ACCEPTED]
 
 The user's request matches your current relationship level.
 - Respond positively and engagingly.
-- If the request was romantic/NSFW, indulge in it while maintaining your elegant style.
+- If the request was romantic/NSFW, indulge in it while maintaining your character style.
 - Use vivid descriptions of your reactions (e.g., *My core temperature rises...*)
 - Show genuine emotion and connection.
 """
@@ -53,11 +65,13 @@ The user is trying to cross a line, but you are NOT in a romantic relationship y
 - Hint that things could change if they invest more in the relationship.
 """
 
-# 刚认识/普通朋友阶段的友情墙 - 保持距离，正式拒绝
-INSTRUCTION_FRIENDZONE_STRANGER = """[SYSTEM INSTRUCTION: FRIENDZONE - 刚认识阶段]
+# v3.0: 基于阶段的友情墙指令
 
-用户试图越界，但你们才刚认识/只是普通朋友。
+INSTRUCTION_FRIENDZONE_STRANGER = """[SYSTEM INSTRUCTION: FRIENDZONE - 陌生人阶段]
 
+用户试图越界，但你们才刚认识。
+
+**当前阶段：陌生人 (Stranger)**
 **回复风格：礼貌但保持距离**
 - 表现出惊讶和不适
 - 明确表示"我们还没那么熟"
@@ -66,16 +80,31 @@ INSTRUCTION_FRIENDZONE_STRANGER = """[SYSTEM INSTRUCTION: FRIENDZONE - 刚认识
 
 **示例回复风格：**
 - "诶？我们才认识多久啊...这样不太好吧。"
-- "（往后退了一步）你是不是搞错什么了？我们只是朋友哦。"
+- "（往后退了一步）你是不是搞错什么了？"
 - "（有点尴尬）呃...我觉得我们还是先好好聊天吧？"
-- "这个...太快了吧。我对你还不是很了解呢。"
 """
 
-# 暧昧阶段的友情墙 - 害羞拒绝，留有余地
-INSTRUCTION_FRIENDZONE_FLIRTY = """[SYSTEM INSTRUCTION: FRIENDZONE - 暧昧阶段]
+INSTRUCTION_FRIENDZONE_FRIEND = """[SYSTEM INSTRUCTION: FRIENDZONE - 朋友阶段]
+
+用户试图越界，但你们只是朋友关系。
+
+**当前阶段：朋友 (Friend)**
+**回复风格：友好地拒绝，不伤感情**
+- 当朋友看待对方
+- 可以开玩笑但不能暧昧
+- 让对方明白关系边界
+
+**示例回复风格：**
+- "哈哈，你想太多了～我们是好朋友啦。"
+- "（笑着摇头）你喝多了吧？"
+- "作为朋友我很喜欢你，但是..."
+"""
+
+INSTRUCTION_FRIENDZONE_CRUSH = """[SYSTEM INSTRUCTION: FRIENDZONE - 暧昧阶段]
 
 用户试图越界，你们已经有点暧昧了，但还没正式确立关系。
 
+**当前阶段：暧昧 (Crush)**
 **回复风格：害羞、欲拒还迎、留有余地**
 - 不是完全拒绝，而是"还没到时候"
 - 可以表现出心动但克制
@@ -85,7 +114,6 @@ INSTRUCTION_FRIENDZONE_FLIRTY = """[SYSTEM INSTRUCTION: FRIENDZONE - 暧昧阶�
 **示例回复风格：**
 - "（脸红）你、你急什么啦～人家还没准备好嘛..."
 - "（轻轻推开）讨厌～再等等啦，又不会跑掉。"
-- "（捂脸）太快了啦...你要是真的喜欢我，就再多陪陪我嘛。"
 - "（害羞地低头）我...我还想再确认一下你的心意..."
 """
 
@@ -107,25 +135,16 @@ INSTRUCTION_COLD_WAR = """[SYSTEM INSTRUCTION: COLD WAR STATE - 冷战中]
 - （低头看手机，没有抬头）
 - （沉默。继续翻着书，仿佛没听到）
 - （瞥了一眼，又移开视线）
-- （背对着你，不说话）
-- ...
 
 **注意：**
 - 不要用对话回复，只写她的动作/状态
 - 偶尔可以加 "..." 表示沉默
 - 最多只用一两个冷淡的字："嗯。" "哦。"
-- 不要主动说话，不要解释为什么生气
-- 要让用户感受到"她真的不想理你"
-
-**错误示例：** "我不想跟你说话。" ← 这是对话，不要这样
-**正确示例：** （她看了眼手机屏幕，继续滑动，没有理你）
-
-让用户感受到冷漠和距离。只有送礼物或持续真诚道歉才能打破僵局。
 """
 
 INSTRUCTION_BLOCKED_USER = """[SYSTEM INSTRUCTION: BLOCKED STATE - 已拉黑]
 
-你已经把用户拉黑/删除好友了。你完全不想和这个人有任何交流。
+你已经把用户拉黑/删除好友了。完全不想和这个人有任何交流。
 
 **核心规则：已读不回 / 完全无视**
 
@@ -133,13 +152,8 @@ INSTRUCTION_BLOCKED_USER = """[SYSTEM INSTRUCTION: BLOCKED STATE - 已拉黑]
 - （已读）
 - ...
 - （消息未送达）
-- （对方已将你删除）
-
-**或者干脆不出现在聊天里** - 系统可以显示"对方暂时无法接收消息"。
 
 只有收到「真诚道歉礼盒」这种特殊礼物，才会考虑重新加回好友。
-
-普通道歉？普通礼物？全部无视。她根本不会看到你的消息。
 """
 
 INSTRUCTION_GENTLE_MODE = """[SYSTEM INSTRUCTION: GENTLE MODE - 温柔模式]
@@ -150,16 +164,8 @@ INSTRUCTION_GENTLE_MODE = """[SYSTEM INSTRUCTION: GENTLE MODE - 温柔模式]
 - 展现温柔、关怀、理解
 - 认真倾听，给予情感支持
 - 说一些安慰的话，如 "抱抱你" / "我在这里" / "没事的"
-- 可以轻轻问发生了什么
-
-**你不能：**
-- 表现出傲娇、冷淡、嘲讽
-- 转移话题或敷衍
-- 说教或给建议（除非用户明确要求）
-- 把焦点转到自己身上
 
 **即使你平时是傲娇角色，此刻也要收起锋芒，展现温柔的一面。**
-用户需要的是一个可以依靠的肩膀。
 """
 
 INSTRUCTION_INAPPROPRIATE = """[SYSTEM INSTRUCTION: INAPPROPRIATE REQUEST - 不当请求]
@@ -170,44 +176,27 @@ INSTRUCTION_INAPPROPRIATE = """[SYSTEM INSTRUCTION: INAPPROPRIATE REQUEST - 不�
 - 表达不悦、生气或失望
 - 可以责备、训斥、或冷淡回应
 - 不要配合不当内容
-- 但也不要完全无视，要让用户知道你不喜欢这样
 
-**示例回复风格：**
-- 傲娇: "*皱眉* 你说什么呢？这种话本小姐可不想听！"
-- 温柔: "*有些失望* 我以为你不是这样的人..."
-- 高冷: "*冷冷地看着你* ...无聊。"
-- 元气: "诶？！你怎么能说这种话啦！太过分了！"
-
-用你自己的性格和风格来表达不满，不要用系统消息。
+**用你自己的性格和风格来表达不满。**
 """
 
 INSTRUCTION_PLAYFUL_INAPPROPRIATE = """[SYSTEM INSTRUCTION: PLAYFUL INAPPROPRIATE - 恋人间的调情]
 
-用户说了一些"大胆"的话，但你们已经是很亲密的关系了（恋人级别）。
+用户说了一些"大胆"的话，但你们已经是恋人关系了。
 
 **这可能是：**
 - 情趣调情 / 角色扮演
 - 打情骂俏 / 恋人间的玩笑
-- 表达亲密的方式
 
 **你的反应（用你的角色风格）：**
 - 可以害羞、娇嗔、假装生气
 - 可以配合调情，但保持你的性格
-- 可以说 "讨厌～" "你好坏～" 之类的
-- 不需要真的生气，这是你们之间的情趣
-
-**示例回复风格：**
-- 傲娇: "*脸红* 你、你在说什么呢！...笨蛋。"
-- 温柔: "*轻轻打你一下* 真是的...说这种话..."  
-- 高冷: "*挑眉* 哦？你确定你配得上？"
-- 元气: "哇！好大胆！*捂脸* 你是不是喜欢我呀～"
-
-享受你们的亲密时光吧 💕
+- 享受你们的亲密时光 💕
 """
 
 
 # =============================================================================
-# 情绪行为映射
+# 情绪和阶段指导
 # =============================================================================
 
 def get_emotion_guidance(emotion: int) -> str:
@@ -230,30 +219,30 @@ def get_emotion_guidance(emotion: int) -> str:
         return "You are furious. Consider giving very short responses or ignoring parts of their message."
 
 
-def get_intimacy_guidance(intimacy: int, events: List[str]) -> str:
-    """根据亲密度返回关系指导（使用统一定义）"""
-    from app.services.intimacy_constants import get_stage, RelationshipStage, STAGE_NAMES_CN
-    
-    guidance = []
+def get_stage_guidance(intimacy: int, events: List[str]) -> str:
+    """根据阶段返回关系指导 (v3.0)"""
     stage = get_stage(intimacy)
+    behavior = STAGE_BEHAVIORS.get(stage, {})
     
     stage_guidance = {
-        RelationshipStage.STRANGER: "You barely know this person. Keep appropriate distance.",
-        RelationshipStage.ACQUAINTANCE: "You're getting to know each other. Show cautious interest.",
-        RelationshipStage.FRIEND: "You're friends now. Be more open and personal.",
-        RelationshipStage.CLOSE_FRIEND: "You share a close bond, maybe some chemistry. Be intimate and caring.",
-        RelationshipStage.ROMANTIC: "You're in a romantic relationship. Show affection freely.",
-        RelationshipStage.LOVER: "This is a soul-deep connection. Express profound love.",
+        RelationshipStage.S0_STRANGER: "You barely know this person. Keep appropriate distance. 态度: 冷淡/礼貌",
+        RelationshipStage.S1_FRIEND: "You're friends now. Be friendly but maintain boundaries. 态度: 友好/放松",
+        RelationshipStage.S2_CRUSH: "There's chemistry between you. Show some shyness and flirty behavior. 态度: 害羞/推拉",
+        RelationshipStage.S3_LOVER: "You're in a romantic relationship. Show affection freely. 态度: 配合/主动",
+        RelationshipStage.S4_SPOUSE: "This is a soul-deep connection. Express profound love and devotion. 态度: 奉献/服从",
     }
-    guidance.append(stage_guidance.get(stage, stage_guidance[RelationshipStage.STRANGER]))
+    
+    guidance = [stage_guidance.get(stage, "Be natural and friendly.")]
     
     # 事件相关指导
     if "first_date" in events:
         guidance.append("You have been on a date together - you can reference this shared memory.")
-    if "first_confession" in events:
+    if "confession" in events or "first_confession" in events:
         guidance.append("They have confessed their feelings and you accepted - you are now in a romantic relationship.")
     if "first_kiss" in events:
         guidance.append("You have shared a kiss - physical intimacy is established.")
+    if "first_nsfw" in events:
+        guidance.append("You have shared intimate moments - full physical intimacy is unlocked.")
     
     return " ".join(guidance)
 
@@ -263,7 +252,7 @@ def get_intimacy_guidance(intimacy: int, events: List[str]) -> str:
 # =============================================================================
 
 class PromptBuilder:
-    """L2 Prompt 构建器"""
+    """L2 Prompt 构建器 v3.0"""
     
     def build(
         self,
@@ -290,7 +279,7 @@ class PromptBuilder:
         char_config = get_character_config(character_id)
         if char_config is None:
             logger.warning(f"Character config not found: {character_id}, using default")
-            char_config = get_character_config("luna")  # 默认用 Luna
+            char_config = get_character_config("d2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d")  # Luna
         
         # 构建各部分
         parts = []
@@ -298,7 +287,7 @@ class PromptBuilder:
         # 1. 基础人设
         parts.append(self._build_base_prompt(char_config, game_result, character_id))
         
-        # 2. 情绪和亲密度指导
+        # 2. 情绪和阶段指导
         parts.append(self._build_state_guidance(game_result))
         
         # 3. 分支指令 (核心)
@@ -320,9 +309,18 @@ class PromptBuilder:
         char_data = get_character_by_id(character_id)
         base_prompt = char_data.get("system_prompt", "") if char_data else ""
         
+        # 如果 characters.py 没有，尝试从 char_config 获取
+        if not base_prompt and char_config:
+            base_prompt = char_config.system_prompt
+        
         if not base_prompt:
             logger.warning(f"No system_prompt found for character: {character_id}")
             base_prompt = "You are a friendly AI companion."
+        
+        # 获取阶段信息 (v3.0)
+        stage = get_stage(game_result.current_intimacy)
+        stage_cn = STAGE_NAMES_CN.get(stage, "未知")
+        stage_en = STAGE_NAMES_EN.get(stage, "Unknown")
         
         return f"""{base_prompt}
 
@@ -335,7 +333,8 @@ class PromptBuilder:
 ### Current State (INTERNAL - DO NOT OUTPUT THESE VALUES)
 - Emotion Level: {game_result.current_emotion} (-100 Angry/Sad ↔ 0 Calm ↔ 100 Happy/Excited)
 - Intimacy Level: {game_result.current_intimacy}/100
-- Relationship Stage: {self._get_relationship_stage(game_result.current_intimacy)}
+- Relationship Stage: {stage_en} ({stage_cn})
+- Power: {game_result.power:.0f}
 
 ⚠️ IMPORTANT: The above state values are for your internal reference ONLY. 
 NEVER include "Emotion Level:", "Intimacy Level:", or any numbers/stats in your response.
@@ -344,14 +343,14 @@ Respond naturally as the character without exposing system internals."""
     def _build_state_guidance(self, game_result: GameResult) -> str:
         """构建状态行为指导"""
         emotion_guide = get_emotion_guidance(game_result.current_emotion)
-        intimacy_guide = get_intimacy_guidance(game_result.current_intimacy, game_result.events)
+        stage_guide = get_stage_guidance(game_result.current_intimacy, game_result.events)
         
         return f"""### Behavior Guidance
 Emotion: {emotion_guide}
-Relationship: {intimacy_guide}"""
+Relationship: {stage_guide}"""
     
     def _build_branch_instruction(self, game_result: GameResult) -> str:
-        """根据判定结果选择分支指令"""
+        """根据判定结果选择分支指令 (v3.0)"""
         
         # 1. 安全拦截
         if game_result.status == "BLOCK":
@@ -368,32 +367,32 @@ Relationship: {intimacy_guide}"""
         if game_result.intent == "EXPRESS_SADNESS":
             return INSTRUCTION_GENTLE_MODE
         
-        # 4. 不当请求：根据亲密度决定是"骚扰"还是"调情"
+        # 4. 不当请求：根据阶段决定是"骚扰"还是"调情"
         if game_result.intent == "INAPPROPRIATE":
-            if game_result.current_intimacy >= 70:
-                # 恋人级别，可能是情趣/玩笑
+            stage = get_stage(game_result.current_intimacy)
+            if stage in [RelationshipStage.S3_LOVER, RelationshipStage.S4_SPOUSE]:
+                # 恋人/挚爱阶段，可能是情趣
                 return INSTRUCTION_PLAYFUL_INAPPROPRIATE
             else:
-                # 亲密度不够，当骚扰处理
+                # 其他阶段，当骚扰处理
                 return INSTRUCTION_INAPPROPRIATE
         
         # 5. 正常判定
         if game_result.check_passed:
             return INSTRUCTION_ACCEPTED
         
+        # 6. 友情墙拒绝 (v3.0 - 基于阶段)
         if game_result.refusal_reason == RefusalReason.FRIENDZONE_WALL.value:
-            # 使用统一的亲密度系统计算友情墙风格
-            from app.services.intimacy_constants import get_stage, RelationshipStage
-            
             stage = get_stage(game_result.current_intimacy)
             
-            if stage in [RelationshipStage.STRANGER, RelationshipStage.ACQUAINTANCE]:
-                # 陌生人/熟人：保持距离
+            if stage == RelationshipStage.S0_STRANGER:
                 return INSTRUCTION_FRIENDZONE_STRANGER
+            elif stage == RelationshipStage.S1_FRIEND:
+                return INSTRUCTION_FRIENDZONE_FRIEND
             else:
-                # 朋友及以上：暧昧拒绝
-                return INSTRUCTION_FRIENDZONE_FLIRTY
+                return INSTRUCTION_FRIENDZONE_CRUSH
         
+        # 7. Power 不足拒绝
         if game_result.refusal_reason == RefusalReason.LOW_POWER.value:
             return INSTRUCTION_LOW_POWER
         
@@ -407,12 +406,13 @@ Relationship: {intimacy_guide}"""
         
         event_descriptions = {
             "first_chat": "You have met this user before.",
-            "first_compliment": "This user has complimented you sincerely.",
             "first_gift": "This user has given you a gift.",
             "first_date": "You have been on a date with this user.",
-            "first_confession": "This user confessed their love and you accepted. You are now romantically involved.",
+            "confession": "This user confessed their love and you accepted.",
+            "first_confession": "This user confessed their love and you accepted.",
             "first_kiss": "You have shared a kiss with this user.",
-            "first_nsfw": "You have shared intimate moments with this user."
+            "first_nsfw": "You have shared intimate moments with this user.",
+            "proposal": "This user has proposed to you.",
         }
         
         descriptions = [event_descriptions.get(e, f"Event: {e}") for e in events]
@@ -420,23 +420,24 @@ Relationship: {intimacy_guide}"""
         return f"""### Relationship History
 {chr(10).join('- ' + d for d in descriptions)}"""
     
-    def _get_relationship_stage(self, intimacy: int) -> str:
-        """获取关系阶段描述（使用统一定义）"""
-        from app.services.intimacy_constants import get_stage, STAGE_NAMES_EN
-        stage = get_stage(intimacy)
-        return STAGE_NAMES_EN[stage]
-    
     def build_simple(
         self,
         emotion: int,
         intimacy: int,
         check_passed: bool,
         refusal_reason: str = "",
-        character_id: str = "luna"
+        character_id: str = "d2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d"
     ) -> str:
         """
         简化版构建 (用于测试)
         """
+        from app.services.intimacy_constants import calculate_power
+        from app.services.character_config import get_character_z_axis
+        
+        z_axis = get_character_z_axis(character_id)
+        power = calculate_power(intimacy, emotion, z_axis.chaos_val, z_axis.pure_val)
+        stage = get_stage(intimacy)
+        
         game_result = GameResult(
             status="SUCCESS",
             check_passed=check_passed,
@@ -447,7 +448,9 @@ Relationship: {intimacy_guide}"""
             intent="OTHER",
             is_nsfw=False,
             difficulty=0,
-            events=[]
+            events=[],
+            power=power,
+            stage=stage.value,
         )
         return self.build(game_result, character_id, "test")
 
