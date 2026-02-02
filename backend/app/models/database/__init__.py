@@ -13,6 +13,7 @@ from .stats_models import *
 from .payment_models import *
 from .referral_models import UserReferral, ReferralReward
 from .image_models import GeneratedImage, ImagePromptTemplate, ImageGenerationType, ImageStyle
+from .event_memory_models import EventMemory, EventType
 
 __all__ = [
     "Base",
@@ -26,4 +27,6 @@ __all__ = [
     "ImagePromptTemplate",
     "ImageGenerationType",
     "ImageStyle",
+    "EventMemory",
+    "EventType",
 ]

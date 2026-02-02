@@ -26,6 +26,11 @@ from app.services.character_config import (
     ThresholdsConfig
 )
 from app.services.perception_engine import L1Result
+from app.services.event_state_machine import (
+    event_state_machine,
+    EventType,
+    is_friendzone_broken
+)
 
 logger = logging.getLogger(__name__)
 
@@ -348,15 +353,18 @@ class GameEngine:
         check_passed = False
         refusal_reason = RefusalReason.NONE.value
         
-        # 事件锁 (Friendzone Wall)
-        # 必须先约会/表白成功，才能突破友情墙
-        is_beyond_friendzone = (
-            "first_date" in user_state.events or 
-            "first_confession" in user_state.events
+        # 事件锁 (Friendzone Wall) - 使用状态机判断
+        # 不同角色有不同的友情墙突破条件
+        is_beyond_friendzone = is_friendzone_broken(
+            user_state.character_id, 
+            user_state.events
         )
+        
         if difficulty > thresholds.friendzone_wall and not is_beyond_friendzone:
             check_passed = False
             refusal_reason = RefusalReason.FRIENDZONE_WALL.value
+            logger.info(f"📊 Friendzone Wall: difficulty={difficulty} > threshold={thresholds.friendzone_wall}, "
+                       f"events={user_state.events}")
         elif total_power >= difficulty:
             check_passed = True
         else:
@@ -390,44 +398,80 @@ class GameEngine:
         check_passed: bool
     ) -> str:
         """
-        检查是否触发新事件
+        检查是否触发新事件 (使用事件状态机)
         
         Returns:
             新事件名称 (如果没有触发则返回空字符串)
         """
         events = user_state.events
+        character_id = user_state.character_id
         
-        # first_chat: 首次对话
-        if "first_chat" not in events:
-            return "first_chat"
+        # 定义事件触发条件（与意图/状态的映射）
+        event_triggers = {
+            # first_chat: 首次对话，无条件
+            EventType.FIRST_CHAT: lambda: True,
+            
+            # first_compliment: 收到夸赞且情绪>20
+            EventType.FIRST_COMPLIMENT: lambda: (
+                l1_result.intent == "COMPLIMENT" and user_state.emotion > 20
+            ),
+            
+            # first_gift: 收到真实礼物（verified）
+            EventType.FIRST_GIFT: lambda: (
+                l1_result.intent in ["GIFT", "GIFT_SEND"] and 
+                getattr(l1_result, 'transaction_verified', False)
+            ),
+            
+            # first_date: 约会请求成功且亲密度足够
+            EventType.FIRST_DATE: lambda: (
+                l1_result.intent in ["REQUEST_DATE", "INVITATION"] and 
+                check_passed and user_state.intimacy_x >= 40
+            ),
+            
+            # first_kiss: 亲吻请求成功（需要高亲密度）
+            EventType.FIRST_KISS: lambda: (
+                l1_result.intent in ["REQUEST_KISS", "KISS"] and 
+                check_passed and user_state.intimacy_x >= 60
+            ),
+            
+            # first_confession: 表白成功
+            EventType.FIRST_CONFESSION: lambda: (
+                l1_result.intent in ["CONFESSION", "LOVE_CONFESSION"] and 
+                check_passed and user_state.intimacy_x >= 70
+            ),
+            
+            # first_nsfw: NSFW请求成功
+            EventType.FIRST_NSFW: lambda: (
+                l1_result.is_nsfw and check_passed
+            ),
+        }
         
-        # first_compliment: 首次收到夸赞且情绪>20
-        if "first_compliment" not in events:
-            if l1_result.intent == "COMPLIMENT" and user_state.emotion > 20:
-                return "first_compliment"
+        # 按优先级检查事件（first_chat 最优先）
+        priority_order = [
+            EventType.FIRST_CHAT,
+            EventType.FIRST_COMPLIMENT,
+            EventType.FIRST_GIFT,
+            EventType.FIRST_DATE,
+            EventType.FIRST_KISS,
+            EventType.FIRST_CONFESSION,
+            EventType.FIRST_NSFW,
+        ]
         
-        # first_gift: 首次收到礼物
-        if "first_gift" not in events:
-            if l1_result.intent == "GIFT":
-                return "first_gift"
-        
-        # first_date: 亲密度>40 且约会请求成功
-        if "first_date" not in events:
-            if l1_result.intent in ["REQUEST_DATE", "INVITATION"] and check_passed:
-                if user_state.intimacy_x >= 40:
-                    return "first_date"
-        
-        # first_confession: 亲密度>70 且表白成功
-        if "first_confession" not in events:
-            if l1_result.intent in ["CONFESSION", "LOVE_CONFESSION"] and check_passed:
-                if user_state.intimacy_x >= 70:
-                    return "first_confession"
-        
-        # first_nsfw: 恋人身份 + NSFW请求成功
-        if "first_nsfw" not in events:
-            if l1_result.is_nsfw and check_passed:
-                if "first_confession" in events:  # 需要先表白成功
-                    return "first_nsfw"
+        for event_type in priority_order:
+            # 1. 检查状态机是否允许触发
+            if not event_state_machine.can_trigger_event(
+                character_id, event_type, events
+            ):
+                continue
+            
+            # 2. 检查具体触发条件
+            trigger_check = event_triggers.get(event_type, lambda: False)
+            if trigger_check():
+                logger.info(
+                    f"Event triggered via state machine: {event_type} "
+                    f"(chain={event_state_machine.get_chain_type(character_id)})"
+                )
+                return event_type
         
         return ""
     
