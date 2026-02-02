@@ -34,7 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.llm_service import GrokService
 from app.models.database.event_memory_models import EventMemory, EventType
 from app.services.character_config import get_character_config, CharacterConfig
-from app.core.database import get_db_session
+from app.core.database import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -365,14 +365,7 @@ class EventStoryGenerator:
             List of event memory dictionaries
         """
         try:
-            if db_session:
-                session = db_session
-                should_close = False
-            else:
-                session = await get_db_session()
-                should_close = True
-            
-            try:
+            async def _query(session):
                 stmt = select(EventMemory).where(
                     and_(
                         EventMemory.user_id == user_id,
@@ -382,11 +375,13 @@ class EventStoryGenerator:
                 
                 result = await session.execute(stmt)
                 memories = result.scalars().all()
-                
                 return [memory.to_dict() for memory in memories]
-            finally:
-                if should_close:
-                    await session.close()
+            
+            if db_session:
+                return await _query(db_session)
+            else:
+                async with get_db() as session:
+                    return await _query(session)
                     
         except Exception as e:
             logger.exception(f"Error fetching event memories: {e}")
@@ -526,14 +521,7 @@ class EventStoryGenerator:
     ) -> Optional[EventMemory]:
         """Check if a story already exists for this event"""
         try:
-            if db_session:
-                session = db_session
-                should_close = False
-            else:
-                session = await get_db_session()
-                should_close = True
-            
-            try:
+            async def _query(session):
                 stmt = select(EventMemory).where(
                     and_(
                         EventMemory.user_id == user_id,
@@ -541,12 +529,14 @@ class EventStoryGenerator:
                         EventMemory.event_type == event_type
                     )
                 )
-                
                 result = await session.execute(stmt)
                 return result.scalar_one_or_none()
-            finally:
-                if should_close:
-                    await session.close()
+            
+            if db_session:
+                return await _query(db_session)
+            else:
+                async with get_db() as session:
+                    return await _query(session)
                     
         except Exception as e:
             logger.exception(f"Error checking existing story: {e}")
@@ -564,14 +554,7 @@ class EventStoryGenerator:
     ) -> Optional[EventMemory]:
         """Save generated story to database"""
         try:
-            if db_session:
-                session = db_session
-                should_close = False
-            else:
-                session = await get_db_session()
-                should_close = True
-            
-            try:
+            async def _insert(session):
                 event_memory = EventMemory(
                     user_id=user_id,
                     character_id=character_id,
@@ -589,9 +572,12 @@ class EventStoryGenerator:
                 
                 logger.info(f"Saved event memory: {event_memory.id}")
                 return event_memory
-            finally:
-                if should_close:
-                    await session.close()
+            
+            if db_session:
+                return await _insert(db_session)
+            else:
+                async with get_db() as session:
+                    return await _insert(session)
                     
         except Exception as e:
             logger.exception(f"Error saving story: {e}")

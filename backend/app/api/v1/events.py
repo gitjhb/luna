@@ -15,7 +15,7 @@ from datetime import datetime
 from uuid import UUID
 
 from app.services.event_story_generator import event_story_generator, EventType
-from app.core.database import get_db_session
+from app.core.database import get_db
 
 router = APIRouter(prefix="/events")
 
@@ -277,10 +277,10 @@ async def delete_event_memory(
     # TODO: Add admin authorization check
     
     try:
-        async with await get_db_session() as session:
-            from sqlalchemy import delete, and_
-            from app.models.database.event_memory_models import EventMemory
-            
+        from sqlalchemy import delete, and_
+        from app.models.database.event_memory_models import EventMemory
+        
+        async with get_db() as session:
             stmt = delete(EventMemory).where(
                 and_(
                     EventMemory.user_id == user_id,
@@ -290,7 +290,7 @@ async def delete_event_memory(
             )
             
             result = await session.execute(stmt)
-            await session.commit()
+            # Note: get_db() context manager handles commit
             
             if result.rowcount == 0:
                 raise HTTPException(
