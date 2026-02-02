@@ -503,12 +503,25 @@ class GiftService:
                 except Exception as e:
                     logger.warning(f"Could not get emotion state: {e}")
             
+            # Generate AI response for the gift (核心：一切交互都要过AI)
+            ai_response = await self.generate_ai_gift_response(
+                user_id=user_id,
+                character_id=character_id,
+                gift=gift,
+                xp_awarded=actual_xp,
+                intimacy_level=current_level,
+                current_mood=current_mood,
+                cold_war_unlocked=cold_war_unlocked,
+                status_effect=status_effect_applied,
+            )
+            
             return {
                 "success": True,
                 "is_duplicate": False,
                 **result,
                 "cold_war_unlocked": cold_war_unlocked,
                 "emotion_boosted": emotion_boosted,
+                "ai_response": ai_response,  # AI生成的礼物反应
                 "system_message": self._build_gift_system_message(
                     gift, 
                     actual_xp,
@@ -593,6 +606,101 @@ class GiftService:
             msg += "\n这是一份不错的礼物。"
         
         return msg
+    
+    # =========================================================================
+    # AI Gift Response Generation
+    # =========================================================================
+    
+    async def generate_ai_gift_response(
+        self,
+        user_id: str,
+        character_id: str,
+        gift: dict,
+        xp_awarded: int,
+        intimacy_level: int = 1,
+        current_mood: str = "neutral",
+        cold_war_unlocked: bool = False,
+        status_effect: Optional[dict] = None,
+    ) -> str:
+        """
+        调用 LLM 生成礼物反应，而不是用静态文本。
+        
+        核心原则：一切交互都要过 AI，这样才有意思。
+        """
+        try:
+            from app.services.llm_service import GrokService
+            from app.api.v1.characters import get_character_by_id
+            
+            llm = GrokService()
+            
+            # 获取角色信息
+            char_data = get_character_by_id(character_id)
+            char_name = char_data.get("name", "AI") if char_data else "AI"
+            char_prompt = char_data.get("system_prompt", "") if char_data else ""
+            
+            gift_name = gift.get("gift_name_cn") or gift.get("gift_name")
+            icon = gift.get("icon", "🎁")
+            price = gift['gift_price']
+            
+            # 构建礼物场景提示
+            gift_context = f"""用户刚刚送给你一份礼物：{icon} {gift_name}（价值 {price} 月石）
+
+当前状态：
+- 亲密度等级：{intimacy_level}
+- 当前情绪：{current_mood}
+- 好感度增加：+{xp_awarded}
+"""
+            if cold_war_unlocked:
+                gift_context += "- 特殊：这份礼物解除了你们之间的冷战，你的心软了\n"
+            
+            if status_effect:
+                effect_desc = {
+                    "tipsy": "喝了红酒有点微醺",
+                    "maid_mode": "进入女仆模式",
+                    "truth_mode": "被真话药水影响",
+                }.get(status_effect["type"], status_effect["type"])
+                gift_context += f"- 状态效果：{effect_desc}\n"
+            
+            # 价值感受
+            if price >= 1000:
+                gift_context += "\n这是一份极其贵重的礼物！"
+            elif price >= 200:
+                gift_context += "\n这是一份很珍贵的礼物。"
+            elif price >= 50:
+                gift_context += "\n这是一份不错的礼物。"
+            
+            system_prompt = f"""{char_prompt}
+
+### 当前场景
+{gift_context}
+
+### 回复要求
+- 用你的角色风格对收到礼物做出真实反应
+- 动作和神态描写放在中文圆括号（）内
+- 根据当前情绪和亲密度调整反应热情程度
+- 如果是冷战后收到道歉礼物，表现出心软但还有点别扭
+- 回复简短自然，1-3句话即可，不要太长
+"""
+            
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"[收到礼物：{icon} {gift_name}]"}
+            ]
+            
+            response = await llm.chat_completion(
+                messages=messages,
+                temperature=0.8,
+                max_tokens=200,
+            )
+            
+            ai_response = response["choices"][0]["message"]["content"]
+            logger.info(f"AI gift response generated: {ai_response[:50]}...")
+            return ai_response
+            
+        except Exception as e:
+            logger.error(f"Failed to generate AI gift response: {e}")
+            # 降级到简单回复
+            return f"（收到{gift.get('icon', '🎁')}）谢谢你的礼物～"
     
     # =========================================================================
     # Gift Status Management
