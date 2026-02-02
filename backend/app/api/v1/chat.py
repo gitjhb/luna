@@ -223,15 +223,27 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         ]
         
         # =====================================================================
-        # Step 1: L1 感知层 (Perception Engine)
+        # Step 0.5: 加载当前情绪状态 (用于 L1 上下文感知)
         # =====================================================================
-        logger.info(f"📡 Step 1: L1 Perception Engine")
+        current_emotion = 0
+        try:
+            from app.services.emotion_engine_v2 import emotion_engine
+            current_emotion = await emotion_engine.get_score(user_id, character_id)
+            logger.info(f"📊 Pre-L1 Emotion: {current_emotion}")
+        except Exception as e:
+            logger.warning(f"Failed to get emotion for L1: {e}")
+        
+        # =====================================================================
+        # Step 1: L1 感知层 (Perception Engine) - 情绪感知版
+        # =====================================================================
+        logger.info(f"📡 Step 1: L1 Perception Engine (emotion-aware)")
         chat_debug.log_l1_input(request.message, intimacy_level, context_messages)
         
         l1_result = await perception_engine.analyze(
             message=request.message,
             intimacy_level=intimacy_level,
-            context_messages=context_messages
+            context_messages=context_messages,
+            current_emotion=current_emotion  # 传入当前情绪
         )
         
         chat_debug.log_l1_output(l1_result)

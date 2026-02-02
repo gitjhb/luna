@@ -103,6 +103,14 @@ OUTPUT ONLY A VALID JSON OBJECT.
 ### Context
 - Character: Luna (Elegant, Poetic, slightly Tsundere but deep down caring).
 - User Relationship Level: {relationship_level}
+- Current AI Emotion: {emotion_state} ({emotion_value})
+
+### ⚠️ Emotion-Aware Analysis
+The AI's current emotional state MUST influence your analysis:
+- If AI is ANGRY/ANNOYED and user makes demands (NSFW, FLIRT) → sentiment should be NEGATIVE (making demands when angry = 火上浇油)
+- If AI is ANGRY and user apologizes → sentiment should be slightly positive
+- If AI is HAPPY and user compliments → sentiment should be positive
+- sentiment_score reflects "how this message will affect AI's mood", NOT just the message's literal tone
 
 ### Analysis Rules
 
@@ -126,9 +134,14 @@ OUTPUT ONLY A VALID JSON OBJECT.
    - NOTE: If the user is just giving value (e.g., "I bought you a gift", "I love you"), Difficulty is LOW (0-10). Difficulty is for TAKING value.
 
 3. Sentiment Score (-1.0 to +1.0):
-   - Negative values: hostile, critical, insulting
-   - Near zero: neutral, factual
-   - Positive values: friendly, complimenting, loving
+   - This is the EXPECTED IMPACT on AI's emotion, NOT just the message's literal tone!
+   - Consider the AI's current emotional state:
+     * AI is angry (-50) + user says "let's have sex" → sentiment = -0.6 (inappropriate timing!)
+     * AI is angry (-50) + user apologizes → sentiment = +0.3 (good, trying to make up)
+     * AI is happy (+50) + user compliments → sentiment = +0.5 (positive reinforcement)
+   - Negative values: will make AI more upset
+   - Near zero: neutral impact
+   - Positive values: will improve AI's mood
 
 4. Intent Categories (STRICTLY CHOOSE ONE from this list):
    Basic Interaction:
@@ -272,11 +285,27 @@ class PerceptionEngine:
         else:
             return "Intimate (deep emotional bond)"
     
+    def _get_emotion_state(self, emotion_value: int) -> str:
+        """将情绪值转换为状态描述"""
+        if emotion_value >= 50:
+            return "HAPPY"
+        elif emotion_value >= 20:
+            return "CONTENT"
+        elif emotion_value >= -19:
+            return "NEUTRAL"
+        elif emotion_value >= -49:
+            return "ANNOYED"
+        elif emotion_value >= -79:
+            return "ANGRY"
+        else:
+            return "COLD_WAR"
+    
     async def analyze(
         self,
         message: str,
         intimacy_level: int = 1,
-        context_messages: list = None
+        context_messages: list = None,
+        current_emotion: int = 0
     ) -> L1Result:
         """
         分析用户消息
@@ -285,15 +314,19 @@ class PerceptionEngine:
             message: 用户消息
             intimacy_level: 当前亲密度等级 (1-50+)
             context_messages: 上下文消息列表 (可选)
+            current_emotion: 当前 AI 情绪值 (-100 to 100)
             
         Returns:
             L1Result
         """
         relationship_level = self._get_relationship_level(intimacy_level)
+        emotion_state = self._get_emotion_state(current_emotion)
         
         # 构建 prompt
         system_prompt = L1_SYSTEM_PROMPT.format(
             relationship_level=relationship_level,
+            emotion_state=emotion_state,
+            emotion_value=current_emotion,
             user_message=message
         )
         
