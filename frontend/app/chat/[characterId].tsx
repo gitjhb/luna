@@ -50,6 +50,10 @@ import { useEmotionTheme } from '../../hooks/useEmotionTheme';
 import { EmotionEffectsLayer, EmotionIndicator } from '../../components/EmotionEffects';
 import { DebugButton } from '../../components/DebugPanel';
 import { ExtraData } from '../../store/chatStore';
+import EventStoryCard from '../../components/EventStoryCard';
+import EventStoryModal from '../../components/EventStoryModal';
+import MemoriesModal from '../../components/MemoriesModal';
+import { eventService, EventStoryPlaceholder, EventMemory } from '../../services/eventService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -97,6 +101,12 @@ export default function ChatScreen() {
   const [emotionState, setEmotionState] = useState('neutral');
   const [lastExtraData, setLastExtraData] = useState<ExtraData | null>(null);  // Debug info
   const [lastTokensUsed, setLastTokensUsed] = useState<number>(0);
+  
+  // 📖 剧情系统状态
+  const [showEventStoryModal, setShowEventStoryModal] = useState(false);
+  const [selectedEventPlaceholder, setSelectedEventPlaceholder] = useState<EventStoryPlaceholder | null>(null);
+  const [showMemoriesModal, setShowMemoriesModal] = useState(false);
+  const [readEventIds, setReadEventIds] = useState<Set<string>>(new Set());
   
   // 🎨 动态主题 - 根据情绪状态自动切换
   const {
@@ -556,6 +566,24 @@ export default function ChatScreen() {
     const handleUnlock = () => {
       setShowSubscriptionModal(true);
     };
+    
+    // 📖 检测事件剧情消息
+    if (isSystem) {
+      const eventPlaceholder = eventService.parseEventStoryPlaceholder(item.content);
+      if (eventPlaceholder) {
+        return (
+          <EventStoryCard
+            placeholder={eventPlaceholder}
+            characterName={characterName}
+            isRead={readEventIds.has(item.messageId)}
+            onPress={() => {
+              setSelectedEventPlaceholder(eventPlaceholder);
+              setShowEventStoryModal(true);
+            }}
+          />
+        );
+      }
+    }
     
     // 🎁 礼物事件消息 - 特殊渲染 (居中的小灰条)
     if (isGift || isSystem) {
@@ -1145,6 +1173,60 @@ export default function ChatScreen() {
         intimacyLevel={relationshipLevel || 1}
         emotionScore={emotionScore}
         emotionState={emotionState}
+        onOpenMemories={() => {
+          setShowCharacterInfo(false);
+          setTimeout(() => setShowMemoriesModal(true), 300);
+        }}
+      />
+      
+      {/* 📖 剧情阅读弹窗 */}
+      <EventStoryModal
+        visible={showEventStoryModal}
+        onClose={() => {
+          setShowEventStoryModal(false);
+          // Mark as read
+          if (selectedEventPlaceholder) {
+            const messageWithEvent = messages.find(m => {
+              const placeholder = eventService.parseEventStoryPlaceholder(m.content);
+              return placeholder?.event_type === selectedEventPlaceholder.event_type;
+            });
+            if (messageWithEvent) {
+              setReadEventIds(prev => new Set([...prev, messageWithEvent.messageId]));
+            }
+          }
+          setSelectedEventPlaceholder(null);
+        }}
+        placeholder={selectedEventPlaceholder}
+        characterId={params.characterId}
+        characterName={characterName}
+        backgroundUrl={backgroundImage}
+        onStoryGenerated={(storyId) => {
+          // Update placeholder status if needed
+          console.log('Story generated:', storyId);
+        }}
+      />
+      
+      {/* 📖 回忆录弹窗 */}
+      <MemoriesModal
+        visible={showMemoriesModal}
+        onClose={() => setShowMemoriesModal(false)}
+        characterId={params.characterId}
+        characterName={characterName}
+        onSelectMemory={(memory) => {
+          setShowMemoriesModal(false);
+          // Create a placeholder from the memory to show in modal
+          const placeholder: EventStoryPlaceholder = {
+            type: 'event_story',
+            event_type: memory.event_type,
+            character_id: memory.character_id,
+            status: 'generated',
+            story_id: memory.id,
+          };
+          setTimeout(() => {
+            setSelectedEventPlaceholder(placeholder);
+            setShowEventStoryModal(true);
+          }, 300);
+        }}
       />
       
       {/* Toast Notification */}

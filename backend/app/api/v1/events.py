@@ -307,3 +307,130 @@ async def delete_event_memory(
             status_code=500,
             detail=f"Failed to delete event memory: {str(e)}"
         )
+
+
+# =============================================================================
+# Routes with authenticated user (using /me/ prefix)
+# =============================================================================
+
+def _get_user_id(request: Request) -> str:
+    """Extract user_id from authenticated request or use demo user"""
+    user = getattr(request.state, "user", None)
+    return str(user.user_id) if user else "demo-user-123"
+
+
+@router.get("/me/{character_id}", response_model=EventMemoriesListResponse)
+async def get_my_event_memories(
+    character_id: str,
+    request: Request,
+    event_type: Optional[str] = Query(None, description="Filter by event type"),
+):
+    """
+    Get all event memories for current user with a character.
+    Uses authenticated user ID.
+    """
+    user_id = _get_user_id(request)
+    
+    try:
+        if event_type:
+            memory = await event_story_generator.get_event_memory(
+                user_id=user_id,
+                character_id=character_id,
+                event_type=event_type,
+            )
+            memories = [memory] if memory else []
+        else:
+            memories = await event_story_generator.get_event_memories(
+                user_id=user_id,
+                character_id=character_id,
+            )
+        
+        return EventMemoriesListResponse(
+            success=True,
+            count=len(memories),
+            memories=[EventMemoryResponse(**m) for m in memories],
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch event memories: {str(e)}"
+        )
+
+
+@router.get("/me/{character_id}/{event_type}", response_model=EventMemoryResponse)
+async def get_my_specific_event_memory(
+    character_id: str,
+    event_type: str,
+    request: Request,
+):
+    """
+    Get a specific event memory for current user.
+    """
+    user_id = _get_user_id(request)
+    
+    try:
+        memory = await event_story_generator.get_event_memory(
+            user_id=user_id,
+            character_id=character_id,
+            event_type=event_type,
+        )
+        
+        if not memory:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Event memory not found for event_type: {event_type}"
+            )
+        
+        return EventMemoryResponse(**memory)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch event memory: {str(e)}"
+        )
+
+
+@router.post("/me/{character_id}/generate", response_model=StoryGenerationResponse)
+async def generate_my_event_story(
+    character_id: str,
+    body: StoryGenerationRequest,
+    request: Request,
+):
+    """
+    Generate a story for current user.
+    """
+    user_id = _get_user_id(request)
+    
+    if not EventType.is_story_event(body.event_type):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Event type '{body.event_type}' does not support story generation"
+        )
+    
+    try:
+        result = await event_story_generator.generate_event_story(
+            user_id=user_id,
+            character_id=character_id,
+            event_type=body.event_type,
+            chat_history=body.chat_history,
+            memory_context=body.memory_context,
+            relationship_state=body.relationship_state,
+            save_to_db=True,
+        )
+        
+        return StoryGenerationResponse(
+            success=result.success,
+            event_type=body.event_type,
+            story_content=result.story_content,
+            event_memory_id=result.event_memory_id,
+            error=result.error,
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate story: {str(e)}"
+        )

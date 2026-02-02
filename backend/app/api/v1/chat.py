@@ -278,8 +278,32 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             )
         
         # 检查是否触发新事件
+        event_story_message_id = None
         if game_result.new_event:
             logger.info(f"🎉 New event unlocked: {game_result.new_event}")
+            
+            # 检查是否是支持剧情生成的事件类型
+            from app.services.event_story_generator import EventType
+            if EventType.is_story_event(game_result.new_event):
+                import json
+                # 创建事件占位符消息
+                event_placeholder = json.dumps({
+                    "type": "event_story",
+                    "event_type": game_result.new_event,
+                    "character_id": character_id,
+                    "status": "pending",
+                    "story_id": None
+                }, ensure_ascii=False)
+                
+                # 插入占位符消息到聊天记录
+                event_msg = await chat_repo.add_message(
+                    session_id=session_id,
+                    role="system",
+                    content=event_placeholder,
+                    tokens_used=0,
+                )
+                event_story_message_id = event_msg["message_id"]
+                logger.info(f"📖 Event story placeholder inserted: {game_result.new_event}")
         
         # =====================================================================
         # Step 3: L2 执行层 (Generation Engine)
@@ -482,6 +506,12 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             "new_event": game_result.new_event,
             "intent": game_result.intent,
         }
+        # Add event story message ID if a new story event was triggered
+        if 'event_story_message_id' in dir() and event_story_message_id:
+            extra_data["event_story"] = {
+                "message_id": event_story_message_id,
+                "event_type": game_result.new_event,
+            }
     
     return ChatCompletionResponse(
         message_id=msg_id,

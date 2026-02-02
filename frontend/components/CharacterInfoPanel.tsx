@@ -84,6 +84,7 @@ interface CharacterInfoPanelProps {
   intimacyLevel?: number;
   emotionScore?: number;
   emotionState?: string;
+  onOpenMemories?: () => void;
 }
 
 type TabType = 'profile' | 'events' | 'gifts' | 'gallery' | 'memory';
@@ -97,6 +98,7 @@ export default function CharacterInfoPanel({
   intimacyLevel: propIntimacyLevel,
   emotionScore: propEmotionScore,
   emotionState: propEmotionState,
+  onOpenMemories,
 }: CharacterInfoPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>('profile');
   const [loading, setLoading] = useState(false);
@@ -337,6 +339,25 @@ export default function CharacterInfoPanel({
           </View>
         </View>
       </View>
+
+      {/* 📖 回忆录入口 */}
+      {onOpenMemories && (
+        <TouchableOpacity style={styles.memoriesButton} onPress={onOpenMemories}>
+          <LinearGradient
+            colors={['rgba(139, 92, 246, 0.2)', 'rgba(236, 72, 153, 0.2)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.memoriesButtonGradient}
+          >
+            <Text style={styles.memoriesButtonIcon}>📖</Text>
+            <View style={styles.memoriesButtonContent}>
+              <Text style={styles.memoriesButtonTitle}>回忆录</Text>
+              <Text style={styles.memoriesButtonSubtitle}>重温与{characterName}的精彩时刻</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.5)" />
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
 
       {/* 情绪状态 */}
       <View style={styles.statsCard}>
@@ -945,5 +966,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.colors.text.tertiary,
     marginTop: 4,
+  },
+  
+  // Memories Button
+  memoriesButton: {
+    marginBottom: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  memoriesButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+    borderRadius: 16,
+  },
+  memoriesButtonIcon: {
+    fontSize: 28,
+    marginRight: 12,
+  },
+  memoriesButtonContent: {
+    flex: 1,
+  },
+  memoriesButtonTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  memoriesButtonSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: 2,
   },
 });
