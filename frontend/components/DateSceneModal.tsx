@@ -251,6 +251,12 @@ export default function DateSceneModal({
     }
   }, [visible]);
   
+  // 情绪太低不能约会
+  const [emotionTooLow, setEmotionTooLow] = useState<{
+    currentEmotion: number;
+    message: string;
+  } | null>(null);
+
   // Check cooldown status and active session
   const checkCooldown = async () => {
     try {
@@ -261,6 +267,18 @@ export default function DateSceneModal({
         setActiveSession(status.active_session);
       } else {
         setActiveSession(null);
+      }
+      
+      // Check emotion (太生气不能约会)
+      if (!status.can_date && status.reason === 'emotion_too_low') {
+        setEmotionTooLow({
+          currentEmotion: status.current_emotion,
+          message: status.message || '她现在心情不好，不想和你约会',
+        });
+        setCooldownInfo(null);
+        return;
+      } else {
+        setEmotionTooLow(null);
       }
       
       // Check cooldown
@@ -656,8 +674,21 @@ export default function DateSceneModal({
         </View>
       )}
       
+      {/* 情绪太低提示 */}
+      {emotionTooLow && !activeSession && (
+        <View style={styles.emotionWarningBox}>
+          <Text style={styles.emotionWarningIcon}>😤</Text>
+          <Text style={styles.emotionWarningText}>
+            {emotionTooLow.message}
+          </Text>
+          <Text style={styles.emotionWarningHint}>
+            💡 送她一份礼物来改善心情吧
+          </Text>
+        </View>
+      )}
+      
       {/* Cooldown 提示 */}
-      {cooldownInfo?.inCooldown && !activeSession && (
+      {cooldownInfo?.inCooldown && !activeSession && !emotionTooLow && (
         <View style={styles.cooldownBox}>
           <Text style={styles.cooldownIcon}>⏰</Text>
           <Text style={styles.cooldownText}>
@@ -732,9 +763,9 @@ export default function DateSceneModal({
       
       {!activeSession && (
         <TouchableOpacity
-          style={[styles.startButton, (!selectedScenario || cooldownInfo?.inCooldown) && styles.startButtonDisabled]}
+          style={[styles.startButton, (!selectedScenario || cooldownInfo?.inCooldown || emotionTooLow) && styles.startButtonDisabled]}
           onPress={handleStartDate}
-          disabled={!selectedScenario || loading || cooldownInfo?.inCooldown}
+          disabled={!selectedScenario || loading || cooldownInfo?.inCooldown || !!emotionTooLow}
         >
           <LinearGradient
             colors={selectedScenario ? ['#FF6B9D', '#C44569'] : ['#666', '#444']}
@@ -1122,6 +1153,32 @@ const styles = StyleSheet.create({
   abandonBtnText: {
     color: 'rgba(255,255,255,0.7)',
     fontSize: 14,
+  },
+  
+  // 情绪太低提示
+  emotionWarningBox: {
+    backgroundColor: 'rgba(255,100,100,0.15)',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,100,100,0.3)',
+  },
+  emotionWarningIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  emotionWarningText: {
+    color: '#FF6B6B',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  emotionWarningHint: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    textAlign: 'center',
   },
   
   // Cooldown 提示

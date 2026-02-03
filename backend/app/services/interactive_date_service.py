@@ -399,7 +399,26 @@ class InteractiveDateService:
             cooldown_until: 冷却结束时间
             cooldown_remaining_minutes: 剩余分钟
             active_session: 进行中的约会
+            emotion_too_low: 情绪太低不能约会
         """
+        # 检查角色情绪（太生气不能约会）
+        from app.services.emotion_service import emotion_service
+        EMOTION_THRESHOLD = -40
+        
+        try:
+            emotion_status = await emotion_service.get_status(user_id, character_id)
+            current_emotion = emotion_status.get("current_score", 0)
+            if current_emotion < EMOTION_THRESHOLD:
+                return {
+                    "can_date": False,
+                    "reason": "emotion_too_low",
+                    "current_emotion": current_emotion,
+                    "required_emotion": EMOTION_THRESHOLD,
+                    "message": "她现在心情不好，不想和你约会。试试送个礼物哄哄她？",
+                }
+        except Exception as e:
+            logger.warning(f"Failed to check emotion: {e}")
+        
         # 检查是否有进行中的约会（先内存，再数据库）
         active_session = await self._get_active_session(user_id, character_id)
         if active_session:
