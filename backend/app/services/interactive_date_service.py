@@ -1482,10 +1482,11 @@ class InteractiveDateService:
         from app.services.date_service import date_service
         await date_service._trigger_first_date_event(session.user_id, session.character_id)
         
-        # 保存简化的约会事件到聊天历史（作为特殊气泡显示）
+        # 保存结构化约会事件到聊天历史（作为特殊气泡显示）
         try:
             from app.services.chat_service import chat_service
             from app.services.character_config import get_character_config
+            from app.models.event_message import create_date_event
             
             character = get_character_config(session.character_id)
             character_name = character.name if character else "角色"
@@ -1499,16 +1500,22 @@ class InteractiveDateService:
             }
             ending_desc = ending_desc_map.get(ending_type, "普通")
             
-            # 格式：[date] 场景名 | 结局类型
-            date_event = f"[date] {session.scenario_name}｜{ending_desc}的约会"
+            # 使用新的结构化事件消息格式
+            # detail_id 关联到 event_memories 表的回忆录，用于点击查看详情
+            date_event = create_date_event(
+                scenario_name=session.scenario_name,
+                ending_text=f"{ending_desc}的约会",
+                detail_id=session.id,  # 约会session ID，可用于获取详细故事
+                unlock_cost=10,  # 解锁查看详情需要10月石
+            )
 
             await chat_service.add_system_memory(
                 user_id=session.user_id,
                 character_id=session.character_id,
-                memory_content=date_event,
+                memory_content=date_event.to_json(),
                 memory_type="date",
             )
-            logger.info(f"📅 [DATE] Memory saved: {date_event}")
+            logger.info(f"📅 [DATE] Event memory saved: {date_event.summary}")
         except Exception as e:
             logger.warning(f"Failed to save date memory to chat: {e}")
         

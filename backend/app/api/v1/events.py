@@ -434,3 +434,197 @@ async def generate_my_event_story(
             status_code=500,
             detail=f"Failed to generate story: {str(e)}"
         )
+
+
+# =============================================================================
+# 事件详情解锁 API（付费解锁回忆详情）
+# =============================================================================
+
+class UnlockEventRequest(BaseModel):
+    """解锁事件详情请求"""
+    character_id: str
+    detail_id: str
+    event_type: str
+
+
+class UnlockEventResponse(BaseModel):
+    """解锁事件详情响应"""
+    success: bool
+    content: Optional[str] = None
+    new_balance: Optional[int] = None
+    error: Optional[str] = None
+
+
+class EventDetailResponse(BaseModel):
+    """事件详情响应"""
+    success: bool
+    content: Optional[str] = None
+    error: Optional[str] = None
+
+
+@router.post("/unlock", response_model=UnlockEventResponse)
+async def unlock_event_detail(
+    body: UnlockEventRequest,
+    request: Request,
+):
+    """
+    解锁事件详情（付费）
+    
+    扣除月石后返回详情内容。
+    """
+    from app.services.payment_service import payment_service
+    from app.services.interactive_date_service import interactive_date_service
+    
+    user_id = _get_user_id(request)
+    
+    # 解锁费用（可以根据 event_type 调整）
+    UNLOCK_COSTS = {
+        "date": 10,
+        "confession": 15,
+        "kiss": 20,
+        "intimate": 25,
+        "gift": 0,  # 礼物免费
+        "milestone": 0,  # 里程碑免费
+    }
+    unlock_cost = UNLOCK_COSTS.get(body.event_type, 10)
+    
+    # 免费的直接返回详情
+    if unlock_cost == 0:
+        content = await _get_event_detail_content(
+            user_id, body.character_id, body.detail_id, body.event_type
+        )
+        return UnlockEventResponse(
+            success=True,
+            content=content,
+        )
+    
+    try:
+        # 检查余额
+        wallet = await payment_service.get_wallet(user_id)
+        if wallet["total_credits"] < unlock_cost:
+            return UnlockEventResponse(
+                success=False,
+                error=f"月石不足，需要 {unlock_cost} 月石",
+            )
+        
+        # 扣除月石
+        await payment_service.deduct_credits(user_id, unlock_cost)
+        
+        # 获取详情内容
+        content = await _get_event_detail_content(
+            user_id, body.character_id, body.detail_id, body.event_type
+        )
+        
+        new_balance = wallet["total_credits"] - unlock_cost
+        
+        return UnlockEventResponse(
+            success=True,
+            content=content,
+            new_balance=new_balance,
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"解锁失败: {str(e)}"
+        )
+
+
+@router.get("/detail/{character_id}/{detail_id}", response_model=EventDetailResponse)
+async def get_event_detail(
+    character_id: str,
+    detail_id: str,
+    request: Request,
+):
+    """
+    获取事件详情（已解锁或免费的）
+    
+    如果是约会事件，返回约会故事摘要。
+    如果是其他事件，返回 event_memories 表中的 story_content。
+    """
+    user_id = _get_user_id(request)
+    
+    try:
+        content = await _get_event_detail_content(user_id, character_id, detail_id, event_type=None)
+        
+        if not content:
+            return EventDetailResponse(
+                success=False,
+                error="详情不存在",
+            )
+        
+        return EventDetailResponse(
+            success=True,
+            content=content,
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取详情失败: {str(e)}"
+        )
+
+
+async def _get_event_detail_content(
+    user_id: str,
+    character_id: str,
+    detail_id: str,
+    event_type: Optional[str] = None,
+) -> Optional[str]:
+    """
+    获取事件详情内容
+    
+    根据 detail_id 判断是约会故事还是其他事件回忆。
+    """
+    from app.models.database.date_models import DateSessionDB
+    from app.models.database.event_memory_models import EventMemory
+    from sqlalchemy import select
+    
+    async with get_db() as session:
+        # 先尝试从 date_sessions 表获取（约会故事）
+        try:
+            result = await session.execute(
+                select(DateSessionDB).where(DateSessionDB.id == detail_id)
+            )
+            date_session = result.scalar_one_or_none()
+            
+            if date_session and date_session.story_summary:
+                return date_session.story_summary
+        except Exception:
+            pass
+        
+        # 再尝试从 event_memories 表获取
+        try:
+            result = await session.execute(
+                select(EventMemory).where(
+                    EventMemory.id == detail_id
+                )
+            )
+            memory = result.scalar_one_or_none()
+            
+            if memory:
+                return memory.story_content
+        except Exception:
+            pass
+        
+        # 最后尝试按 event_type 查找最新的记录
+        if event_type:
+            try:
+                from sqlalchemy import and_
+                result = await session.execute(
+                    select(EventMemory).where(
+                        and_(
+                            EventMemory.user_id == user_id,
+                            EventMemory.character_id == character_id,
+                            EventMemory.event_type == event_type,
+                        )
+                    ).order_by(EventMemory.generated_at.desc()).limit(1)
+                )
+                memory = result.scalar_one_or_none()
+                
+                if memory:
+                    return memory.story_content
+            except Exception:
+                pass
+    
+    return None

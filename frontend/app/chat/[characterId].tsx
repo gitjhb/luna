@@ -56,6 +56,7 @@ import { ExtraData } from '../../store/chatStore';
 import EventStoryCard from '../../components/EventStoryCard';
 import EventStoryModal from '../../components/EventStoryModal';
 import MemoriesModal from '../../components/MemoriesModal';
+import EventBubble from '../../components/EventBubble';
 import { eventService, EventStoryPlaceholder, EventMemory } from '../../services/eventService';
 import { IntimacyInfoPanel } from '../../components/IntimacyInfoPanel';
 import { interactionsService } from '../../services/interactionsService';
@@ -692,7 +693,7 @@ export default function ChatScreen() {
       setShowSubscriptionModal(true);
     };
     
-    // 📖 检测事件剧情消息
+    // 📖 检测事件剧情消息 (旧版 event_story 格式)
     if (isSystem) {
       const eventPlaceholder = eventService.parseEventStoryPlaceholder(item.content);
       if (eventPlaceholder) {
@@ -710,7 +711,30 @@ export default function ChatScreen() {
       }
     }
     
-    // 💕 约会事件消息 - 特殊渲染 (居中的小卡片)
+    // 🆕 检测新版通用事件消息 (JSON格式，type: "event")
+    if (isSystem) {
+      try {
+        const eventData = JSON.parse(item.content);
+        if (eventData.type === 'event') {
+          // 使用新的 EventBubble 组件渲染
+          return (
+            <EventBubble
+              eventData={eventData}
+              characterId={params.characterId}
+              characterName={characterName}
+              onDetailViewed={() => {
+                // 标记为已读
+                setReadEventIds(prev => new Set([...prev, item.messageId]));
+              }}
+            />
+          );
+        }
+      } catch {
+        // 不是 JSON 格式，继续其他检测
+      }
+    }
+    
+    // 💕 约会事件消息 - 旧格式兼容 (居中的小卡片)
     if (isSystem && item.content.startsWith('[date]')) {
       // 格式: "[date] 场景名｜结局描述"
       const dateMatch = item.content.match(/\[date\]\s*(.+)｜(.+)/);
@@ -729,7 +753,7 @@ export default function ChatScreen() {
       );
     }
     
-    // 🎁 礼物事件消息 - 特殊渲染 (居中的小灰条)
+    // 🎁 礼物事件消息 - 旧格式兼容 (居中的小灰条)
     if (isGift || (isSystem && item.content.includes('[送出礼物]'))) {
       // 解析礼物名称 (格式: "[送出礼物] 🌹 玫瑰")
       const giftMatch = item.content.match(/\[送出礼物\]\s*(.+)/);

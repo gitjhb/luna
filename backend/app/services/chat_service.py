@@ -360,7 +360,11 @@ class ChatService:
         
         System messages (like date memories) are moved to the front
         so the AI sees them first as context.
+        
+        Event messages (type: "event") are converted to summaries to save tokens.
         """
+        from app.models.event_message import EventMessage
+        
         redis = await get_redis()
         cache_key = f"session:{session_id}:context"
         
@@ -380,11 +384,22 @@ class ChatService:
         conversation_messages = []
         
         for msg in messages:
-            if msg["role"] == "system":
+            content = msg["content"]
+            role = msg["role"]
+            
+            # 检测事件消息，提取 summary 给 AI
+            if EventMessage.is_event_message(content):
+                summary = EventMessage.extract_summary(content)
+                if summary:
+                    # 事件消息作为 system 消息放到前面
+                    system_messages.append({"role": "system", "content": summary})
+                continue
+            
+            if role == "system":
                 # 把约会/事件记忆放到前面
-                system_messages.append({"role": "system", "content": msg["content"]})
+                system_messages.append({"role": "system", "content": content})
             else:
-                conversation_messages.append({"role": msg["role"], "content": msg["content"]})
+                conversation_messages.append({"role": role, "content": content})
         
         # System messages first, then conversation in order
         context = system_messages + conversation_messages
@@ -410,7 +425,10 @@ class ChatService:
         3. Combine with recent messages
         
         Uses chat_repo to ensure MOCK_MODE compatibility.
+        Event messages are converted to summaries to save tokens.
         """
+        from app.models.event_message import EventMessage
+        
         # Get recent messages (last 5) via chat_repo
         recent_messages = await chat_repo.get_recent_messages(
             str(session_id),
@@ -418,10 +436,20 @@ class ChatService:
         )
         
         # Messages are already in chronological order from get_recent_messages
-        recent_context = [
-            {"role": msg["role"], "content": msg["content"]}
-            for msg in recent_messages
-        ]
+        # Convert event messages to summaries
+        recent_context = []
+        for msg in recent_messages:
+            content = msg["content"]
+            role = msg["role"]
+            
+            # 检测事件消息，提取 summary
+            if EventMessage.is_event_message(content):
+                summary = EventMessage.extract_summary(content)
+                if summary:
+                    recent_context.append({"role": "system", "content": summary})
+                continue
+            
+            recent_context.append({"role": role, "content": content})
         
         # Search for relevant memories (if vector service available)
         try:
