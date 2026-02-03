@@ -572,13 +572,14 @@ class EventStoryGenerator:
                 )
                 existing = result.scalar_one_or_none()
                 
-                if existing:
-                    # 对于 first_* 事件，保留第一次的记录，不覆盖
-                    if event_type.startswith("first_"):
-                        logger.info(f"Skipped updating {event_type} (keeping first record): {existing.id}")
-                        return existing
-                    
-                    # 其他事件可以更新
+                # 对于 first_* 事件，保留第一次的记录，不覆盖
+                if existing and event_type.startswith("first_"):
+                    logger.info(f"Skipped updating {event_type} (keeping first record): {existing.id}")
+                    return existing
+                
+                # 对于 date 类型，每次都创建新记录（不查重）
+                # 其他类型如果存在就更新
+                if existing and event_type != "date":
                     existing.story_content = story_content
                     existing.context_summary = context_summary
                     existing.intimacy_level = relationship_state.get("intimacy_stage") if relationship_state else None

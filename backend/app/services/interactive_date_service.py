@@ -1425,7 +1425,7 @@ class InteractiveDateService:
             await event_story_generator.save_story_direct(
                 user_id=session.user_id,
                 character_id=session.character_id,
-                event_type=EventType.FIRST_DATE,
+                event_type="date",  # 使用 date 而不是 first_date，每次约会都记录
                 story_content=story_summary,
                 context_summary=f"场景：{session.scenario_name}，结局：{ending_type}",
             )

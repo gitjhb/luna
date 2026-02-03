@@ -90,10 +90,12 @@ class EventType:
     ANNIVERSARY = "anniversary"         # 纪念日
     BREAKUP = "breakup"                 # 分手 (如果实现)
     RECONCILIATION = "reconciliation"   # 和好
+    DATE = "date"                       # 普通约会（每次都记录）
     
     # Events that generate stories
     STORY_EVENTS = [
         FIRST_DATE,
+        DATE,
         FIRST_CONFESSION,
         FIRST_KISS,
         FIRST_NSFW,
