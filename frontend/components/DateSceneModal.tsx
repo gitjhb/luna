@@ -173,6 +173,7 @@ export default function DateSceneModal({
   // State
   const [phase, setPhase] = useState<Phase>('select');
   const [selectedScenario, setSelectedScenario] = useState<DateScenario | null>(null);
+  const [activeSceneId, setActiveSceneId] = useState<string | null>(null); // 保存当前场景ID
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [currentStage, setCurrentStage] = useState<DateStage | null>(null);
   const [progress, setProgress] = useState({ current: 0, total: 5 });
@@ -235,6 +236,7 @@ export default function DateSceneModal({
     if (visible) {
       setPhase('select');
       setSelectedScenario(null);
+      setActiveSceneId(null);
       setSessionId(null);
       setCurrentStage(null);
       setEnding(null);
@@ -415,9 +417,13 @@ export default function DateSceneModal({
   const handleStartDate = async () => {
     if (!selectedScenario) return;
     
+    // 保存选中的场景ID（用于显示场景图片）
+    const sceneIdToUse = selectedScenario.id;
+    setActiveSceneId(sceneIdToUse);
+    
     setLoading(true);
     try {
-      const result = await dateApi.startInteractive(characterId, selectedScenario.id);
+      const result = await dateApi.startInteractive(characterId, sceneIdToUse);
       if (result.success) {
         setSessionId(result.session_id);
         setCurrentStage(result.stage);
@@ -455,6 +461,7 @@ export default function DateSceneModal({
           name: session.scenario_name, 
           icon: '☕' 
         });
+        setActiveSceneId(session.scenario_id); // 设置场景ID用于显示图片
         
         // 清除 activeSession 提示，避免重复显示
         setActiveSession(null);
@@ -790,7 +797,10 @@ export default function DateSceneModal({
       {/* === 中间区域 - 场景图片或角色立绘 === */}
       <View style={styles.middleArea}>
         {(() => {
-          const sceneImage = selectedScenario?.id ? getSceneImage(characterId, selectedScenario.id) : null;
+          // 优先使用 activeSceneId（约会进行中），否则用 selectedScenario
+          const sceneId = activeSceneId || selectedScenario?.id;
+          const sceneImage = sceneId ? getSceneImage(characterId, sceneId) : null;
+          
           if (sceneImage) {
             return (
               <Image 
