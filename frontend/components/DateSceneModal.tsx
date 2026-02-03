@@ -30,6 +30,23 @@ import { getCharacterAvatar } from '../assets/characters';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// Sakura 场景图片映射
+const SAKURA_SCENE_IMAGES: Record<string, any> = {
+  bedroom: require('../assets/characters/sakura/scenes/bedroom.jpeg'),
+  beach: require('../assets/characters/sakura/scenes/beach.jpeg'),
+  ocean: require('../assets/characters/sakura/scenes/ocean.jpeg'),
+  school: require('../assets/characters/sakura/scenes/school.jpeg'),
+};
+
+// 获取场景图片
+const getSceneImage = (characterId: string, sceneId: string): any | null => {
+  // 目前只有 Sakura 有场景图片
+  if (characterId === 'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e') {
+    return SAKURA_SCENE_IMAGES[sceneId] || null;
+  }
+  return null;
+};
+
 // 场景背景渐变颜色
 const SCENARIO_GRADIENTS: Record<string, string[]> = {
   cafe_paris: ['#2D1B00', '#5C3D2E', '#B85C38'],
@@ -770,17 +787,30 @@ export default function DateSceneModal({
         </Animated.View>
       )}
       
-      {/* === 中间区域 - 角色立绘 === */}
+      {/* === 中间区域 - 场景图片或角色立绘 === */}
       <View style={styles.middleArea}>
-        {characterId ? (
-          <Image 
-            source={getCharacterAvatar(characterId, characterAvatar)} 
-            style={styles.backgroundAvatar}
-            resizeMode="contain"
-          />
-        ) : (
-          <Text style={styles.scenarioEmoji}>{selectedScenario?.icon || '✨'}</Text>
-        )}
+        {(() => {
+          const sceneImage = selectedScenario?.id ? getSceneImage(characterId, selectedScenario.id) : null;
+          if (sceneImage) {
+            return (
+              <Image 
+                source={sceneImage} 
+                style={styles.sceneImage}
+                resizeMode="cover"
+              />
+            );
+          } else if (characterId) {
+            return (
+              <Image 
+                source={getCharacterAvatar(characterId, characterAvatar)} 
+                style={styles.backgroundAvatar}
+                resizeMode="contain"
+              />
+            );
+          } else {
+            return <Text style={styles.scenarioEmoji}>{selectedScenario?.icon || '✨'}</Text>;
+          }
+        })()}
       </View>
       
       {/* === 底部对话框 - 使用 BottomSheet === */}
@@ -1316,21 +1346,26 @@ const styles = StyleSheet.create({
     color: '#FFD93D',
   },
   
-  // 中间区域 - 角色立绘展示
+  // 中间区域 - 场景图片/角色立绘展示
   middleArea: {
     position: 'absolute',
-    top: 80, // 顶部状态栏下方
+    top: 0, // 从顶部开始，让场景图片填满
     left: 0,
     right: 0,
-    height: SCREEN_HEIGHT * 0.55,
+    height: SCREEN_HEIGHT * 0.6, // 占屏幕 60%
     justifyContent: 'flex-start',
     alignItems: 'center',
     overflow: 'hidden',
   },
   backgroundAvatar: {
     width: SCREEN_WIDTH * 0.85,
-    height: SCREEN_HEIGHT * 0.55,
+    height: SCREEN_HEIGHT * 0.6,
+    marginTop: 60, // 给顶部状态栏留空间
     opacity: 1,
+  },
+  sceneImage: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT * 0.6,
   },
   scenarioEmoji: {
     fontSize: 64,
