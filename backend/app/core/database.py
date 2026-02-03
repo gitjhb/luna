@@ -108,6 +108,8 @@ async def init_db():
         from app.models.database import intimacy_models, gift_models, payment_models, emotion_models, stats_models, user_settings_models, referral_models, date_models, image_models
         # Import memory v2 models to create tables
         from app.models.database import memory_v2_models
+        # Import stamina models for 体力系统
+        from app.models.database import stamina_models
 
         database_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/app.db")
         

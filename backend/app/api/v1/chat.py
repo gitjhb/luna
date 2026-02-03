@@ -187,6 +187,31 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    # =====================================================================
+    # 体力系统检查 - 发消息前检查并消耗体力
+    # =====================================================================
+    user = getattr(req.state, "user", None)
+    user_id = str(user.user_id) if user else "demo-user-123"
+    
+    from app.services.stamina_service import stamina_service, STAMINA_COST_PER_MESSAGE
+    
+    stamina_result = await stamina_service.consume_stamina(user_id, STAMINA_COST_PER_MESSAGE)
+    
+    if not stamina_result["success"]:
+        # 体力不足，返回错误
+        logger.warning(f"⚡ Stamina insufficient for user {user_id}: {stamina_result.get('error')}")
+        raise HTTPException(
+            status_code=402,  # Payment Required
+            detail={
+                "error": "insufficient_stamina",
+                "message": stamina_result.get("error", "体力不足"),
+                "current_stamina": stamina_result.get("current_stamina", 0),
+                "required": STAMINA_COST_PER_MESSAGE,
+            }
+        )
+    
+    logger.info(f"⚡ Stamina consumed: {STAMINA_COST_PER_MESSAGE}, remaining: {stamina_result['current_stamina']}")
+
     # Check for duplicate message
     recent_msgs = await chat_repo.get_recent_messages(session_id, count=2)
     is_duplicate = any(
