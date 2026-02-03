@@ -1105,14 +1105,13 @@ class InteractiveDateService:
                     is_locked=is_locked,
                 ))
             
-            # 最终阶段：如果没有options，添加"结束约会"按钮
+            # 最终阶段：如果没有options（LLM出错），添加默认选项
             if is_final and len(options) == 0:
-                options.append(DateOption(
-                    id=0,
-                    text="结束约会",
-                    type="end",
-                    affection=0,
-                ))
+                options = [
+                    DateOption(id=0, text="温柔地告别", type="good", affection=10),
+                    DateOption(id=1, text="平静地说再见", type="neutral", affection=3),
+                    DateOption(id=2, text="匆忙离开", type="bad", affection=-5),
+                ]
             
             return DateStage(
                 stage_num=stage_num,
@@ -1238,27 +1237,31 @@ class InteractiveDateService:
             task_layer += """
 
 【最终阶段特殊指令】
-根据当前好感度决定结局走向：
-- affection >= 60：完美结局（温馨浪漫，依依不舍）
-- affection >= 30：良好结局（愉快告别，期待下次）
-- affection >= 0：普通结局（平淡告别）
-- affection < 0：糟糕结局（尴尬，想快点离开）"""
+这是约会的高潮阶段！根据好感度设计一个重要的选择时刻：
+- 写一个浪漫/紧张的场景，让用户面临关键选择
+- 选项应该影响约会的结局走向
+- 好感度高时可以设计更亲密的选项"""
 
         # =====================================================================
         # Output Format（输出格式）
         # =====================================================================
         if is_final:
-            # 最终阶段：只需要结局描述，不需要选项
+            # 最终阶段也需要选项（最后一次选择）
             output_format = """## 输出格式（最终阶段，必须严格遵守）
 ```json
 {
-  "narrative": "200-400字的结局描述，用第二人称'你'，包含角色的动作、表情、对话，描写约会结束的场景",
+  "narrative": "150-250字的高潮场景描述，用第二人称'你'，设计一个关键的选择时刻",
   "character_expression": "happy/shy/surprised/sad/neutral/excited/angry",
-  "affection_change": 0
+  "affection_change": 0,
+  "options": [
+    { "text": "浪漫/大胆的选择", "type": "good", "affection": 15 },
+    { "text": "温和/安全的选择", "type": "neutral", "affection": 5 },
+    { "text": "可能搞砸的选择", "type": "bad", "affection": -5 }
+  ]
 }
 ```
 
-【重要】这是最后一幕，不需要返回 options，只需要描写结局。根据好感度写出合适的告别场景。
+【重要】这是最后一幕的选择，选择后约会将结束。设计有意义的选项！
 
 直接输出 JSON，不要其他内容。"""
         else:
