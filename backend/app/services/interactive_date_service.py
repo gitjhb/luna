@@ -1376,7 +1376,29 @@ class InteractiveDateService:
         
         # 确定结局类型
         ending_type = self._determine_ending(session.affection_score)
-        rewards = ENDING_REWARDS.get(ending_type, ENDING_REWARDS["normal"])
+        base_rewards = ENDING_REWARDS.get(ending_type, ENDING_REWARDS["normal"])
+        
+        # 动态计算XP奖励：max(5%-10%升级经验, 100-200固定值)
+        # 根据结局类型调整比例
+        xp_percent_map = {"perfect": 0.10, "good": 0.08, "normal": 0.06, "bad": 0.05}
+        xp_fixed_map = {"perfect": 200, "good": 150, "normal": 100, "bad": 50}
+        
+        try:
+            # 获取当前等级的升级经验需求
+            intimacy_status = await intimacy_service.get_status(session.user_id, session.character_id)
+            xp_for_next_level = intimacy_status.get("xp_for_next_level", 1000) if intimacy_status else 1000
+            
+            # 计算百分比奖励和固定奖励，取较大值
+            percent_xp = int(xp_for_next_level * xp_percent_map.get(ending_type, 0.05))
+            fixed_xp = xp_fixed_map.get(ending_type, 50)
+            calculated_xp = max(percent_xp, fixed_xp)
+            
+            logger.info(f"📅 [DATE] XP calculation: {percent_xp} ({xp_percent_map.get(ending_type)*100}% of {xp_for_next_level}) vs {fixed_xp} fixed -> {calculated_xp}")
+        except Exception as e:
+            logger.warning(f"Failed to calculate dynamic XP, using base: {e}")
+            calculated_xp = base_rewards["xp"]
+        
+        rewards = {"xp": calculated_xp, "emotion": base_rewards["emotion"]}
         
         # 更新会话
         session.status = DateStatus.COMPLETED.value
