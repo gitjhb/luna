@@ -640,37 +640,36 @@ export default function ChatScreen() {
       updateMessage(messageId, { reaction: emoji });
     }
     
-    // Award XP for reaction
-    const newXp = relationshipXp + xpBonus;
-    const newMax = relationshipMaxXp;
+    // Award XP for reaction (支持一次升多级)
+    let currentXp = relationshipXp + xpBonus;
+    let currentMax = relationshipMaxXp;
+    let currentLevel = relationshipLevel || 1;
+    let levelsGained = 0;
     
-    if (newXp >= newMax) {
-      // Level up!
-      const newLevelValue = (relationshipLevel || 1) + 1;
-      setRelationshipLevel(newLevelValue);
-      setRelationshipXp(newXp - newMax);
-      setRelationshipMaxXp(Math.round(newMax * 1.15));
-      setNewLevel(newLevelValue);
-      setTimeout(() => setShowLevelUpModal(true), 500);
-      
-      // Update cache
-      setIntimacy(params.characterId, {
-        currentLevel: newLevelValue,
-        xpProgressInLevel: newXp - newMax,
-        xpForNextLevel: Math.round(newMax * 1.15),
-        xpForCurrentLevel: 0,
-      });
-    } else {
-      setRelationshipXp(newXp);
-      
-      // Update cache
-      setIntimacy(params.characterId, {
-        currentLevel: relationshipLevel || 1,
-        xpProgressInLevel: newXp,
-        xpForNextLevel: relationshipMaxXp,
-        xpForCurrentLevel: 0,
-      });
+    while (currentXp >= currentMax) {
+      currentXp -= currentMax;
+      currentLevel += 1;
+      levelsGained += 1;
+      currentMax = Math.round(currentMax * 1.15);
     }
+    
+    if (levelsGained > 0) {
+      setRelationshipLevel(currentLevel);
+      setRelationshipXp(currentXp);
+      setRelationshipMaxXp(currentMax);
+      setNewLevel(currentLevel);
+      setTimeout(() => setShowLevelUpModal(true), 500);
+    } else {
+      setRelationshipXp(currentXp);
+    }
+    
+    // Update cache
+    setIntimacy(params.characterId, {
+      currentLevel: currentLevel,
+      xpProgressInLevel: currentXp,
+      xpForNextLevel: currentMax,
+      xpForCurrentLevel: 0,
+    });
     
     showToast(`+${xpBonus} 亲密度 💕`);
   }, [relationshipXp, relationshipMaxXp, relationshipLevel, params.characterId, setIntimacy, showToast, updateMessage]);
@@ -1208,20 +1207,37 @@ export default function ChatScreen() {
               // inverted list: 新消息在顶部，不需要滚动
             }
             
-            // 4. 更新亲密度
+            // 4. 更新亲密度 (支持一次升多级)
             const xpAwarded = giftResult.xp_awarded || gift.xp_reward;
-            const newXp = relationshipXp + xpAwarded;
-            const newMax = relationshipMaxXp;
+            let currentXp = relationshipXp + xpAwarded;
+            let currentMax = relationshipMaxXp;
+            let currentLevel = relationshipLevel || 1;
+            let levelsGained = 0;
             
-            if (newXp >= newMax) {
-              const newLevel = (relationshipLevel || 1) + 1;
-              setRelationshipLevel(newLevel);
-              setRelationshipXp(newXp - newMax);
-              setRelationshipMaxXp(Math.round(newMax * 1.2));
-              setNewLevel(newLevel);
+            // 循环升级直到经验不足
+            while (currentXp >= currentMax) {
+              currentXp -= currentMax;
+              currentLevel += 1;
+              levelsGained += 1;
+              currentMax = Math.round(currentMax * 1.2);
+            }
+            
+            if (levelsGained > 0) {
+              setRelationshipLevel(currentLevel);
+              setRelationshipXp(currentXp);
+              setRelationshipMaxXp(currentMax);
+              setNewLevel(currentLevel);
               setTimeout(() => setShowLevelUpModal(true), 3000);
+              
+              // Update cache
+              setIntimacy(params.characterId, {
+                currentLevel: currentLevel,
+                xpProgressInLevel: currentXp,
+                xpForNextLevel: currentMax,
+                xpForCurrentLevel: 0,
+              });
             } else {
-              setRelationshipXp(newXp);
+              setRelationshipXp(currentXp);
             }
             
             // 5. 刷新情绪状态（礼物会影响情绪）
