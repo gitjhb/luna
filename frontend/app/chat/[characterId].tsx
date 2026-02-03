@@ -1432,8 +1432,7 @@ export default function ChatScreen() {
               和 {characterName} 的约会
             </Text>
             <Text style={styles.levelUpDesc}>
-              获得 {firstDateResult?.xp || 0} XP{'\n'}
-              好感度 {(firstDateResult?.affection ?? 0) >= 0 ? '+' : ''}{firstDateResult?.affection || 0}
+              获得 {firstDateResult?.xp || 0} XP
             </Text>
             <TouchableOpacity 
               style={styles.levelUpButton}

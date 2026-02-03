@@ -901,7 +901,7 @@ export default function DateSceneModal({
           <View style={styles.rewardsBox}>
             <Text style={styles.rewardsTitle}>🎁 获得奖励</Text>
             <Text style={styles.rewardsText}>
-              +{rewards.xp} XP | 好感度 {rewards.affection > 0 ? '+' : ''}{rewards.affection}
+              +{rewards.xp} XP
             </Text>
           </View>
         )}
