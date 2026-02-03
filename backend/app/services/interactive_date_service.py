@@ -1105,6 +1105,15 @@ class InteractiveDateService:
                     is_locked=is_locked,
                 ))
             
+            # 最终阶段：如果没有options，添加"结束约会"按钮
+            if is_final and len(options) == 0:
+                options.append(DateOption(
+                    id=0,
+                    text="结束约会",
+                    type="end",
+                    affection=0,
+                ))
+            
             return DateStage(
                 stage_num=stage_num,
                 narrative=stage_data.get("narrative", ""),
@@ -1238,7 +1247,22 @@ class InteractiveDateService:
         # =====================================================================
         # Output Format（输出格式）
         # =====================================================================
-        output_format = """## 输出格式（必须严格遵守）
+        if is_final:
+            # 最终阶段：只需要结局描述，不需要选项
+            output_format = """## 输出格式（最终阶段，必须严格遵守）
+```json
+{
+  "narrative": "200-400字的结局描述，用第二人称'你'，包含角色的动作、表情、对话，描写约会结束的场景",
+  "character_expression": "happy/shy/surprised/sad/neutral/excited/angry",
+  "affection_change": 0
+}
+```
+
+【重要】这是最后一幕，不需要返回 options，只需要描写结局。根据好感度写出合适的告别场景。
+
+直接输出 JSON，不要其他内容。"""
+        else:
+            output_format = """## 输出格式（必须严格遵守）
 ```json
 {
   "narrative": "150-300字的剧情描述，用第二人称'你'，包含角色的动作、表情、对话",
