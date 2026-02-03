@@ -289,8 +289,10 @@ export default function DateSceneModal({
         setTimeout(() => setJudgeComment(null), 2000);
       }
     } catch (e: any) {
-      setJudgeComment(e.message || '重置失败');
-      setTimeout(() => setJudgeComment(null), 2000);
+      // 从错误响应中提取具体信息
+      const errorMsg = e.response?.data?.detail || e.message || '重置失败';
+      setJudgeComment(`💎 ${errorMsg}`);
+      setTimeout(() => setJudgeComment(null), 3000);
     } finally {
       setResettingCooldown(false);
     }
