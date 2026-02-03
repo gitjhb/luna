@@ -95,46 +95,86 @@ class IntimacyService:
     }
 
     # Intimacy Stages (v3.0)
+    # ==========================================================================
+    # 双轨制阶段定义 (Level 1-40 ↔ Intimacy 0-100 ↔ S0-S4)
+    # ==========================================================================
+    # 映射关系：
+    #   S0 strangers  → Level 1-5   → Intimacy 0-19
+    #   S1 friends    → Level 6-10  → Intimacy 20-39
+    #   S2 ambiguous  → Level 11-15 → Intimacy 40-59
+    #   S3 lovers     → Level 16-25 → Intimacy 60-79
+    #   S4 soulmates  → Level 26-40 → Intimacy 80-100
+    # ==========================================================================
     STAGES = {
         "strangers": {
+            "code": "S0",
             "name": "Strangers",
             "name_cn": "陌生人",
             "min_level": 1,
             "max_level": 5,
+            "min_intimacy": 0,
+            "max_intimacy": 19,
             "description": "Cold and polite, keeps distance",
             "ai_attitude": "冷淡礼貌，保持距离",
+            "physical": "抗拒任何身体接触",
+            "refusal": "我们还不熟。",
+            "date_behavior": "只能并排走、聊天",
         },
         "friends": {
+            "code": "S1",
             "name": "Friends",
             "name_cn": "朋友",
             "min_level": 6,
             "max_level": 10,
+            "min_intimacy": 20,
+            "max_intimacy": 39,
             "description": "Friendly and relaxed, casual conversations",
             "ai_attitude": "友好放松，轻松聊天",
+            "physical": "可以摸头，拒绝亲吻",
+            "refusal": "朋友之间不该做这个。",
+            "date_behavior": "可以牵手、轻微身体接触",
         },
         "ambiguous": {
+            "code": "S2",
             "name": "Ambiguous",
             "name_cn": "暧昧",
             "min_level": 11,
             "max_level": 15,
+            "min_intimacy": 40,
+            "max_intimacy": 59,
             "description": "Shy push-pull, testing boundaries",
             "ai_attitude": "害羞推拉，试探边界",
+            "physical": "偶尔接受调情，偶尔拒绝",
+            "refusal": "还没准备好...",
+            "date_behavior": "牵手、挽手臂、靠在肩上",
         },
         "lovers": {
+            "code": "S3",
             "name": "Lovers",
             "name_cn": "恋人",
             "min_level": 16,
             "max_level": 25,
+            "min_intimacy": 60,
+            "max_intimacy": 79,
             "description": "Cooperative and proactive, sweet intimacy",
             "ai_attitude": "配合主动，甜蜜亲密",
+            "physical": "允许 NSFW，配合主动",
+            "refusal": "只有心情极差才拒绝",
+            "date_behavior": "亲脸颊、拥抱、甜蜜情话",
         },
         "soulmates": {
+            "code": "S4",
             "name": "Soulmates",
             "name_cn": "挚爱",
             "min_level": 26,
             "max_level": 40,
+            "min_intimacy": 80,
+            "max_intimacy": 100,
             "description": "Devoted and submissive, unconditional love",
             "ai_attitude": "奉献服从，无条件的爱",
+            "physical": "无条件包容，解锁极端玩法",
+            "refusal": "绝不拒绝",
+            "date_behavior": "亲吻、深度拥抱、暧昧暗示",
         },
     }
 
@@ -269,6 +309,72 @@ class IntimacyService:
     def get_stage_id(cls, level: int) -> str:
         """Get stage ID for a given level."""
         return cls.get_stage(level)["id"]
+
+    @classmethod
+    def get_stage_by_intimacy(cls, intimacy: int) -> Dict:
+        """
+        Get stage info by intimacy value (0-100).
+        
+        双轨制：intimacy 值对应的阶段
+        - 0-19: S0 strangers
+        - 20-39: S1 friends
+        - 40-59: S2 ambiguous
+        - 60-79: S3 lovers
+        - 80-100: S4 soulmates
+        """
+        intimacy = max(0, min(100, intimacy))  # clamp to 0-100
+        for stage_id, stage_info in cls.STAGES.items():
+            if stage_info["min_intimacy"] <= intimacy <= stage_info["max_intimacy"]:
+                return {"id": stage_id, **stage_info}
+        return {"id": "soulmates", **cls.STAGES["soulmates"]}
+
+    @classmethod
+    def get_stage_id_by_intimacy(cls, intimacy: int) -> str:
+        """Get stage ID by intimacy value (0-100)."""
+        return cls.get_stage_by_intimacy(intimacy)["id"]
+
+    @classmethod
+    def level_to_intimacy(cls, level: int) -> int:
+        """
+        Convert level (1-40) to intimacy (0-100).
+        
+        简化映射：intimacy ≈ (level - 1) * 2.5
+        """
+        level = max(1, min(40, level))
+        return min(100, int((level - 1) * 2.5))
+
+    @classmethod
+    def intimacy_to_level(cls, intimacy: int) -> int:
+        """
+        Convert intimacy (0-100) to level (1-40).
+        
+        简化映射：level ≈ intimacy / 2.5 + 1
+        """
+        intimacy = max(0, min(100, intimacy))
+        return max(1, min(40, int(intimacy / 2.5) + 1))
+
+    @classmethod
+    def get_stage_behavior(cls, level: int = None, intimacy: int = None) -> Dict:
+        """
+        Get stage behavior info for AI prompts.
+        
+        可以传 level 或 intimacy，二选一。
+        """
+        if level is not None:
+            stage = cls.get_stage(level)
+        elif intimacy is not None:
+            stage = cls.get_stage_by_intimacy(intimacy)
+        else:
+            stage = cls.STAGES["strangers"]
+        
+        return {
+            "code": stage.get("code", "S0"),
+            "name_cn": stage.get("name_cn", "陌生人"),
+            "ai_attitude": stage.get("ai_attitude", ""),
+            "physical": stage.get("physical", ""),
+            "refusal": stage.get("refusal", ""),
+            "date_behavior": stage.get("date_behavior", ""),
+        }
 
     # =========================================================================
     # Feature Unlocks
@@ -642,6 +748,97 @@ class IntimacyService:
             "streak_reward_desc": self.STREAK_REWARD_DESC if streak_reward_triggered else None,
             "celebration_message": celebration,
             "unlocked_features": [f["name"] for f in newly_unlocked]
+        }
+
+    async def award_xp_direct(
+        self,
+        user_id: str,
+        character_id: str,
+        xp_amount: int,
+        reason: str = "event",
+    ) -> Dict:
+        """
+        直接给予指定数量的 XP（不受 action_type 限制）
+        
+        用于约会奖励、特殊事件等场景
+        
+        Args:
+            user_id: 用户 ID
+            character_id: 角色 ID
+            xp_amount: XP 数量
+            reason: 原因标记
+            
+        Returns:
+            包含 success, xp_awarded, new_total_xp, level_up 等信息的字典
+        """
+        # Get/create intimacy record
+        intimacy = await self.get_or_create_intimacy(user_id, character_id)
+        
+        # Store previous values
+        xp_before = intimacy["total_xp"]
+        level_before = intimacy["current_level"]
+        stage_before = intimacy["intimacy_stage"]
+        
+        # Award XP (不检查 daily cap)
+        intimacy["total_xp"] += xp_amount
+        intimacy["updated_at"] = datetime.utcnow()
+        
+        # Calculate new level
+        new_level = self.calculate_level(intimacy["total_xp"])
+        intimacy["current_level"] = new_level
+        
+        # Check stage change
+        new_stage_info = self.get_stage(new_level)
+        new_stage = new_stage_info["id"]
+        intimacy["intimacy_stage"] = new_stage
+        
+        # Save to database
+        if not self.mock_mode:
+            from app.core.database import get_db
+            from sqlalchemy import select
+            from app.models.database.intimacy_models import UserIntimacy, IntimacyActionLog
+            
+            async with get_db() as db:
+                result = await db.execute(
+                    select(UserIntimacy).where(
+                        UserIntimacy.user_id == user_id,
+                        UserIntimacy.character_id == character_id
+                    )
+                )
+                db_intimacy = result.scalar_one_or_none()
+                
+                if db_intimacy:
+                    db_intimacy.total_xp = intimacy["total_xp"]
+                    db_intimacy.current_level = intimacy["current_level"]
+                    db_intimacy.intimacy_stage = intimacy["intimacy_stage"]
+                    db_intimacy.updated_at = datetime.utcnow()
+                
+                # Log the action
+                action_log = IntimacyActionLog(
+                    user_id=user_id,
+                    character_id=character_id,
+                    action_type=f"direct_{reason}",
+                    xp_awarded=xp_amount,
+                )
+                db.add(action_log)
+                await db.commit()
+                logger.info(f"XP direct award: {user_id}/{character_id} +{xp_amount} XP ({reason}), total={intimacy['total_xp']}, level={new_level}")
+        
+        # Check for level up
+        level_up = new_level > level_before
+        stage_changed = new_stage != stage_before
+        
+        return {
+            "success": True,
+            "xp_awarded": xp_amount,
+            "xp_before": xp_before,
+            "new_total_xp": intimacy["total_xp"],
+            "level_before": level_before,
+            "new_level": new_level,
+            "level_up": level_up,
+            "stage_before": stage_before,
+            "new_stage": new_stage,
+            "stage_changed": stage_changed,
         }
 
     async def get_intimacy_status(self, user_id: str, character_id: str) -> Dict:

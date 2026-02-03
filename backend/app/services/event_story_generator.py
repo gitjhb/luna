@@ -552,36 +552,87 @@ class EventStoryGenerator:
         relationship_state: Optional[Dict[str, Any]],
         db_session: Optional[AsyncSession] = None,
     ) -> Optional[EventMemory]:
-        """Save generated story to database"""
+        """Save generated story to database (UPSERT - update if exists)"""
         try:
-            async def _insert(session):
-                event_memory = EventMemory(
-                    user_id=user_id,
-                    character_id=character_id,
-                    event_type=event_type,
-                    story_content=story_content,
-                    context_summary=context_summary,
-                    intimacy_level=relationship_state.get("intimacy_stage") if relationship_state else None,
-                    emotion_state=relationship_state.get("emotion_state") if relationship_state else None,
-                    generated_at=datetime.utcnow(),
+            async def _upsert(session):
+                # 查找现有记录
+                result = await session.execute(
+                    select(EventMemory).where(
+                        and_(
+                            EventMemory.user_id == user_id,
+                            EventMemory.character_id == character_id,
+                            EventMemory.event_type == event_type,
+                        )
+                    )
                 )
+                existing = result.scalar_one_or_none()
                 
-                session.add(event_memory)
-                await session.commit()
-                await session.refresh(event_memory)
-                
-                logger.info(f"Saved event memory: {event_memory.id}")
-                return event_memory
+                if existing:
+                    # 更新现有记录
+                    existing.story_content = story_content
+                    existing.context_summary = context_summary
+                    existing.intimacy_level = relationship_state.get("intimacy_stage") if relationship_state else None
+                    existing.emotion_state = relationship_state.get("emotion_state") if relationship_state else None
+                    existing.generated_at = datetime.utcnow()
+                    
+                    await session.commit()
+                    await session.refresh(existing)
+                    
+                    logger.info(f"Updated event memory: {existing.id}")
+                    return existing
+                else:
+                    # 插入新记录
+                    event_memory = EventMemory(
+                        user_id=user_id,
+                        character_id=character_id,
+                        event_type=event_type,
+                        story_content=story_content,
+                        context_summary=context_summary,
+                        intimacy_level=relationship_state.get("intimacy_stage") if relationship_state else None,
+                        emotion_state=relationship_state.get("emotion_state") if relationship_state else None,
+                        generated_at=datetime.utcnow(),
+                    )
+                    
+                    session.add(event_memory)
+                    await session.commit()
+                    await session.refresh(event_memory)
+                    
+                    logger.info(f"Saved event memory: {event_memory.id}")
+                    return event_memory
             
             if db_session:
-                return await _insert(db_session)
+                return await _upsert(db_session)
             else:
                 async with get_db() as session:
-                    return await _insert(session)
+                    return await _upsert(session)
                     
         except Exception as e:
             logger.exception(f"Error saving story: {e}")
             return None
+    
+    async def save_story_direct(
+        self,
+        user_id: str,
+        character_id: str,
+        event_type: str,
+        story_content: str,
+        context_summary: str = "",
+    ) -> Optional[str]:
+        """
+        直接保存故事到数据库（公开方法）
+        
+        Returns:
+            event_memory_id if success, None otherwise
+        """
+        result = await self._save_story(
+            user_id=user_id,
+            character_id=character_id,
+            event_type=event_type,
+            story_content=story_content,
+            context_summary=context_summary,
+            relationship_state=None,
+        )
+        return result.id if result else None
 
 
 # =============================================================================

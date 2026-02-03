@@ -1,5 +1,7 @@
 /**
- * Date Modal - 约会场景选择和进行
+ * Date Modal - 约会场景选择和故事生成
+ * 
+ * 新版流程：选择场景 → 一键生成约会故事 → 故事保存到回忆录
  */
 
 import React, { useState, useEffect } from 'react';
@@ -18,7 +20,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../services/api';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface DateScenario {
   id: string;
@@ -27,13 +29,28 @@ interface DateScenario {
   icon: string;
 }
 
-interface DateInfo {
-  is_active: boolean;
-  scenario_name?: string;
-  scenario_icon?: string;
-  message_count?: number;
-  required_messages?: number;
-  status?: string;
+interface UnlockStatus {
+  is_unlocked: boolean;
+  reason: string;
+  current_level: number;
+  level_met: boolean;
+  gift_sent: boolean;
+  unlock_level: number;
+}
+
+interface DateResult {
+  success: boolean;
+  story?: string;
+  scenario?: {
+    id: string;
+    name: string;
+    icon: string;
+  };
+  rewards?: {
+    xp: number;
+    emotion_boost: number;
+  };
+  error?: string;
 }
 
 interface DateModalProps {
@@ -42,28 +59,22 @@ interface DateModalProps {
   characterId: string;
   characterName: string;
   currentLevel: number;
-  onDateStarted?: (dateInfo: any) => void;
-  onDateCompleted?: (result: any) => void;
-  activeDateInfo?: DateInfo | null;
+  onDateCompleted?: (result: DateResult) => void;
 }
 
-// API helpers (using api service for auth)
+// API helpers
 const dateApi = {
   getScenarios: async (): Promise<DateScenario[]> => {
     const data = await api.get<{ scenarios: DateScenario[] }>('/dates/scenarios');
     return data.scenarios;
   },
   
-  checkUnlock: async (characterId: string): Promise<{ is_unlocked: boolean; reason: string }> => {
+  checkUnlock: async (characterId: string): Promise<UnlockStatus> => {
     return api.get(`/dates/unlock-status/${characterId}`);
   },
   
-  startDate: async (characterId: string, scenarioId: string): Promise<any> => {
+  startDate: async (characterId: string, scenarioId: string): Promise<DateResult> => {
     return api.post('/dates/start', { character_id: characterId, scenario_id: scenarioId });
-  },
-  
-  completeDate: async (characterId: string): Promise<any> => {
-    return api.post('/dates/complete', { character_id: characterId });
   },
 };
 
@@ -73,19 +84,23 @@ export default function DateModal({
   characterId,
   characterName,
   currentLevel,
-  onDateStarted,
   onDateCompleted,
-  activeDateInfo,
 }: DateModalProps) {
   const [scenarios, setScenarios] = useState<DateScenario[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [unlockStatus, setUnlockStatus] = useState<{ is_unlocked: boolean; reason: string } | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [unlockStatus, setUnlockStatus] = useState<UnlockStatus | null>(null);
+  const [generatedStory, setGeneratedStory] = useState<string | null>(null);
+  const [dateResult, setDateResult] = useState<DateResult | null>(null);
 
   // Load scenarios and unlock status
   useEffect(() => {
     if (visible) {
       loadData();
+      // Reset story when modal opens
+      setGeneratedStory(null);
+      setDateResult(null);
     }
   }, [visible, characterId]);
 
@@ -114,52 +129,37 @@ export default function DateModal({
       return;
     }
     
-    setLoading(true);
+    setGenerating(true);
     try {
       const result = await dateApi.startDate(characterId, selectedScenario);
-      if (result.success) {
-        onDateStarted?.(result.date);
-        Alert.alert(
-          '💕 约会开始！',
-          `你和${characterName}在${result.date.scenario_name}开始约会了！\n\n好好聊天，享受约会时光吧～`,
-          [{ text: '开始约会', onPress: onClose }]
-        );
+      if (result.success && result.story) {
+        setGeneratedStory(result.story);
+        setDateResult(result);
+        onDateCompleted?.(result);
+      } else {
+        Alert.alert('约会失败', result.error || '生成故事时出错');
       }
     } catch (e: any) {
-      Alert.alert('约会失败', e.message);
+      Alert.alert('约会失败', e.message || '网络错误');
     } finally {
-      setLoading(false);
+      setGenerating(false);
     }
   };
 
-  const handleCompleteDate = async () => {
-    setLoading(true);
-    try {
-      const result = await dateApi.completeDate(characterId);
-      if (result.success) {
-        onDateCompleted?.(result);
-        Alert.alert(
-          '🎉 约会成功！',
-          `和${characterName}度过了美好的时光！\n\n+${result.xp_reward} XP\n关系更近了一步 💕`,
-          [{ text: '太棒了！', onPress: onClose }]
-        );
-      }
-    } catch (e: any) {
-      Alert.alert('完成失败', e.message);
-    } finally {
-      setLoading(false);
-    }
+  const handleClose = () => {
+    setGeneratedStory(null);
+    setDateResult(null);
+    onClose();
   };
 
   const isUnlocked = unlockStatus?.is_unlocked ?? false;
-  const isDateActive = activeDateInfo?.is_active ?? false;
 
   return (
     <Modal
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
       <View style={styles.overlay}>
         <View style={styles.container}>
@@ -169,9 +169,9 @@ export default function DateModal({
             style={styles.header}
           >
             <Text style={styles.headerTitle}>
-              {isDateActive ? '💕 约会进行中' : '💕 邀请约会'}
+              {generatedStory ? '💕 约会回忆' : '💕 邀请约会'}
             </Text>
-            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+            <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
               <Ionicons name="close" size={24} color="#fff" />
             </TouchableOpacity>
           </LinearGradient>
@@ -182,50 +182,47 @@ export default function DateModal({
                 <ActivityIndicator size="large" color="#FF6B9D" />
                 <Text style={styles.loadingText}>加载中...</Text>
               </View>
-            ) : isDateActive ? (
-              /* 约会进行中 */
-              <View style={styles.activeDateContainer}>
-                <Text style={styles.activeDateIcon}>
-                  {activeDateInfo?.scenario_icon || '💑'}
+            ) : generating ? (
+              /* 生成中 */
+              <View style={styles.generatingContainer}>
+                <ActivityIndicator size="large" color="#FF6B9D" />
+                <Text style={styles.generatingTitle}>正在生成约会故事...</Text>
+                <Text style={styles.generatingDesc}>
+                  {characterName}正在准备和你的约会～{'\n'}
+                  请稍等片刻...
                 </Text>
-                <Text style={styles.activeDateTitle}>
-                  {activeDateInfo?.scenario_name || '约会中'}
-                </Text>
-                <Text style={styles.activeDateDesc}>
-                  和{characterName}的约会正在进行中...
-                </Text>
-                
-                {/* Progress */}
-                <View style={styles.progressContainer}>
-                  <View style={styles.progressBar}>
-                    <View 
-                      style={[
-                        styles.progressFill,
-                        { 
-                          width: `${((activeDateInfo?.message_count || 0) / (activeDateInfo?.required_messages || 5)) * 100}%` 
-                        }
-                      ]} 
-                    />
+              </View>
+            ) : generatedStory ? (
+              /* 显示生成的故事 */
+              <View style={styles.storyContainer}>
+                {dateResult?.scenario && (
+                  <View style={styles.scenarioHeader}>
+                    <Text style={styles.scenarioIcon}>{dateResult.scenario.icon}</Text>
+                    <Text style={styles.scenarioTitle}>{dateResult.scenario.name}</Text>
                   </View>
-                  <Text style={styles.progressText}>
-                    {activeDateInfo?.message_count || 0} / {activeDateInfo?.required_messages || 5} 条对话
-                  </Text>
-                </View>
-                
-                <Text style={styles.activeDateHint}>
-                  继续聊天，享受约会时光～{'\n'}
-                  完成后会自动解锁新阶段！
-                </Text>
-
-                {/* Manual complete button (for testing) */}
-                {__DEV__ && (
-                  <TouchableOpacity
-                    style={styles.completeButton}
-                    onPress={handleCompleteDate}
-                  >
-                    <Text style={styles.completeButtonText}>🧪 手动完成约会</Text>
-                  </TouchableOpacity>
                 )}
+                <Text style={styles.storyText}>{generatedStory}</Text>
+                
+                {dateResult?.rewards && (
+                  <View style={styles.rewardsContainer}>
+                    <Text style={styles.rewardsTitle}>🎉 约会完成！</Text>
+                    <Text style={styles.rewardsText}>
+                      +{dateResult.rewards.xp} XP | 好感度 +{dateResult.rewards.emotion_boost}
+                    </Text>
+                    <Text style={styles.rewardsHint}>
+                      回忆已保存，可在回忆录中查看 💕
+                    </Text>
+                  </View>
+                )}
+                
+                <TouchableOpacity style={styles.doneButton} onPress={handleClose}>
+                  <LinearGradient
+                    colors={['#FF6B9D', '#C44569']}
+                    style={styles.doneButtonGradient}
+                  >
+                    <Text style={styles.doneButtonText}>完成</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
             ) : !isUnlocked ? (
               /* 未解锁 */
@@ -235,11 +232,11 @@ export default function DateModal({
                 <Text style={styles.lockedReason}>{unlockStatus?.reason}</Text>
                 <View style={styles.unlockRequirements}>
                   <Text style={styles.reqTitle}>解锁条件：</Text>
-                  <Text style={[styles.reqItem, currentLevel >= 10 && styles.reqItemDone]}>
-                    {currentLevel >= 10 ? '✅' : '⬜'} 达到 LV 10 (当前 LV {currentLevel})
+                  <Text style={[styles.reqItem, unlockStatus?.level_met && styles.reqItemDone]}>
+                    {unlockStatus?.level_met ? '✅' : '⬜'} 达到 LV {unlockStatus?.unlock_level || 10} (当前 LV {unlockStatus?.current_level || currentLevel})
                   </Text>
-                  <Text style={styles.reqItem}>
-                    ⬜ 送出过礼物
+                  <Text style={[styles.reqItem, unlockStatus?.gift_sent && styles.reqItemDone]}>
+                    {unlockStatus?.gift_sent ? '✅' : '⬜'} 送出过礼物
                   </Text>
                 </View>
               </View>
@@ -261,7 +258,7 @@ export default function DateModal({
                       ]}
                       onPress={() => setSelectedScenario(scenario.id)}
                     >
-                      <Text style={styles.scenarioIcon}>{scenario.icon}</Text>
+                      <Text style={styles.scenarioCardIcon}>{scenario.icon}</Text>
                       <Text style={styles.scenarioName}>{scenario.name}</Text>
                       <Text style={styles.scenarioDesc} numberOfLines={2}>
                         {scenario.description}
@@ -277,9 +274,9 @@ export default function DateModal({
 
                 {/* Start Date Button */}
                 <TouchableOpacity
-                  style={[styles.startButton, loading && styles.startButtonDisabled]}
+                  style={[styles.startButton, generating && styles.startButtonDisabled]}
                   onPress={handleStartDate}
-                  disabled={loading}
+                  disabled={generating}
                 >
                   <LinearGradient
                     colors={['#FF6B9D', '#C44569']}
@@ -290,6 +287,10 @@ export default function DateModal({
                     </Text>
                   </LinearGradient>
                 </TouchableOpacity>
+                
+                <Text style={styles.hintText}>
+                  约会将生成一段浪漫故事，保存到回忆录中
+                </Text>
               </>
             )}
           </ScrollView>
@@ -309,7 +310,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A1025',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '85%',
+    maxHeight: '90%',
   },
   header: {
     flexDirection: 'row',
@@ -341,6 +342,89 @@ const styles = StyleSheet.create({
   loadingText: {
     color: 'rgba(255,255,255,0.6)',
     marginTop: 12,
+  },
+  
+  // Generating state
+  generatingContainer: {
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  generatingTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  generatingDesc: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.6)',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  
+  // Story display
+  storyContainer: {
+    paddingBottom: 20,
+  },
+  scenarioHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  scenarioIcon: {
+    fontSize: 32,
+    marginRight: 12,
+  },
+  scenarioTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  storyText: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.9)',
+    lineHeight: 28,
+    letterSpacing: 0.3,
+  },
+  rewardsContainer: {
+    marginTop: 24,
+    padding: 16,
+    backgroundColor: 'rgba(255,107,157,0.1)',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  rewardsTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FF6B9D',
+    marginBottom: 8,
+  },
+  rewardsText: {
+    fontSize: 14,
+    color: '#6BCB77',
+    marginBottom: 4,
+  },
+  rewardsHint: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 4,
+  },
+  doneButton: {
+    marginTop: 20,
+  },
+  doneButtonGradient: {
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  doneButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
   },
   
   // Locked state
@@ -385,66 +469,6 @@ const styles = StyleSheet.create({
     color: '#6BCB77',
   },
   
-  // Active date
-  activeDateContainer: {
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  activeDateIcon: {
-    fontSize: 64,
-    marginBottom: 12,
-  },
-  activeDateTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 8,
-  },
-  activeDateDesc: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.7)',
-    marginBottom: 20,
-  },
-  progressContainer: {
-    width: '100%',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  progressBar: {
-    width: '80%',
-    height: 8,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#FF6B9D',
-    borderRadius: 4,
-  },
-  progressText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 8,
-  },
-  activeDateHint: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.6)',
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  completeButton: {
-    marginTop: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 8,
-  },
-  completeButtonText: {
-    color: '#FF6B9D',
-    fontSize: 14,
-  },
-  
   // Scenario selection
   sectionTitle: {
     fontSize: 18,
@@ -476,7 +500,7 @@ const styles = StyleSheet.create({
     borderColor: '#FF6B9D',
     backgroundColor: 'rgba(255,107,157,0.1)',
   },
-  scenarioIcon: {
+  scenarioCardIcon: {
     fontSize: 32,
     marginBottom: 8,
   },
@@ -500,7 +524,6 @@ const styles = StyleSheet.create({
   // Start button
   startButton: {
     marginTop: 10,
-    marginBottom: 20,
   },
   startButtonDisabled: {
     opacity: 0.5,
@@ -514,5 +537,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#fff',
+  },
+  hintText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.4)',
+    textAlign: 'center',
+    marginTop: 12,
+    marginBottom: 20,
   },
 });

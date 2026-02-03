@@ -2,10 +2,13 @@
 Chat Service with RAG (Retrieval-Augmented Generation) and xAI Grok Integration
 """
 
+import logging
 from typing import List, Dict, Optional, AsyncGenerator
 from uuid import UUID, uuid4
 from datetime import datetime
 import json
+
+logger = logging.getLogger(__name__)
 
 from app.core.database import get_db
 from app.core.redis import get_redis
@@ -354,6 +357,9 @@ class ChatService:
         """
         Build context from last N messages (for free users).
         Uses chat_repo to ensure MOCK_MODE compatibility.
+        
+        System messages (like date memories) are moved to the front
+        so the AI sees them first as context.
         """
         redis = await get_redis()
         cache_key = f"session:{session_id}:context"
@@ -369,11 +375,19 @@ class ChatService:
             count=self.max_context_messages
         )
         
-        # Messages are already in chronological order from get_recent_messages
-        context = [
-            {"role": msg["role"], "content": msg["content"]}
-            for msg in messages
-        ]
+        # Separate system messages (event memories) from conversation
+        system_messages = []
+        conversation_messages = []
+        
+        for msg in messages:
+            if msg["role"] == "system":
+                # 把约会/事件记忆放到前面
+                system_messages.append({"role": "system", "content": msg["content"]})
+            else:
+                conversation_messages.append({"role": msg["role"], "content": msg["content"]})
+        
+        # System messages first, then conversation in order
+        context = system_messages + conversation_messages
         
         # Cache for 1 hour
         await redis.setex(cache_key, 3600, json.dumps(context))
@@ -767,3 +781,77 @@ IMPORTANT GUIDELINES:
         # Clear cache
         redis = await get_redis()
         await redis.delete(f"session:{session_id}:context")
+
+    async def add_system_memory(
+        self,
+        user_id: str,
+        character_id: str,
+        memory_content: str,
+        memory_type: str = "system",
+    ) -> bool:
+        """
+        添加系统记忆到聊天历史（如约会回忆）
+        
+        这个记忆会被添加到用户与角色的聊天历史中，
+        让AI在后续对话中能够记住这些事件。
+        
+        Args:
+            user_id: 用户ID
+            character_id: 角色ID
+            memory_content: 记忆内容
+            memory_type: 记忆类型（date, gift, event等）
+        
+        Returns:
+            是否成功保存
+        """
+        from sqlalchemy import text
+        
+        try:
+            async with get_db() as db:
+                # 找到用户与角色的活跃session（或最近的session）
+                result = await db.execute(
+                    text("""
+                    SELECT id FROM chat_sessions
+                    WHERE user_id = :user_id AND character_id = :character_id
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                    """),
+                    {"user_id": user_id, "character_id": character_id}
+                )
+                row = result.fetchone()
+                
+                if not row:
+                    logger.warning(f"No session found for user={user_id}, character={character_id}")
+                    return False
+                
+                session_id = row[0]
+                
+                # 保存为系统消息
+                message_id = str(uuid4())
+                await db.execute(
+                    text("""
+                    INSERT INTO chat_messages 
+                    (id, session_id, role, content, tokens_used, created_at)
+                    VALUES (:id, :session_id, :role, :content, :tokens, :created_at)
+                    """),
+                    {
+                        "id": message_id,
+                        "session_id": session_id,
+                        "role": "system",
+                        "content": f"[{memory_type}] {memory_content}",
+                        "tokens": 0,
+                        "created_at": datetime.utcnow().isoformat()
+                    }
+                )
+                await db.commit()
+                
+                logger.info(f"System memory saved: session={session_id}, type={memory_type}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Failed to save system memory: {e}")
+            return False
+
+
+# Singleton instance
+chat_service = ChatService()

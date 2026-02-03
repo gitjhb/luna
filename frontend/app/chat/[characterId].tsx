@@ -33,6 +33,7 @@ import { useGiftStore, GiftCatalogItem } from '../../store/giftStore';
 // NSFW mode costs 2 extra credits per message
 const NSFW_MODE_CREDIT_COST = 2;
 import { chatService } from '../../services/chatService';
+import { api } from '../../services/api';
 import { intimacyService } from '../../services/intimacyService';
 import { characterService } from '../../services/characterService';
 import { emotionService } from '../../services/emotionService';
@@ -58,6 +59,7 @@ import { IntimacyInfoPanel } from '../../components/IntimacyInfoPanel';
 import { interactionsService } from '../../services/interactionsService';
 import DressupModal from '../../components/DressupModal';
 import DateModal from '../../components/DateModal';
+import DateSceneModal from '../../components/DateSceneModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -101,7 +103,8 @@ export default function ChatScreen() {
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [showDressupModal, setShowDressupModal] = useState(false);
   const [showDateModal, setShowDateModal] = useState(false);
-  const [activeDateInfo, setActiveDateInfo] = useState<any>(null);
+  const [showDateSceneModal, setShowDateSceneModal] = useState(false);
+  const [dateScenarios, setDateScenarios] = useState<Array<{id: string; name: string; icon: string; description?: string}>>([]);
   const [photoLoading, setPhotoLoading] = useState(false);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [showCharacterInfo, setShowCharacterInfo] = useState(false);
@@ -115,6 +118,22 @@ export default function ChatScreen() {
   const [selectedEventPlaceholder, setSelectedEventPlaceholder] = useState<EventStoryPlaceholder | null>(null);
   const [showMemoriesModal, setShowMemoriesModal] = useState(false);
   const [readEventIds, setReadEventIds] = useState<Set<string>>(new Set());
+  
+  // 💕 进行中的约会提醒
+  const [showActiveDateAlert, setShowActiveDateAlert] = useState(false);
+  const [activeDateSession, setActiveDateSession] = useState<{
+    session_id: string;
+    stage_num: number;
+    scenario_name: string;
+  } | null>(null);
+  
+  // 🎉 第一次约会庆祝弹窗
+  const [showFirstDateCelebration, setShowFirstDateCelebration] = useState(false);
+  const [firstDateResult, setFirstDateResult] = useState<{
+    ending: string;
+    xp: number;
+    affection: number;
+  } | null>(null);
   
   // 🎨 动态主题 - 根据情绪状态自动切换
   const {
@@ -313,6 +332,18 @@ export default function ChatScreen() {
       // Scroll to bottom after loading completes
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 200);
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 500);
+      
+      // 检查是否有进行中的约会
+      try {
+        const dateStatus = await api.get<any>(`/dates/status/${params.characterId}`);
+        if (dateStatus.active_session) {
+          setActiveDateSession(dateStatus.active_session);
+          // 延迟弹窗，让页面先加载完
+          setTimeout(() => setShowActiveDateAlert(true), 800);
+        }
+      } catch (e) {
+        console.log('Date status check failed:', e);
+      }
     }
   };
 
@@ -376,14 +407,20 @@ export default function ChatScreen() {
         
         // Update date info if present
         if (response.extraData.date) {
-          setActiveDateInfo(response.extraData.date);
           // Check if date just completed
           if (response.extraData.date.status === 'completed') {
             Alert.alert(
               '🎉 约会成功！',
               `和${characterName}度过了美好的时光！\n关系更近了一步 💕`,
             );
-            setActiveDateInfo(null);
+            setActiveDateSession(null);
+          } else if (response.extraData.date.session_id) {
+            // Update active session info
+            setActiveDateSession({
+              session_id: response.extraData.date.session_id,
+              stage_num: response.extraData.date.stage_num || 1,
+              scenario_name: response.extraData.date.scenario_name || '约会',
+            });
           }
         }
       }
@@ -873,13 +910,22 @@ export default function ChatScreen() {
           {/* 约会 - Lv10 解锁 */}
           {(relationshipLevel || 1) >= 10 ? (
             <TouchableOpacity 
-              style={[styles.actionButton, activeDateInfo?.is_active && styles.actionButtonActive]} 
-              onPress={() => setShowDateModal(true)}
+              style={styles.actionButton} 
+              onPress={async () => {
+                // 加载场景数据后打开互动约会
+                try {
+                  const { scenarios } = await api.get<{ scenarios: Array<{id: string; name: string; icon: string; description?: string}> }>('/dates/scenarios');
+                  setDateScenarios(scenarios || []);
+                  setShowDateSceneModal(true);
+                } catch (e) {
+                  console.error('Failed to load scenarios:', e);
+                  // 降级到简单模式
+                  setShowDateModal(true);
+                }
+              }}
             >
               <Text style={styles.actionButtonEmoji}>💕</Text>
-              <Text style={styles.actionButtonText}>
-                {activeDateInfo?.is_active ? '约会中' : '约会'}
-              </Text>
+              <Text style={styles.actionButtonText}>约会</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity 
@@ -1242,19 +1288,14 @@ export default function ChatScreen() {
         }}
       />
       
-      {/* 💕 约会模态框 */}
+      {/* 💕 约会模态框 (简单模式) */}
       <DateModal
         visible={showDateModal}
         onClose={() => setShowDateModal(false)}
         characterId={params.characterId}
         characterName={characterName}
         currentLevel={relationshipLevel || 1}
-        activeDateInfo={activeDateInfo}
-        onDateStarted={(dateInfo) => {
-          setActiveDateInfo({ ...dateInfo, is_active: true });
-        }}
         onDateCompleted={async (result) => {
-          setActiveDateInfo(null);
           // 刷新亲密度和情绪
           try {
             const updatedIntimacy = await intimacyService.getStatus(params.characterId);
@@ -1269,6 +1310,144 @@ export default function ChatScreen() {
           }
         }}
       />
+      
+      {/* 💕 互动式约会 (沉浸模式) */}
+      <DateSceneModal
+        visible={showDateSceneModal}
+        onClose={() => setShowDateSceneModal(false)}
+        characterId={params.characterId}
+        characterName={characterName}
+        characterAvatar={characterAvatar}
+        scenarios={dateScenarios}
+        onDateCompleted={async (result) => {
+          // 刷新亲密度和情绪
+          try {
+            const updatedIntimacy = await intimacyService.getStatus(params.characterId);
+            setRelationshipLevel(updatedIntimacy.currentLevel);
+            const updatedEmotion = await emotionService.getStatus(params.characterId);
+            if (updatedEmotion) {
+              setEmotionScore(updatedEmotion.emotionIntensity ?? 0);
+              setEmotionState(updatedEmotion.emotionalState ?? 'neutral');
+            }
+          } catch (e) {
+            console.warn('Failed to refresh after date:', e);
+          }
+          
+          // 🎉 显示第一次约会庆祝弹窗
+          if (result?.ending || result?.rewards) {
+            setFirstDateResult({
+              ending: result.ending?.type || 'normal',
+              xp: result.rewards?.xp || 0,
+              affection: result.rewards?.affection || 0,
+            });
+            // 延迟显示，让 DateSceneModal 先关闭
+            setTimeout(() => setShowFirstDateCelebration(true), 500);
+          }
+        }}
+      />
+      
+      {/* 🎉 第一次约会庆祝弹窗 */}
+      <Modal
+        visible={showFirstDateCelebration}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowFirstDateCelebration(false)}
+      >
+        <View style={styles.levelUpOverlay}>
+          <View style={styles.levelUpContent}>
+            <Text style={styles.levelUpEmoji}>
+              {firstDateResult?.ending === 'perfect' ? '💕' :
+               firstDateResult?.ending === 'good' ? '🥰' :
+               firstDateResult?.ending === 'normal' ? '😊' : '💔'}
+            </Text>
+            <Text style={styles.levelUpTitle}>
+              {firstDateResult?.ending === 'perfect' ? '完美约会！' :
+               firstDateResult?.ending === 'good' ? '美好的约会！' :
+               firstDateResult?.ending === 'normal' ? '约会结束' : '下次会更好的...'}
+            </Text>
+            <Text style={styles.levelUpLevel}>
+              和 {characterName} 的约会
+            </Text>
+            <Text style={styles.levelUpDesc}>
+              获得 {firstDateResult?.xp || 0} XP{'\n'}
+              好感度 {(firstDateResult?.affection ?? 0) >= 0 ? '+' : ''}{firstDateResult?.affection || 0}
+            </Text>
+            <TouchableOpacity 
+              style={styles.levelUpButton}
+              onPress={() => setShowFirstDateCelebration(false)}
+            >
+              <LinearGradient
+                colors={['#EC4899', '#F472B6'] as [string, string]}
+                style={styles.levelUpButtonGradient}
+              >
+                <Text style={styles.levelUpButtonText}>
+                  {firstDateResult?.ending === 'perfect' || firstDateResult?.ending === 'good' 
+                    ? '太开心了！' : '下次加油！'}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      
+      {/* 💕 进行中的约会提醒弹窗 */}
+      <Modal
+        visible={showActiveDateAlert}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowActiveDateAlert(false)}
+      >
+        <View style={styles.activeDateOverlay}>
+          <View style={styles.activeDateCard}>
+            <Text style={styles.activeDateIcon}>💕</Text>
+            <Text style={styles.activeDateTitle}>有一场约会在等你</Text>
+            <Text style={styles.activeDateSubtitle}>
+              {activeDateSession?.scenario_name} · 第 {activeDateSession?.stage_num} 阶段
+            </Text>
+            <Text style={styles.activeDateDesc}>
+              你和 {characterName} 的约会还没结束哦~
+            </Text>
+            <View style={styles.activeDateButtons}>
+              <TouchableOpacity
+                style={styles.activeDateContinueBtn}
+                onPress={async () => {
+                  setShowActiveDateAlert(false);
+                  // 加载场景后打开约会模态框
+                  try {
+                    const { scenarios } = await api.get<{ scenarios: Array<{id: string; name: string; icon: string; description?: string}> }>('/dates/scenarios');
+                    setDateScenarios(scenarios || []);
+                    setShowDateSceneModal(true);
+                  } catch (e) {
+                    console.error('Failed to load scenarios:', e);
+                    setShowDateSceneModal(true);
+                  }
+                }}
+              >
+                <Text style={styles.activeDateContinueBtnText}>继续约会 💕</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.activeDateCancelBtn}
+                onPress={async () => {
+                  // 取消约会
+                  try {
+                    if (activeDateSession?.session_id) {
+                      await api.post('/dates/interactive/abandon', {
+                        session_id: activeDateSession.session_id,
+                      });
+                    }
+                    setActiveDateSession(null);
+                  } catch (e) {
+                    console.error('Failed to abandon date:', e);
+                  }
+                  setShowActiveDateAlert(false);
+                }}
+              >
+                <Text style={styles.activeDateCancelBtnText}>取消约会</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       
       {/* Toast Notification */}
       {toastMessage && (
@@ -2114,6 +2293,76 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255, 255, 255, 0.7)',
   },
+  // 💕 进行中约会提醒样式
+  activeDateOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activeDateCard: {
+    backgroundColor: '#2D1B4E',
+    borderRadius: 20,
+    padding: 24,
+    width: '85%',
+    alignItems: 'center',
+    shadowColor: '#EC4899',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(236, 72, 153, 0.3)',
+  },
+  activeDateIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  activeDateTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  activeDateSubtitle: {
+    fontSize: 14,
+    color: '#EC4899',
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  activeDateDesc: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.7)',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  activeDateButtons: {
+    width: '100%',
+    gap: 10,
+  },
+  activeDateContinueBtn: {
+    backgroundColor: '#EC4899',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  activeDateContinueBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  activeDateCancelBtn: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  activeDateCancelBtnText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  
   // Toast styles
   toastContainer: {
     position: 'absolute',

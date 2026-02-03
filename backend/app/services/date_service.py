@@ -50,28 +50,53 @@ class DateService:
         Returns:
             (is_unlocked, reason)
         """
+        details = await self.get_unlock_details(user_id, character_id)
+        return details["is_unlocked"], details["reason"]
+    
+    async def get_unlock_details(
+        self,
+        user_id: str,
+        character_id: str,
+    ) -> dict:
+        """
+        获取详细的解锁状态
+        
+        Returns:
+            dict with is_unlocked, reason, current_level, level_met, gift_sent
+        """
         from app.services.intimacy_service import intimacy_service
         from app.services.game_engine import GameEngine
         
         # 检查等级
         intimacy_data = await intimacy_service.get_or_create_intimacy(user_id, character_id)
         level = intimacy_data.get("current_level", 1)
-        
-        if level < DATE_UNLOCK_LEVEL:
-            return False, f"需要达到 LV {DATE_UNLOCK_LEVEL} 才能解锁约会 (当前 LV {level})"
+        level_met = level >= DATE_UNLOCK_LEVEL
         
         # 检查是否已送过礼物
         game_engine = GameEngine()
         user_state = await game_engine._load_user_state(user_id, character_id)
+        gift_sent = "first_gift" in user_state.events
+        has_first_date = "first_date" in user_state.events
         
-        if "first_gift" not in user_state.events:
-            return False, "需要先送过礼物才能邀请约会"
+        is_unlocked = level_met and gift_sent
         
-        # 检查是否已经约会过
-        if "first_date" in user_state.events:
-            return True, "已完成首次约会，可以再次约会"
+        if not level_met:
+            reason = f"需要达到 LV {DATE_UNLOCK_LEVEL} 才能解锁约会 (当前 LV {level})"
+        elif not gift_sent:
+            reason = "需要先送过礼物才能邀请约会"
+        elif has_first_date:
+            reason = "已完成首次约会，可以再次约会"
+        else:
+            reason = "约会已解锁"
         
-        return True, "约会已解锁"
+        return {
+            "is_unlocked": is_unlocked,
+            "reason": reason,
+            "unlock_level": DATE_UNLOCK_LEVEL,
+            "current_level": level,
+            "level_met": level_met,
+            "gift_sent": gift_sent,
+        }
     
     async def start_date(
         self,
@@ -80,7 +105,14 @@ class DateService:
         scenario_id: Optional[str] = None,
     ) -> dict:
         """
-        开始约会
+        开始约会 - 一键生成约会故事
+        
+        新流程：
+        1. 检查解锁条件
+        2. 选择场景
+        3. 调用 event_story_generator 生成 first_date 故事
+        4. 保存到 event_memories（回忆录）
+        5. 触发 first_date 事件，给 XP 奖励
         
         Args:
             user_id: 用户ID
@@ -88,9 +120,12 @@ class DateService:
             scenario_id: 场景ID（可选，不传则随机）
             
         Returns:
-            约会信息
+            约会结果，包含生成的故事
         """
         from app.services.scenarios import get_scenario
+        from app.services.event_story_generator import event_story_generator, EventType
+        from app.services.intimacy_service import intimacy_service
+        from app.services.emotion_engine_v2 import emotion_engine
         import random
         
         # 检查解锁
@@ -110,32 +145,62 @@ class DateService:
             scenario_id = DATE_SCENARIOS[0]
             scenario = get_scenario(scenario_id)
         
-        # 创建约会记录
-        date_id = str(uuid4())
-        date_key = f"{user_id}:{character_id}"
+        logger.info(f"Starting date: user={user_id}, character={character_id}, scenario={scenario_id}")
         
-        date_info = {
-            "date_id": date_id,
-            "user_id": user_id,
-            "character_id": character_id,
-            "scenario_id": scenario_id,
-            "scenario_name": scenario.name,
+        # 获取关系状态用于故事生成
+        intimacy_data = await intimacy_service.get_or_create_intimacy(user_id, character_id)
+        relationship_state = {
+            "intimacy_level": intimacy_data.get("current_level", 1),
+            "stage": intimacy_data.get("intimacy_stage", "strangers"),
+            "scenario": scenario.name,
             "scenario_context": scenario.context,
-            "scenario_icon": scenario.icon,
-            "started_at": datetime.utcnow().isoformat(),
-            "message_count": 0,
-            "required_messages": DATE_COMPLETION_MESSAGES,
-            "status": "in_progress",
         }
         
-        _active_dates[date_key] = date_info
+        # 生成约会故事
+        story_result = await event_story_generator.generate_event_story(
+            user_id=user_id,
+            character_id=character_id,
+            event_type=EventType.FIRST_DATE,
+            chat_history=[],  # 约会故事不需要聊天历史
+            memory_context=f"约会场景：{scenario.name}\n{scenario.context}",
+            relationship_state=relationship_state,
+            save_to_db=True,
+        )
         
-        logger.info(f"Date started: user={user_id}, character={character_id}, scenario={scenario_id}")
+        if not story_result.success:
+            logger.error(f"Failed to generate date story: {story_result.error}")
+            return {
+                "success": False,
+                "error": story_result.error or "生成约会故事失败",
+            }
+        
+        # 触发 first_date 事件
+        event_triggered = await self._trigger_first_date_event(user_id, character_id)
+        
+        # 给予 XP 奖励
+        xp_reward = 50
+        await intimacy_service.add_xp(user_id, character_id, xp_reward)
+        
+        # 提升情绪
+        await emotion_engine.update_score(user_id, character_id, 15)
+        
+        logger.info(f"Date completed: user={user_id}, character={character_id}, story_length={len(story_result.story_content or '')}")
         
         return {
             "success": True,
-            "date": date_info,
-            "prompt_modifier": self._build_date_prompt(scenario),
+            "story": story_result.story_content,
+            "event_memory_id": story_result.event_memory_id,
+            "scenario": {
+                "id": scenario_id,
+                "name": scenario.name,
+                "icon": scenario.icon,
+            },
+            "rewards": {
+                "xp": xp_reward,
+                "emotion_boost": 15,
+            },
+            "event_triggered": event_triggered,
+            "message": "约会成功！回忆已保存 💕",
         }
     
     async def get_active_date(
@@ -240,38 +305,49 @@ class DateService:
     ) -> bool:
         """触发 first_date 事件"""
         try:
-            from app.core.database import get_session
+            from app.core.database import get_db
             from app.models.database.event_memory_models import EventMemory, EventType as DBEventType
-            from sqlalchemy import select
+            from app.models.database.intimacy_models import UserIntimacy
+            from sqlalchemy import select, update
             
-            async with get_session() as session:
-                # 检查是否已存在
-                stmt = select(EventMemory).where(
-                    EventMemory.user_id == user_id,
-                    EventMemory.character_id == character_id,
-                    EventMemory.event_type == "first_date"
+            async with get_db() as db:
+                # 1. 更新 UserIntimacy 表的 events 字段（游戏引擎从这里读取）
+                intimacy_result = await db.execute(
+                    select(UserIntimacy).where(
+                        UserIntimacy.user_id == user_id,
+                        UserIntimacy.character_id == character_id
+                    )
                 )
-                result = await session.execute(stmt)
-                existing = result.scalar_one_or_none()
+                intimacy = intimacy_result.scalar_one_or_none()
                 
-                if existing:
-                    return False  # 已经有了
+                if intimacy:
+                    current_events = intimacy.events or []
+                    if isinstance(current_events, str):
+                        import json
+                        current_events = json.loads(current_events) if current_events else []
+                    
+                    if "first_date" not in current_events:
+                        current_events.append("first_date")
+                        await db.execute(
+                            update(UserIntimacy)
+                            .where(
+                                UserIntimacy.user_id == user_id,
+                                UserIntimacy.character_id == character_id
+                            )
+                            .values(events=current_events)
+                        )
+                        logger.info(f"first_date added to UserIntimacy.events for user={user_id}, character={character_id}")
                 
-                # 创建事件记录
-                event = EventMemory(
-                    user_id=user_id,
-                    character_id=character_id,
-                    event_type="first_date",
-                    event_summary="完成了第一次约会",
-                    emotion_snapshot=50,
-                    intimacy_snapshot=40,
-                )
-                session.add(event)
-                await session.commit()
+                # 注意：event_memories 表由 save_story_direct 负责，这里不再重复插入
+                # 只更新 UserIntimacy.events 字段
                 
+                await db.commit()
+                logger.info(f"first_date event triggered for user={user_id}, character={character_id}")
                 return True
         except Exception as e:
             logger.error(f"Failed to trigger first_date event: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def _build_date_prompt(self, scenario) -> str:

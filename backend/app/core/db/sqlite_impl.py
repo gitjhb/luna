@@ -62,7 +62,7 @@ async def init_sqlite():
     from app.models.database import (
         intimacy_models, gift_models, payment_models,
         emotion_models, stats_models, user_settings_models,
-        referral_models
+        referral_models, date_models
     )
     
     async with _engine.begin() as conn:

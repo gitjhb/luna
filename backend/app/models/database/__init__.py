@@ -14,6 +14,7 @@ from .payment_models import *
 from .referral_models import UserReferral, ReferralReward
 from .image_models import GeneratedImage, ImagePromptTemplate, ImageGenerationType, ImageStyle
 from .event_memory_models import EventMemory, EventType
+from .date_models import DateSessionDB, DateCooldownDB
 
 __all__ = [
     "Base",

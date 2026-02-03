@@ -492,6 +492,9 @@ class GiftService:
             
             logger.info(f"Gift transaction completed: {gift_type} from {user_id} to {character_id}")
             
+            # Step 10: Trigger first_gift event (if first time sending gift)
+            await self._trigger_first_gift_event(user_id, character_id)
+            
             # Get current intimacy level and mood for response
             current_level = xp_result.get("new_level") or xp_result.get("current_level", 1)
             current_mood = "neutral"
@@ -904,6 +907,38 @@ class GiftService:
         ]
         gift_txns.sort(key=lambda x: x["created_at"], reverse=True)
         return gift_txns[offset:offset + limit]
+    
+    # =========================================================================
+    # Event Triggers
+    # =========================================================================
+    
+    async def _trigger_first_gift_event(self, user_id: str, character_id: str) -> bool:
+        """
+        Trigger first_gift event if not already triggered.
+        This unlocks date functionality.
+        """
+        try:
+            from app.services.game_engine import GameEngine
+            
+            game_engine = GameEngine()
+            user_state = await game_engine._load_user_state(user_id, character_id)
+            
+            if "first_gift" in user_state.events:
+                logger.debug(f"first_gift event already exists for {user_id}/{character_id}")
+                return False
+            
+            # Add event
+            user_state.events.append("first_gift")
+            
+            # Save state
+            await game_engine._save_user_state(user_state)
+            
+            logger.info(f"first_gift event triggered for {user_id}/{character_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to trigger first_gift event: {e}")
+            return False
     
     # =========================================================================
     # Convenience Methods
