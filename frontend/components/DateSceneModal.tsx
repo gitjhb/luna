@@ -1257,6 +1257,7 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingHorizontal: 16,
     paddingBottom: 10,
+    zIndex: 10, // 确保在场景图片之上
   },
   backBtn: {
     width: 36,
@@ -1366,13 +1367,14 @@ const styles = StyleSheet.create({
   // 中间区域 - 场景图片/角色立绘展示
   middleArea: {
     position: 'absolute',
-    top: 0, // 从顶部开始，让场景图片填满
+    top: 0, // 从顶部开始
     left: 0,
     right: 0,
     height: SCREEN_HEIGHT * 0.6, // 占屏幕 60%
     justifyContent: 'flex-start',
     alignItems: 'center',
     overflow: 'hidden',
+    zIndex: 1, // 在顶部状态栏之下
   },
   backgroundAvatar: {
     width: SCREEN_WIDTH * 0.85,
