@@ -651,29 +651,51 @@ export default function DateSceneModal({
       
       {!activeSession && (
       <ScrollView style={styles.scenarioList} showsVerticalScrollIndicator={false}>
-        {scenarios.map((scenario) => (
-          <TouchableOpacity
-            key={scenario.id}
-            style={[
-              styles.scenarioItem,
-              selectedScenario?.id === scenario.id && styles.scenarioItemSelected,
-            ]}
-            onPress={() => setSelectedScenario(scenario)}
-          >
-            <Text style={styles.scenarioIcon}>{scenario.icon}</Text>
-            <View style={styles.scenarioInfo}>
-              <Text style={styles.scenarioName}>{scenario.name}</Text>
-              {scenario.description && (
-                <Text style={styles.scenarioDesc} numberOfLines={1}>
-                  {scenario.description}
-                </Text>
+        {scenarios.map((scenario) => {
+          const isLocked = (scenario as any).is_locked;
+          const requiredLevel = (scenario as any).required_level;
+          
+          return (
+            <TouchableOpacity
+              key={scenario.id}
+              style={[
+                styles.scenarioItem,
+                selectedScenario?.id === scenario.id && styles.scenarioItemSelected,
+                isLocked && styles.scenarioItemLocked,
+              ]}
+              onPress={() => {
+                if (isLocked) {
+                  setJudgeComment(`🔒 需要 Lv.${requiredLevel} 解锁`);
+                  setTimeout(() => setJudgeComment(null), 2000);
+                } else {
+                  setSelectedScenario(scenario);
+                }
+              }}
+            >
+              <Text style={[styles.scenarioIcon, isLocked && styles.scenarioIconLocked]}>
+                {isLocked ? '🔒' : scenario.icon}
+              </Text>
+              <View style={styles.scenarioInfo}>
+                <View style={styles.scenarioNameRow}>
+                  <Text style={[styles.scenarioName, isLocked && styles.scenarioNameLocked]}>
+                    {scenario.name}
+                  </Text>
+                  {isLocked && requiredLevel && (
+                    <Text style={styles.scenarioLevelBadge}>Lv.{requiredLevel}</Text>
+                  )}
+                </View>
+                {scenario.description && (
+                  <Text style={[styles.scenarioDesc, isLocked && styles.scenarioDescLocked]} numberOfLines={1}>
+                    {scenario.description}
+                  </Text>
+                )}
+              </View>
+              {!isLocked && selectedScenario?.id === scenario.id && (
+                <Ionicons name="checkmark-circle" size={24} color="#FF6B9D" />
               )}
-            </View>
-            {selectedScenario?.id === scenario.id && (
-              <Ionicons name="checkmark-circle" size={24} color="#FF6B9D" />
-            )}
-          </TouchableOpacity>
-        ))}
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
       )}
       
@@ -1128,6 +1150,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: 'rgba(255,255,255,0.5)',
     marginTop: 4,
+  },
+  // 锁定状态样式
+  scenarioItemLocked: {
+    opacity: 0.6,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  scenarioIconLocked: {
+    opacity: 0.7,
+  },
+  scenarioNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  scenarioNameLocked: {
+    color: 'rgba(255,255,255,0.5)',
+  },
+  scenarioLevelBadge: {
+    marginLeft: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: 'rgba(255,107,157,0.3)',
+    borderRadius: 8,
+    fontSize: 12,
+    color: '#FF6B9D',
+    fontWeight: '600',
+  },
+  scenarioDescLocked: {
+    color: 'rgba(255,255,255,0.3)',
   },
   startButton: {
     marginTop: 20,

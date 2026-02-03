@@ -416,6 +416,45 @@ You are on a date with the user!
                     "icon": scenario.icon,
                 })
         return scenarios
+    
+    async def get_character_date_scenarios(
+        self,
+        user_id: str,
+        character_id: str,
+    ) -> List[dict]:
+        """
+        获取角色专属的约会场景列表（带锁定状态）
+        
+        只有 sakura 有专属场景，其他角色返回通用场景
+        """
+        from app.services.intimacy_service import intimacy_service
+        
+        # 检查是否有角色专属场景
+        if character_id not in CHARACTER_DATE_SCENES:
+            # 返回通用场景（不锁定）
+            return self.get_date_scenarios()
+        
+        # 获取用户等级
+        intimacy_data = await intimacy_service.get_or_create_intimacy(user_id, character_id)
+        user_level = intimacy_data.get("current_level", 1)
+        
+        # 构建带锁定状态的场景列表
+        scenes = CHARACTER_DATE_SCENES[character_id]
+        scenarios = []
+        for scene_id, scene_config in scenes.items():
+            required_level = scene_config.get("required_level", 1)
+            is_locked = user_level < required_level
+            
+            scenarios.append({
+                "id": scene_id,
+                "name": scene_config["name"],
+                "icon": scene_config.get("icon", "💕"),
+                "description": scene_config.get("description", ""),
+                "required_level": required_level,
+                "is_locked": is_locked,
+            })
+        
+        return scenarios
 
 
 # 单例

@@ -74,13 +74,13 @@ async def check_date_unlock_status(character_id: str, req: Request):
 
 
 @router.get("/scenarios")
-async def list_date_scenarios(character_id: Optional[str] = None, req: Request = None):
+async def list_date_scenarios(req: Request, character_id: Optional[str] = None):
     """
     获取可用的约会场景列表
     
     如果提供 character_id，返回该角色的专属场景（带锁定状态）
     """
-    if character_id and req:
+    if character_id:
         user_id = _get_user_id(req)
         scenarios = await date_service.get_character_date_scenarios(user_id, character_id)
     else:
