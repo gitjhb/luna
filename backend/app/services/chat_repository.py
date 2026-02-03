@@ -143,7 +143,25 @@ class ChatRepository:
             
             result = await db.execute(query.order_by(ChatSession.updated_at.desc()))
             sessions = result.scalars().all()
-            return [s.to_dict() for s in sessions]
+            
+            # 获取每个 session 的最后一条消息
+            session_dicts = []
+            for s in sessions:
+                session_dict = s.to_dict()
+                # 查询最后一条消息
+                msg_result = await db.execute(
+                    select(ChatMessageDB)
+                    .where(ChatMessageDB.session_id == s.id)
+                    .order_by(ChatMessageDB.created_at.desc())
+                    .limit(1)
+                )
+                last_msg = msg_result.scalar_one_or_none()
+                if last_msg:
+                    session_dict["last_message"] = last_msg.content[:100] if last_msg.content else None
+                    session_dict["last_message_at"] = last_msg.created_at.isoformat() if last_msg.created_at else None
+                session_dicts.append(session_dict)
+            
+            return session_dicts
     
     @staticmethod
     async def update_session(session_id: str, **kwargs) -> Optional[dict]:

@@ -89,6 +89,8 @@ class SessionInfo(BaseModel):
     character_avatar: Optional[str] = None
     character_background: Optional[str] = None
     total_messages: int = 0
+    last_message: Optional[str] = None  # 最后一条消息内容
+    last_message_at: Optional[datetime] = None  # 最后消息时间
     created_at: datetime
     updated_at: datetime
 

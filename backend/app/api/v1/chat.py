@@ -94,6 +94,8 @@ async def list_sessions(character_id: UUID = None, req: Request = None):
             character_avatar=s.get("character_avatar"),
             character_background=s.get("character_background"),
             total_messages=s.get("total_messages", 0),
+            last_message=s.get("last_message"),
+            last_message_at=s.get("last_message_at"),
             created_at=s["created_at"],
             updated_at=s["updated_at"],
         )

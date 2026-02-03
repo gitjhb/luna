@@ -106,8 +106,14 @@ export default function ChatsScreen() {
     }
   };
 
-  const getLastMessage = (sessionId: string): string => {
-    const messages = messagesBySession[sessionId];
+  const getLastMessage = (session: ChatSession): string => {
+    // 优先使用后端返回的 lastMessage
+    if ((session as any).lastMessage) {
+      const msg = (session as any).lastMessage;
+      return msg.slice(0, 50) + (msg.length > 50 ? '...' : '');
+    }
+    // 回退到本地缓存
+    const messages = messagesBySession[session.sessionId];
     if (!messages || messages.length === 0) return '新对话';
     const lastMsg = messages[messages.length - 1];
     return lastMsg.content.slice(0, 50) + (lastMsg.content.length > 50 ? '...' : '');
@@ -130,7 +136,7 @@ export default function ChatsScreen() {
           <Text style={styles.timestamp}>{formatTime(item.lastMessageAt || item.createdAt)}</Text>
         </View>
         <Text style={styles.sessionTitle} numberOfLines={1}>
-          {getLastMessage(item.sessionId)}
+          {getLastMessage(item)}
         </Text>
       </View>
     </TouchableOpacity>
