@@ -105,7 +105,9 @@ async def init_db():
         from app.models.database.chat_models import Base as ChatBase
         from app.models.database.billing_models import Base as BillingBase
         # Import models to register them with Base.metadata
-        from app.models.database import intimacy_models, gift_models, payment_models, emotion_models, stats_models, user_settings_models, referral_models, date_models
+        from app.models.database import intimacy_models, gift_models, payment_models, emotion_models, stats_models, user_settings_models, referral_models, date_models, image_models
+        # Import memory v2 models to create tables
+        from app.models.database import memory_v2_models
 
         database_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/app.db")
         
@@ -155,7 +157,8 @@ async def close_db():
 @asynccontextmanager
 async def get_db() -> AsyncGenerator:
     """
-    Get database connection/session.
+    Get database connection/session as context manager.
+    Use this when you need 'async with get_db() as db:' syntax.
     Returns mock in development mode.
     """
     logger.debug(f"get_db called: MOCK_MODE={MOCK_MODE}, _session_factory={_session_factory}")
@@ -177,3 +180,27 @@ async def get_db() -> AsyncGenerator:
             raise
         finally:
             await session.close()
+
+
+async def get_db_session() -> AsyncGenerator:
+    """
+    FastAPI dependency for database sessions.
+    Use this with Depends(get_db_session) in FastAPI routes.
+    """
+    logger.debug(f"get_db_session called: MOCK_MODE={MOCK_MODE}, _session_factory={_session_factory}")
+    if MOCK_MODE:
+        logger.warning("Using MockDB because MOCK_MODE is True")
+        yield MockDB()
+        return
+    if _session_factory is None:
+        logger.error("Using MockDB because _session_factory is None!")
+        yield MockDB()
+        return
+
+    async with _session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise

@@ -21,7 +21,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import get_db_session
 from app.models.schemas import UserContext
 from app.services.image_service import (
     get_image_service,
@@ -137,7 +137,7 @@ class ImageCostResponse(BaseModel):
 async def generate_image(
     request: ImageGenerateRequest,
     req: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_session),
 ):
     """
     Generate an image for a character.
@@ -217,7 +217,7 @@ async def get_image_history(
     character_id: Optional[str] = Query(default=None, description="Filter by character"),
     limit: int = Query(default=20, ge=1, le=100, description="Max results"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_session),
 ):
     """
     Get user's image generation history.
@@ -344,7 +344,7 @@ class CharacterGiftResponse(BaseModel):
 @router.post("/gift", response_model=CharacterGiftResponse, include_in_schema=False)
 async def create_character_gift(
     request: CharacterGiftRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_session),
 ):
     """
     Internal endpoint for character AI to send gift images.

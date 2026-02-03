@@ -26,6 +26,37 @@ DATE_SCENARIOS = [
     "stargazing",      # 星空露营
 ]
 
+# 角色专属约会场景配置
+# 只有 sakura 有专属场景，其他角色暂时用通用场景
+CHARACTER_DATE_SCENES: Dict[str, Dict[str, dict]] = {
+    "sakura": {
+        "bedroom": {
+            "name": "卧室",
+            "icon": "🛏️",
+            "description": "芽衣的私人空间",
+            "required_level": 1,
+        },
+        "beach": {
+            "name": "海滩",
+            "icon": "🏖️",
+            "description": "阳光沙滩，青春的气息",
+            "required_level": 20,
+        },
+        "ocean": {
+            "name": "海边露台",
+            "icon": "🌊",
+            "description": "浪漫的海边夜晚",
+            "required_level": 20,
+        },
+        "school": {
+            "name": "教室",
+            "icon": "🏫",
+            "description": "放学后的秘密约会",
+            "required_level": 20,
+        },
+    },
+}
+
 # 约会解锁条件
 DATE_UNLOCK_LEVEL = 10
 

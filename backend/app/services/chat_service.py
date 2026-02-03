@@ -42,6 +42,18 @@ try:
 except ImportError:
     emotion_score_service = None
 
+# Memory system v2 (three-layer memory)
+try:
+    from app.services.memory_integration_service import (
+        get_memory_context_for_chat,
+        process_conversation_for_memory,
+        generate_memory_prompt,
+    )
+    memory_system_available = True
+except ImportError as e:
+    logger.warning(f"Memory system v2 not available: {e}")
+    memory_system_available = False
+
 
 class ChatService:
     """
@@ -240,6 +252,28 @@ class ChatService:
         if emotion_context:
             system_prompt += emotion_context
         
+        # Step 3.6: Get memory context (Memory System v2)
+        memory_context = None
+        if memory_system_available:
+            try:
+                memory_context = await get_memory_context_for_chat(
+                    user_id=str(user_context.user_id),
+                    character_id=str(session["character_id"]),
+                    current_message=request.message,
+                    working_memory=context_messages,
+                )
+                if memory_context:
+                    memory_prompt = generate_memory_prompt(
+                        memory_context=memory_context,
+                        intimacy_level=intimacy_level,
+                        current_query=request.message,
+                    )
+                    if memory_prompt:
+                        system_prompt += f"\n\n{memory_prompt}"
+                        logger.debug(f"Added memory context to prompt for user={user_context.user_id}")
+            except Exception as e:
+                logger.warning(f"Memory system error (non-fatal): {e}")
+        
         # Check if response should be locked for non-subscribers
         should_lock_response = (
             emotion_analysis 
@@ -300,6 +334,20 @@ class ChatService:
         
         # Step 8: Update session stats
         await self._update_session_stats(request.session_id)
+        
+        # Step 8.5: Process conversation for memory extraction (Memory System v2)
+        if memory_system_available:
+            try:
+                await process_conversation_for_memory(
+                    user_id=str(user_context.user_id),
+                    character_id=str(session["character_id"]),
+                    user_message=request.message,
+                    assistant_response=assistant_message,
+                    context=context_messages,
+                )
+            except Exception as e:
+                # Don't fail the request if memory processing fails
+                logger.warning(f"Memory processing error (non-fatal): {e}")
         
         # Step 9: Handle paywall for non-subscribers
         if should_lock_response:

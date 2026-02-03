@@ -12,9 +12,10 @@ from .emotion_models import *
 from .stats_models import *
 from .payment_models import *
 from .referral_models import UserReferral, ReferralReward
-from .image_models import GeneratedImage, ImagePromptTemplate, ImageGenerationType, ImageStyle
+from .image_models import GeneratedImage, ImagePromptTemplate, ImageGenerationType, ImageStyle, UnlockedPhoto
 from .event_memory_models import EventMemory, EventType
 from .date_models import DateSessionDB, DateCooldownDB
+from .memory_v2_models import SemanticMemory, EpisodicMemory, MemoryExtractionLog
 
 __all__ = [
     "Base",

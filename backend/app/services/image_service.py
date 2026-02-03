@@ -222,13 +222,15 @@ class ImageGenerationService:
     """
     
     def __init__(self):
-        self.api_key = os.getenv("XAI_API_KEY", "")
-        self.base_url = os.getenv("XAI_BASE_URL", "https://api.x.ai/v1")
-        self.mock_mode = os.getenv("MOCK_IMAGE", "true").lower() == "true"
+        from app.config import settings
+        
+        self.api_key = settings.XAI_API_KEY
+        self.base_url = settings.XAI_BASE_URL
+        self.mock_mode = settings.MOCK_IMAGE
         self.timeout = 120  # Image generation can be slow
         
         # Default model
-        self.model = "grok-2-image"
+        self.model = settings.XAI_IMAGE_MODEL
         
         logger.info(f"ImageGenerationService initialized - Mock mode: {self.mock_mode}")
     

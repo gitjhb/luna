@@ -78,6 +78,22 @@ class GeneratedImage(Base):
         return f"<GeneratedImage(image_id={self.image_id}, user_id={self.user_id}, style={self.style})>"
 
 
+class UnlockedPhoto(Base):
+    """Unlocked photo record - photos unlocked after date completion"""
+    __tablename__ = "unlocked_photos"
+    
+    id = Column(String(128), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(128), nullable=False, index=True)
+    character_id = Column(String(128), nullable=False, index=True)
+    scene = Column(String(64), nullable=False)  # e.g., 'bedroom', 'beach', 'ocean'
+    photo_type = Column(String(32), nullable=False)  # 'normal' or 'perfect'
+    source = Column(String(32), default="date")  # e.g., 'date', 'gift', 'event'
+    unlocked_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    def __repr__(self):
+        return f"<UnlockedPhoto(id={self.id}, user_id={self.user_id}, scene={self.scene})>"
+
+
 class ImagePromptTemplate(Base):
     """Prompt template for character image generation"""
     __tablename__ = "image_prompt_templates"
