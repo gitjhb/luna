@@ -567,7 +567,12 @@ export default function DateSceneModal({
     }
   };
   
-  // Abandon date
+  // 暂时退出（保持约会进行中，可以继续）
+  const handlePause = () => {
+    onClose();
+  };
+  
+  // 放弃约会（彻底结束，不可继续）
   const handleAbandon = async () => {
     if (!sessionId) {
       onClose();
@@ -750,7 +755,7 @@ export default function DateSceneModal({
       {/* === 顶部状态栏 === */}
       <View style={styles.topBar}>
         {/* 返回按钮 */}
-        <TouchableOpacity onPress={handleAbandon} style={styles.backBtn}>
+        <TouchableOpacity onPress={handlePause} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color="#fff" />
         </TouchableOpacity>
         
@@ -1012,7 +1017,7 @@ export default function DateSceneModal({
       visible={visible}
       animationType="fade"
       statusBarTranslucent
-      onRequestClose={handleAbandon}
+      onRequestClose={handlePause}
     >
       <View style={styles.container}>
         {phase === 'select' && renderScenarioSelect()}
