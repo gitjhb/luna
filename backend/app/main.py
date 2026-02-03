@@ -20,7 +20,7 @@ from app.middleware.billing_middleware import BillingMiddleware
 from app.middleware.logging_middleware import LoggingMiddleware
 
 # Import routers
-from app.api.v1 import auth, chat, characters, wallet, market, voice, image, images, intimacy, pricing, payment, gifts, scenarios, emotion, user_settings, interests, referral, events, interactions, debug, dates
+from app.api.v1 import auth, chat, characters, wallet, market, voice, image, images, intimacy, pricing, payment, gifts, scenarios, emotion, user_settings, interests, referral, events, interactions, debug, dates, photos
 
 
 # Lifespan context manager for startup/shutdown
@@ -157,6 +157,7 @@ app.include_router(events.router, prefix="/api/v1", tags=["Events"])
 app.include_router(interactions.router, prefix="/api/v1", tags=["Interactions"])
 app.include_router(debug.router, prefix="/api/v1", tags=["Debug"])
 app.include_router(dates.router, prefix="/api/v1", tags=["Dates"])
+app.include_router(photos.router, prefix="/api/v1", tags=["Photos"])
 
 
 # ============================================================================

@@ -13,7 +13,7 @@ export const characterAvatars: Record<string, any> = {
   'd2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d': require('./luna.jpg'),
   
   // Sakura - 元气少女
-  'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e': require('./Sakura.jpg'),
+  'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e': require('./Sakura.jpeg'),
   
   // Yuki - 高冷大小姐
   'f4d5e6f7-a8b9-4c0d-1e2f-3a4b5c6d7e8f': require('./Yuki.jpg'),
@@ -34,7 +34,7 @@ export const characterBackgrounds: Record<string, any> = {
   'd2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d': require('./luna.jpg'),
   
   // Sakura
-  'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e': require('./Sakura.jpg'),
+  'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e': require('./Sakura.jpeg'),
   
   // Yuki
   'f4d5e6f7-a8b9-4c0d-1e2f-3a4b5c6d7e8f': require('./Yuki.jpg'),

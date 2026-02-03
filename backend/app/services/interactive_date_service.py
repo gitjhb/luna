@@ -1529,6 +1529,34 @@ class InteractiveDateService:
         elif ending_type == "bad":
             achievements.append({"id": "bad_date", "name": "尴尬时刻", "icon": "😅"})
         
+        # 📸 解锁照片 (根据场景和结局)
+        unlocked_photo = None
+        try:
+            from app.services.photo_unlock_service import photo_unlock_service
+            
+            photo_type = photo_unlock_service.get_unlock_photo_type(ending_type)
+            if photo_type:
+                # 将场景ID标准化 (例如 "星空露营" -> "camping", 暂时用 scenario_id)
+                scene_id = session.scenario_id or "bedroom"  # 默认卧室
+                
+                result = await photo_unlock_service.unlock_photo(
+                    user_id=session.user_id,
+                    character_id=session.character_id,
+                    scene=scene_id,
+                    photo_type=photo_type,
+                    source="date",
+                )
+                
+                if result.get("success") and not result.get("already_unlocked"):
+                    unlocked_photo = {
+                        "scene": scene_id,
+                        "photo_type": photo_type,
+                        "is_new": True,
+                    }
+                    logger.info(f"📸 [DATE] Photo unlocked: {scene_id}/{photo_type}")
+        except Exception as e:
+            logger.warning(f"Failed to unlock photo: {e}")
+        
         # 清理会话
         if session.id in _active_sessions:
             del _active_sessions[session.id]
@@ -1554,6 +1582,7 @@ class InteractiveDateService:
             "story_summary": story_summary,
             "cooldown_hours": COOLDOWN_HOURS,
             "cooldown_until": cooldown_until.isoformat(),
+            "unlocked_photo": unlocked_photo,  # 解锁的照片信息
         }
     
     def _determine_ending(self, affection_score: int) -> str:

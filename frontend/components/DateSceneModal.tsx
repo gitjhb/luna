@@ -163,6 +163,7 @@ export default function DateSceneModal({
   const [ending, setEnding] = useState<DateEnding | null>(null);
   const [rewards, setRewards] = useState<DateRewards | null>(null);
   const [storySummary, setStorySummary] = useState<string | null>(null);
+  const [unlockedPhoto, setUnlockedPhoto] = useState<{scene: string; photo_type: string; is_new: boolean} | null>(null);
   const [affectionScore, setAffectionScore] = useState(50); // 起始好感度
   const [affectionFeedback, setAffectionFeedback] = useState<number | null>(null);
   const [showFreeInput, setShowFreeInput] = useState(false);
@@ -479,6 +480,7 @@ export default function DateSceneModal({
           setEnding(result.ending);
           setRewards(result.rewards);
           setStorySummary(result.story_summary);
+          setUnlockedPhoto(result.unlocked_photo || null);
           setPhase('ending');
           onDateCompleted?.(result);
         } else {
@@ -522,6 +524,7 @@ export default function DateSceneModal({
           setEnding(result.ending);
           setRewards(result.rewards);
           setStorySummary(result.story_summary);
+          setUnlockedPhoto(result.unlocked_photo || null);
           setPhase('ending');
           onDateCompleted?.(result);
         } else {
@@ -902,6 +905,19 @@ export default function DateSceneModal({
             <Text style={styles.rewardsTitle}>🎁 获得奖励</Text>
             <Text style={styles.rewardsText}>
               +{rewards.xp} XP
+            </Text>
+          </View>
+        )}
+        
+        {/* Unlocked Photo */}
+        {unlockedPhoto?.is_new && (
+          <View style={[styles.rewardsBox, { backgroundColor: 'rgba(236, 72, 153, 0.15)', borderColor: 'rgba(236, 72, 153, 0.3)' }]}>
+            <Text style={styles.rewardsTitle}>📸 解锁新照片</Text>
+            <Text style={[styles.rewardsText, { color: '#EC4899' }]}>
+              {unlockedPhoto.photo_type === 'perfect' ? '💕 特别版照片' : '📷 普通照片'}
+            </Text>
+            <Text style={{ color: '#888', fontSize: 12, marginTop: 4 }}>
+              前往相册查看
             </Text>
           </View>
         )}
