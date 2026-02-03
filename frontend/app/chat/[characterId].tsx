@@ -1008,7 +1008,7 @@ export default function ChatScreen() {
               onPress={async () => {
                 // 加载场景数据后打开互动约会
                 try {
-                  const { scenarios } = await api.get<{ scenarios: Array<{id: string; name: string; icon: string; description?: string; required_level?: number; is_locked?: boolean}> }>(`/dates/scenarios?character_id=${characterId}`);
+                  const { scenarios } = await api.get<{ scenarios: Array<{id: string; name: string; icon: string; description?: string; required_level?: number; is_locked?: boolean}> }>(`/dates/scenarios?character_id=${params.characterId}`);
                   setDateScenarios(scenarios || []);
                   setShowDateSceneModal(true);
                 } catch (e) {
@@ -1524,7 +1524,7 @@ export default function ChatScreen() {
                   setShowActiveDateAlert(false);
                   // 加载场景后打开约会模态框
                   try {
-                    const { scenarios } = await api.get<{ scenarios: Array<{id: string; name: string; icon: string; description?: string; required_level?: number; is_locked?: boolean}> }>(`/dates/scenarios?character_id=${characterId}`);
+                    const { scenarios } = await api.get<{ scenarios: Array<{id: string; name: string; icon: string; description?: string; required_level?: number; is_locked?: boolean}> }>(`/dates/scenarios?character_id=${params.characterId}`);
                     setDateScenarios(scenarios || []);
                     setShowDateSceneModal(true);
                   } catch (e) {
