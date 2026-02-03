@@ -1209,10 +1209,18 @@ class InteractiveDateService:
             5: "结局：约会即将结束，根据好感度给出合适的结局",
         }
         
-        task_layer = f"""## 当前任务
+        # 场景背景只在第一阶段包含，后续阶段延续剧情即可
+        if stage_num == 1:
+            task_layer = f"""## 当前任务
 阶段主题：{stage_themes.get(stage_num, "剧情发展")}
 场景背景：{scenario_context}
 角色态度：{attitude_mode}"""
+        else:
+            task_layer = f"""## 当前任务
+阶段主题：{stage_themes.get(stage_num, "剧情发展")}
+角色态度：{attitude_mode}
+
+【重要】请直接延续上一幕剧情，从用户的选择开始展开，不要重复描述场景背景。"""
 
         if is_final:
             task_layer += """
