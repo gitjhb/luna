@@ -72,7 +72,8 @@ export default function ChatScreen() {
   const params = useLocalSearchParams<{ characterId: string; characterName: string; sessionId?: string; backgroundUrl?: string; avatarUrl?: string }>();
   
   const { wallet, deductCredits, updateWallet, isSubscribed } = useUserStore();
-  const isSpicyMode = useChatStore((s) => s.isSpicyMode);
+  // NSFW mode disabled on mobile for App Store compliance (web only)
+  const isSpicyMode = false; // useChatStore((s) => s.isSpicyMode);
   const giftCatalog = useGiftStore((s) => s.catalog);
   const fetchGiftCatalog = useGiftStore((s) => s.fetchCatalog);
   const {
@@ -1747,27 +1748,30 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   actionButtonsScroll: {
-    maxHeight: 60,
+    minHeight: 56,
+    maxHeight: 56,
   },
   actionButtonsRow: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     gap: 12,
     alignItems: 'center',
+    height: 56,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(139, 92, 246, 0.3)',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 0,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(139, 92, 246, 0.5)',
     gap: 6,
-    minWidth: 75,
+    minWidth: 80,
     flexShrink: 0,
   },
   actionButtonDisabled: {

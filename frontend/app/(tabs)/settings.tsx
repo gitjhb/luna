@@ -311,27 +311,7 @@ export default function SettingsScreen() {
 
           {/* Preferences Section */}
           <SettingSection title="Preferences" theme={theme}>
-            <SettingItem
-              icon="warning-outline"
-              title="成人内容 (NSFW)"
-              subtitle={isSubscribed ? '开启后角色可以说更露骨的话' : '需要订阅 Premium 才能开启'}
-              onPress={!isSubscribed ? () => setShowSubscriptionModal(true) : undefined}
-              theme={theme}
-              rightElement={
-                nsfwLoading ? (
-                  <ActivityIndicator size="small" color={theme.colors.primary.main} />
-                ) : (
-                  <Switch
-                    value={preferences.nsfwEnabled}
-                    onValueChange={handleNsfwToggle}
-                    disabled={!isSubscribed}
-                    trackColor={{ false: '#3e3e3e', true: theme.colors.error }}
-                    thumbColor={preferences.nsfwEnabled ? '#fff' : '#f4f3f4'}
-                    ios_backgroundColor={!isSubscribed ? '#2a2a2a' : '#3e3e3e'}
-                  />
-                )
-              }
-            />
+            {/* NSFW toggle removed - only available on web version for App Store compliance */}
             <SettingItem
               icon="notifications-outline"
               title="Notifications"
