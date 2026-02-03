@@ -623,56 +623,16 @@ export default function DateSceneModal({
   // Render scenario selection
   const renderScenarioSelect = () => (
     <View style={styles.selectContainer}>
-      {/* 顶部栏：取消按钮 */}
+      {/* 顶部栏：返回按钮 */}
       <View style={styles.selectHeader}>
         <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
           <Ionicons name="chevron-back" size={24} color="#fff" />
-          <Text style={styles.cancelBtnText}>取消</Text>
+          <Text style={styles.cancelBtnText}>返回</Text>
         </TouchableOpacity>
       </View>
       
       <Text style={styles.selectTitle}>选择约会地点</Text>
       <Text style={styles.selectSubtitle}>和 {characterName} 去哪里？</Text>
-      
-      {/* 继续约会提示 */}
-      {activeSession && (
-        <View style={styles.activeSessionBox}>
-          <Text style={styles.activeSessionIcon}>💕</Text>
-          <Text style={styles.activeSessionText}>
-            有一场未完成的约会
-          </Text>
-          <Text style={styles.activeSessionDetail}>
-            {activeSession.scenario_name} · 第 {activeSession.stage_num} 阶段
-          </Text>
-          <View style={styles.activeSessionButtons}>
-            <TouchableOpacity 
-              style={styles.continueBtn}
-              onPress={handleContinueDate}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.continueBtnText}>继续约会</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.abandonBtn}
-              onPress={async () => {
-                try {
-                  await dateApi.abandonDate(activeSession.session_id);
-                  setActiveSession(null);
-                  checkCooldown();
-                } catch (e) {
-                  console.error('Failed to abandon:', e);
-                }
-              }}
-            >
-              <Text style={styles.abandonBtnText}>放弃</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
       
       {/* 情绪太低提示 */}
       {emotionTooLow && !activeSession && (
@@ -711,7 +671,6 @@ export default function DateSceneModal({
         </View>
       )}
       
-      {!activeSession && (
       <ScrollView style={styles.scenarioList} showsVerticalScrollIndicator={false}>
         {scenarios.map((scenario) => {
           const isLocked = (scenario as any).is_locked;
@@ -759,25 +718,64 @@ export default function DateSceneModal({
           );
         })}
       </ScrollView>
-      )}
       
-      {!activeSession && (
-        <TouchableOpacity
-          style={[styles.startButton, (!selectedScenario || cooldownInfo?.inCooldown || emotionTooLow) && styles.startButtonDisabled]}
-          onPress={handleStartDate}
-          disabled={!selectedScenario || loading || cooldownInfo?.inCooldown || !!emotionTooLow}
+      <TouchableOpacity
+        style={[styles.startButton, (!selectedScenario || cooldownInfo?.inCooldown || emotionTooLow || activeSession) && styles.startButtonDisabled]}
+        onPress={handleStartDate}
+        disabled={!selectedScenario || loading || cooldownInfo?.inCooldown || !!emotionTooLow || !!activeSession}
+      >
+        <LinearGradient
+          colors={selectedScenario && !activeSession ? ['#FF6B9D', '#C44569'] : ['#666', '#444']}
+          style={styles.startButtonGradient}
         >
-          <LinearGradient
-            colors={selectedScenario ? ['#FF6B9D', '#C44569'] : ['#666', '#444']}
-            style={styles.startButtonGradient}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.startButtonText}>💕 开始约会</Text>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.startButtonText}>💕 开始约会</Text>
+          )}
+        </LinearGradient>
+      </TouchableOpacity>
+      
+      {/* 未完成约会遮罩 - 居中覆盖 */}
+      {activeSession && (
+        <View style={styles.activeSessionOverlay}>
+          <View style={styles.activeSessionCard}>
+            <Text style={styles.activeSessionIcon}>💕</Text>
+            <Text style={styles.activeSessionText}>
+              有一场未完成的约会
+            </Text>
+            <Text style={styles.activeSessionDetail}>
+              {activeSession.scenario_name} · 第 {activeSession.stage_num} 阶段
+            </Text>
+            <View style={styles.activeSessionButtons}>
+              <TouchableOpacity 
+                style={styles.continueBtn}
+                onPress={handleContinueDate}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.continueBtnText}>继续约会</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.abandonBtn}
+                onPress={async () => {
+                  try {
+                    await dateApi.abandonDate(activeSession.session_id);
+                    setActiveSession(null);
+                    checkCooldown();
+                  } catch (e) {
+                    console.error('Failed to abandon:', e);
+                  }
+                }}
+              >
+                <Text style={styles.abandonBtnText}>放弃</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       )}
     </View>
   );
@@ -1104,7 +1102,28 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   
-  // 继续约会提示
+  // 继续约会遮罩
+  activeSessionOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  activeSessionCard: {
+    backgroundColor: 'rgba(30,20,40,0.98)',
+    borderRadius: 20,
+    padding: 24,
+    marginHorizontal: 30,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,157,0.3)',
+  },
+  // 旧样式保留兼容
   activeSessionBox: {
     backgroundColor: 'rgba(255,107,157,0.15)',
     borderRadius: 16,
