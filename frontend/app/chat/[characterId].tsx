@@ -119,6 +119,11 @@ export default function ChatScreen() {
   const [showMemoriesModal, setShowMemoriesModal] = useState(false);
   const [readEventIds, setReadEventIds] = useState<Set<string>>(new Set());
   
+  // 📜 聊天分页加载
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [oldestMessageId, setOldestMessageId] = useState<string | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  
   // 💕 进行中的约会提醒
   const [showActiveDateAlert, setShowActiveDateAlert] = useState(false);
   const [activeDateSession, setActiveDateSession] = useState<{
@@ -293,12 +298,20 @@ export default function ChatScreen() {
         useChatStore.getState().addSession(session);
       }
       
-      // Step 4: Load message history from backend (only if newer than cache)
+      // Step 4: Load message history from backend (paginated, latest 20 first)
       try {
         const cachedMessages = useChatStore.getState().messagesBySession[session.sessionId] || [];
-        const history = await chatService.getSessionHistory(session.sessionId);
-        // Only update if backend has more messages or cache is empty
-        if (history.length > 0 && history.length >= cachedMessages.length) {
+        const { messages: history, hasMore, oldestId } = await chatService.getSessionHistory(
+          session.sessionId,
+          20  // Load 20 messages initially
+        );
+        
+        // Update pagination state
+        setHasMoreMessages(hasMore);
+        setOldestMessageId(oldestId);
+        
+        // Only update if backend has messages
+        if (history.length > 0) {
           setMessages(session.sessionId, history);
         }
         
@@ -344,6 +357,42 @@ export default function ChatScreen() {
       } catch (e) {
         console.log('Date status check failed:', e);
       }
+    }
+  };
+
+  // 📜 加载更多历史消息（用户滑到顶部时触发）
+  const loadMoreMessages = async () => {
+    if (!sessionId || !hasMoreMessages || isLoadingMore || !oldestMessageId) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const { messages: olderMessages, hasMore, oldestId } = await chatService.getSessionHistory(
+        sessionId,
+        20,
+        oldestMessageId  // Load messages before this ID
+      );
+      
+      if (olderMessages.length > 0) {
+        // Prepend older messages to the beginning
+        const currentMessages = useChatStore.getState().messagesBySession[sessionId] || [];
+        setMessages(sessionId, [...olderMessages, ...currentMessages]);
+        setOldestMessageId(oldestId);
+      }
+      
+      setHasMoreMessages(hasMore);
+    } catch (e) {
+      console.log('Failed to load more messages:', e);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  // 处理滚动到顶部加载更多
+  const handleScroll = (event: any) => {
+    const { contentOffset } = event.nativeEvent;
+    // 当滚动到顶部附近时加载更多
+    if (contentOffset.y < 50 && hasMoreMessages && !isLoadingMore) {
+      loadMoreMessages();
     }
   };
 
@@ -854,6 +903,22 @@ export default function ChatScreen() {
           renderItem={renderMessage}
           contentContainerStyle={styles.messagesList}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          onScroll={handleScroll}
+          scrollEventThrottle={100}
+          ListHeaderComponent={
+            isLoadingMore ? (
+              <View style={{ padding: 10, alignItems: 'center' }}>
+                <Text style={{ color: '#aaa' }}>加载更多...</Text>
+              </View>
+            ) : hasMoreMessages ? (
+              <TouchableOpacity 
+                onPress={loadMoreMessages}
+                style={{ padding: 15, alignItems: 'center' }}
+              >
+                <Text style={{ color: '#888' }}>↑ 加载更早的消息</Text>
+              </TouchableOpacity>
+            ) : null
+          }
           ListFooterComponent={isTyping ? renderTypingIndicator : null}
           showsVerticalScrollIndicator={false}
         />

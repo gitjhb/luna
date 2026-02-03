@@ -270,15 +270,17 @@ class ChatRepository:
                 msgs = _memory_messages.get(session_id, [])
                 return msgs[offset : offset + limit]
             
+            # 先获取最新的消息（倒序），然后反转为时间顺序显示
             result = await db.execute(
                 select(ChatMessageDB)
                 .where(ChatMessageDB.session_id == session_id)
-                .order_by(ChatMessageDB.created_at.asc())
+                .order_by(ChatMessageDB.created_at.desc())
                 .offset(offset)
                 .limit(limit)
             )
             messages = result.scalars().all()
-            return [m.to_dict() for m in messages]
+            # 反转为时间顺序（从早到晚）供前端显示
+            return [m.to_dict() for m in reversed(messages)]
     
     @staticmethod
     async def get_all_messages(session_id: str) -> List[dict]:
@@ -336,6 +338,138 @@ class ChatRepository:
                 .where(ChatMessageDB.session_id == session_id)
             )
             return result.scalar() or 0
+    
+    @staticmethod
+    async def get_messages_paginated(
+        session_id: str,
+        limit: int = 20,
+        before_id: Optional[str] = None,
+        after_id: Optional[str] = None,
+    ) -> List[dict]:
+        """
+        游标分页获取消息（类似微信）
+        
+        - 默认返回最新的 N 条
+        - before_id: 获取该消息之前的历史消息
+        - after_id: 获取该消息之后的新消息
+        
+        返回按时间升序排列（从早到晚）
+        """
+        if MOCK_MODE:
+            msgs = _memory_messages.get(session_id, [])
+            if before_id:
+                # 找到 before_id 的位置，返回之前的消息
+                idx = next((i for i, m in enumerate(msgs) if m["message_id"] == before_id), len(msgs))
+                return msgs[max(0, idx - limit):idx]
+            elif after_id:
+                # 找到 after_id 的位置，返回之后的消息
+                idx = next((i for i, m in enumerate(msgs) if m["message_id"] == after_id), -1)
+                return msgs[idx + 1:idx + 1 + limit] if idx >= 0 else []
+            else:
+                # 返回最新的 N 条
+                return msgs[-limit:] if len(msgs) > limit else msgs
+        
+        async with get_db() as db:
+            if hasattr(db, '_data'):  # MockDB
+                msgs = _memory_messages.get(session_id, [])
+                if before_id:
+                    idx = next((i for i, m in enumerate(msgs) if m["message_id"] == before_id), len(msgs))
+                    return msgs[max(0, idx - limit):idx]
+                elif after_id:
+                    idx = next((i for i, m in enumerate(msgs) if m["message_id"] == after_id), -1)
+                    return msgs[idx + 1:idx + 1 + limit] if idx >= 0 else []
+                else:
+                    return msgs[-limit:] if len(msgs) > limit else msgs
+            
+            if before_id:
+                # 获取 before_id 消息的时间戳
+                ref_result = await db.execute(
+                    select(ChatMessageDB.created_at)
+                    .where(ChatMessageDB.id == before_id)
+                )
+                ref_time = ref_result.scalar_one_or_none()
+                if not ref_time:
+                    return []
+                
+                # 获取该时间之前的消息（降序取 limit 条，再反转）
+                result = await db.execute(
+                    select(ChatMessageDB)
+                    .where(and_(
+                        ChatMessageDB.session_id == session_id,
+                        ChatMessageDB.created_at < ref_time
+                    ))
+                    .order_by(ChatMessageDB.created_at.desc())
+                    .limit(limit)
+                )
+            elif after_id:
+                # 获取 after_id 消息的时间戳
+                ref_result = await db.execute(
+                    select(ChatMessageDB.created_at)
+                    .where(ChatMessageDB.id == after_id)
+                )
+                ref_time = ref_result.scalar_one_or_none()
+                if not ref_time:
+                    return []
+                
+                # 获取该时间之后的消息（升序）
+                result = await db.execute(
+                    select(ChatMessageDB)
+                    .where(and_(
+                        ChatMessageDB.session_id == session_id,
+                        ChatMessageDB.created_at > ref_time
+                    ))
+                    .order_by(ChatMessageDB.created_at.asc())
+                    .limit(limit)
+                )
+                messages = result.scalars().all()
+                return [m.to_dict() for m in messages]
+            else:
+                # 默认返回最新的 N 条（降序取，再反转为升序）
+                result = await db.execute(
+                    select(ChatMessageDB)
+                    .where(ChatMessageDB.session_id == session_id)
+                    .order_by(ChatMessageDB.created_at.desc())
+                    .limit(limit)
+                )
+            
+            messages = result.scalars().all()
+            # 反转为时间升序（从早到晚）
+            return [m.to_dict() for m in reversed(messages)]
+    
+    @staticmethod
+    async def has_messages_before(session_id: str, message_id: str) -> bool:
+        """检查指定消息之前是否还有更多历史消息"""
+        if MOCK_MODE:
+            msgs = _memory_messages.get(session_id, [])
+            idx = next((i for i, m in enumerate(msgs) if m["message_id"] == message_id), -1)
+            return idx > 0
+        
+        async with get_db() as db:
+            if hasattr(db, '_data'):  # MockDB
+                msgs = _memory_messages.get(session_id, [])
+                idx = next((i for i, m in enumerate(msgs) if m["message_id"] == message_id), -1)
+                return idx > 0
+            
+            # 获取该消息的时间戳
+            ref_result = await db.execute(
+                select(ChatMessageDB.created_at)
+                .where(ChatMessageDB.id == message_id)
+            )
+            ref_time = ref_result.scalar_one_or_none()
+            if not ref_time:
+                return False
+            
+            # 检查是否有更早的消息
+            from sqlalchemy import func
+            result = await db.execute(
+                select(func.count(ChatMessageDB.id))
+                .where(and_(
+                    ChatMessageDB.session_id == session_id,
+                    ChatMessageDB.created_at < ref_time
+                ))
+            )
+            count = result.scalar() or 0
+            return count > 0
 
 
 # Singleton instance

@@ -95,11 +95,35 @@ export const chatService = {
   },
   
   /**
-   * Get session history
+   * Get session history (paginated, returns latest messages first)
+   * 
+   * @param sessionId - Session ID
+   * @param limit - Number of messages to fetch (default 20)
+   * @param beforeId - Fetch messages before this ID (for loading more history)
    */
-  getSessionHistory: async (sessionId: string): Promise<Message[]> => {
-    const data = await api.get<any[]>(`/chat/sessions/${sessionId}/messages`);
-    return data.map(mapMessage);
+  getSessionHistory: async (
+    sessionId: string, 
+    limit: number = 20,
+    beforeId?: string
+  ): Promise<{
+    messages: Message[];
+    hasMore: boolean;
+    oldestId: string | null;
+    newestId: string | null;
+  }> => {
+    const params: Record<string, any> = { limit };
+    if (beforeId) {
+      params.before_id = beforeId;
+    }
+    
+    const data = await api.get<any>(`/chat/sessions/${sessionId}/messages`, params);
+    
+    return {
+      messages: (data.messages || []).map(mapMessage),
+      hasMore: data.has_more || false,
+      oldestId: data.oldest_id || null,
+      newestId: data.newest_id || null,
+    };
   },
   
   /**

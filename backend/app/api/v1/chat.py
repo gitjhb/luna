@@ -2,6 +2,7 @@
 Chat API Routes - with SQLite persistence
 """
 
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from uuid import UUID, uuid4
 from datetime import datetime
@@ -100,11 +101,37 @@ async def list_sessions(character_id: UUID = None, req: Request = None):
     ]
 
 
-@router.get("/sessions/{session_id}/messages", response_model=list[ChatMessage])
-async def get_session_messages(session_id: UUID, limit: int = 50, offset: int = 0):
-    """Get messages for a session"""
-    messages = await chat_repo.get_messages(str(session_id), limit=limit, offset=offset)
-    return [
+@router.get("/sessions/{session_id}/messages")
+async def get_session_messages(
+    session_id: UUID, 
+    limit: int = 20,
+    before_id: Optional[str] = None,
+    after_id: Optional[str] = None,
+):
+    """
+    Get messages for a session with cursor-based pagination.
+    
+    分页加载聊天记录（类似微信）：
+    - 默认返回最新的 20 条
+    - before_id: 获取该消息之前的历史（用户上滑加载更多）
+    - after_id: 获取该消息之后的新消息（检查新消息）
+    
+    返回格式：
+    {
+        "messages": [...],
+        "has_more": true/false,
+        "oldest_id": "xxx",  // 用于下次加载更多
+        "newest_id": "xxx"
+    }
+    """
+    messages = await chat_repo.get_messages_paginated(
+        str(session_id), 
+        limit=limit, 
+        before_id=before_id,
+        after_id=after_id,
+    )
+    
+    msg_list = [
         ChatMessage(
             message_id=UUID(m["message_id"]),
             role=m["role"],
@@ -114,6 +141,19 @@ async def get_session_messages(session_id: UUID, limit: int = 50, offset: int = 
         )
         for m in messages
     ]
+    
+    # 检查是否还有更多历史消息
+    has_more = False
+    if msg_list:
+        oldest_msg_id = str(msg_list[0].message_id)
+        has_more = await chat_repo.has_messages_before(str(session_id), oldest_msg_id)
+    
+    return {
+        "messages": msg_list,
+        "has_more": has_more,
+        "oldest_id": str(msg_list[0].message_id) if msg_list else None,
+        "newest_id": str(msg_list[-1].message_id) if msg_list else None,
+    }
 
 
 @router.post("/completions", response_model=ChatCompletionResponse)
