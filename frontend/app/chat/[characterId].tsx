@@ -20,6 +20,7 @@ import {
   Modal,
   ScrollView,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,7 +28,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useUserStore } from '../../store/userStore';
-import { useChatStore, selectActiveMessages, Message } from '../../store/chatStore';
+import { useChatStore, Message } from '../../store/chatStore';
+import { useMessages } from '../../hooks/useMessages';
 import { useGiftStore, GiftCatalogItem } from '../../store/giftStore';
 
 // NSFW mode costs 2 extra credits per message
@@ -76,20 +78,34 @@ export default function ChatScreen() {
   const {
     isTyping,
     setActiveSession,
-    addMessage,
-    setMessages,
+    addMessage: addMessageToStore,
+    setMessages: setMessagesToStore,
     setTyping,
     getIntimacy,
     setIntimacy,
     updateSession,
   } = useChatStore();
   
-  const messages = useChatStore(selectActiveMessages);
   const cachedIntimacy = useChatStore((s) => s.intimacyByCharacter[params.characterId]);
   
   const [inputText, setInputText] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(params.sessionId || null);
   const [isInitializing, setIsInitializing] = useState(true);
+  
+  // 📬 React Query 消息管理
+  const {
+    messages,
+    isLoading: isLoadingMessages,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    addMessage,
+    updateMessage,
+  } = useMessages({
+    sessionId,
+    characterId: params.characterId,
+    enabled: !isInitializing && !!sessionId,
+  });
   const [characterAvatar, setCharacterAvatar] = useState(params.avatarUrl || 'https://i.pravatar.cc/100?img=5');
   const [backgroundImage, setBackgroundImage] = useState(params.backgroundUrl || DEFAULT_BACKGROUND);
   const [relationshipLevel, setRelationshipLevel] = useState<number | null>(null); // null = loading
@@ -119,10 +135,8 @@ export default function ChatScreen() {
   const [showMemoriesModal, setShowMemoriesModal] = useState(false);
   const [readEventIds, setReadEventIds] = useState<Set<string>>(new Set());
   
-  // 📜 聊天分页加载
-  const [hasMoreMessages, setHasMoreMessages] = useState(true);
-  const [oldestMessageId, setOldestMessageId] = useState<string | null>(null);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // 📜 聊天分页 - 由 useMessages hook 管理
+  // hasNextPage, isFetchingNextPage, fetchNextPage 来自 useMessages
   
   // 💕 进行中的约会提醒
   const [showActiveDateAlert, setShowActiveDateAlert] = useState(false);
@@ -165,27 +179,8 @@ export default function ChatScreen() {
   // Animated progress bar
   const xpProgressAnim = useRef(new Animated.Value(0)).current;
 
-  // Scroll to bottom when keyboard opens
-  useEffect(() => {
-    const keyboardShowListener = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      () => {
-        // Multiple attempts to ensure scroll completes after layout
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 150);
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 400);
-      }
-    );
-    return () => keyboardShowListener.remove();
-  }, []);
-
-  // Scroll to bottom only on initial load, not when loading more history
-  const hasScrolledToBottom = useRef(false);
-  useEffect(() => {
-    if (messages.length > 0 && !isInitializing && !hasScrolledToBottom.current) {
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
-      hasScrolledToBottom.current = true;
-    }
-  }, [messages.length, isInitializing]);
+  // Note: With inverted FlatList, newest messages are at index 0 (visible at bottom)
+  // No need to manually scroll to bottom - it happens automatically
 
   // Animate progress bar when XP changes
   useEffect(() => {
@@ -300,26 +295,16 @@ export default function ChatScreen() {
         useChatStore.getState().addSession(session);
       }
       
-      // Step 4: Load message history from backend (paginated, latest 20 first)
+      // Step 4: Messages will be loaded by useMessages hook automatically
+      // Just check if we need to show greeting for new sessions
       try {
-        const cachedMessages = useChatStore.getState().messagesBySession[session.sessionId] || [];
-        const { messages: history, hasMore, oldestId } = await chatService.getSessionHistory(
+        const { messages: history } = await chatService.getSessionHistory(
           session.sessionId,
-          20  // Load 20 messages initially
+          1  // Just check if any messages exist
         );
         
-        // Update pagination state
-        setHasMoreMessages(hasMore);
-        setOldestMessageId(oldestId);
-        
-        // Only update if backend has messages
-        if (history.length > 0) {
-          setMessages(session.sessionId, history);
-        }
-        
         // Step 5: If no messages yet, show character's greeting
-        const finalMessages = useChatStore.getState().messagesBySession[session.sessionId] || [];
-        if (finalMessages.length === 0) {
+        if (history.length === 0) {
           try {
             const character = await characterService.getCharacter(params.characterId);
             if (character.greeting) {
@@ -330,7 +315,8 @@ export default function ChatScreen() {
                 createdAt: new Date().toISOString(),
                 tokensUsed: 0,
               };
-              addMessage(session.sessionId, greetingMessage);
+              // Use store method for initial greeting (before useMessages is ready)
+              addMessageToStore(session.sessionId, greetingMessage);
             }
           } catch (e) {
             console.log('Could not load character greeting:', e);
@@ -344,9 +330,7 @@ export default function ChatScreen() {
       console.error('Failed to initialize session:', error);
     } finally {
       setIsInitializing(false);
-      // Scroll to bottom after loading completes
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 200);
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 500);
+      // Inverted list: no need to scroll, newest messages are already visible
       
       // 检查是否有进行中的约会
       try {
@@ -362,42 +346,12 @@ export default function ChatScreen() {
     }
   };
 
-  // 📜 加载更多历史消息（用户滑到顶部时触发）
-  const loadMoreMessages = async () => {
-    if (!sessionId || !hasMoreMessages || isLoadingMore || !oldestMessageId) return;
-    
-    setIsLoadingMore(true);
-    try {
-      const { messages: olderMessages, hasMore, oldestId } = await chatService.getSessionHistory(
-        sessionId,
-        20,
-        oldestMessageId  // Load messages before this ID
-      );
-      
-      if (olderMessages.length > 0) {
-        // Prepend older messages to the beginning, dedupe by messageId
-        const currentMessages = useChatStore.getState().messagesBySession[sessionId] || [];
-        const existingIds = new Set(currentMessages.map(m => m.messageId));
-        const uniqueOlderMessages = olderMessages.filter(m => !existingIds.has(m.messageId));
-        setMessages(sessionId, [...uniqueOlderMessages, ...currentMessages]);
-        setOldestMessageId(oldestId);
-      }
-      
-      setHasMoreMessages(hasMore);
-    } catch (e) {
-      console.log('Failed to load more messages:', e);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
-
-  // 处理滚动到顶部加载更多
+  // 📜 加载更多历史消息 - 由 useMessages 的 fetchNextPage 处理
+  // inverted FlatList 使用 onEndReached 触发加载更多
+  
+  // 处理滚动事件（用于其他UI效果，不用于分页）
   const handleScroll = (event: any) => {
-    const { contentOffset } = event.nativeEvent;
-    // 当滚动到顶部附近时加载更多
-    if (contentOffset.y < 50 && hasMoreMessages && !isLoadingMore) {
-      loadMoreMessages();
-    }
+    // 可以在这里添加滚动相关的UI效果
   };
 
   const handleSend = async () => {
@@ -416,9 +370,9 @@ export default function ChatScreen() {
       content: text,
       createdAt: new Date().toISOString(),
     };
-    addMessage(sessionId, userMessage);
+    addMessage(userMessage);
     
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    // inverted list: 新消息在顶部，不需要滚动
     setTyping(true, params.characterId);
     
     try {
@@ -443,7 +397,7 @@ export default function ChatScreen() {
         intimacyLevel: relationshipLevel || 1,
       });
       
-      addMessage(sessionId, {
+      addMessage({
         messageId: response.messageId,
         role: 'assistant',
         content: response.content,
@@ -532,7 +486,7 @@ export default function ChatScreen() {
         // Silently fail if emotion update fails
       }
       
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+      // Inverted list: new messages appear at top automatically
     } catch (error: any) {
       console.error('Send message error:', error);
       Alert.alert('Error', 'Failed to send message');
@@ -555,9 +509,9 @@ export default function ChatScreen() {
       content: photoRequest,
       createdAt: new Date().toISOString(),
     };
-    addMessage(sessionId, userMessage);
+    addMessage(userMessage);
     
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    // inverted list: 新消息在顶部，不需要滚动
     setTyping(true, params.characterId);
     
     try {
@@ -569,7 +523,7 @@ export default function ChatScreen() {
         intimacyLevel: relationshipLevel || 1,
       });
       
-      addMessage(sessionId, {
+      addMessage({
         messageId: response.messageId,
         role: 'assistant',
         content: response.content,
@@ -605,7 +559,7 @@ export default function ChatScreen() {
         });
       } catch (e) {}
       
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+      // Inverted list: new messages appear at top automatically
     } catch (error: any) {
       console.error('Photo request error:', error);
       Alert.alert('Error', 'Failed to request photo');
@@ -681,13 +635,8 @@ export default function ChatScreen() {
     const emoji = reactionEmojis[reactionName] || '❤️';
     
     // Update message in chat history with reaction
-    if (messageId && sessionId) {
-      const updatedMessages = messages.map(msg => 
-        msg.messageId === messageId 
-          ? { ...msg, reaction: emoji }
-          : msg
-      );
-      setMessages(sessionId, updatedMessages);
+    if (messageId) {
+      updateMessage(messageId, { reaction: emoji });
     }
     
     // Award XP for reaction
@@ -723,7 +672,7 @@ export default function ChatScreen() {
     }
     
     showToast(`+${xpBonus} 亲密度 💕`);
-  }, [relationshipXp, relationshipMaxXp, relationshipLevel, params.characterId, setIntimacy, showToast, messages, sessionId, setMessages]);
+  }, [relationshipXp, relationshipMaxXp, relationshipLevel, params.characterId, setIntimacy, showToast, updateMessage]);
   
   // Handle reply to message
   const handleReply = useCallback((content: string) => {
@@ -928,28 +877,30 @@ export default function ChatScreen() {
           keyExtractor={(item) => item.messageId}
           renderItem={renderMessage}
           contentContainerStyle={styles.messagesList}
+          inverted
           onScroll={handleScroll}
           scrollEventThrottle={100}
-          // Maintain scroll position when loading older messages
-          maintainVisibleContentPosition={{
-            minIndexForVisible: 0,
-            autoscrollToTopThreshold: 10,
+          // Load more when reaching the end (top of chat, since inverted)
+          onEndReached={() => {
+            if (hasNextPage && !isFetchingNextPage) {
+              fetchNextPage();
+            }
           }}
-          ListHeaderComponent={
-            isLoadingMore ? (
-              <View style={{ padding: 10, alignItems: 'center' }}>
-                <Text style={{ color: '#aaa' }}>加载更多...</Text>
+          onEndReachedThreshold={0.3}
+          // For inverted list: Header shows at bottom, Footer at top
+          ListHeaderComponent={isTyping ? renderTypingIndicator : null}
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <View style={{ padding: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
+                <ActivityIndicator size="small" color="#888" />
+                <Text style={{ color: '#aaa' }}>加载历史消息...</Text>
               </View>
-            ) : hasMoreMessages ? (
-              <TouchableOpacity 
-                onPress={loadMoreMessages}
-                style={{ padding: 15, alignItems: 'center' }}
-              >
-                <Text style={{ color: '#888' }}>↑ 加载更早的消息</Text>
-              </TouchableOpacity>
+            ) : !hasNextPage && messages.length > 0 ? (
+              <View style={{ padding: 15, alignItems: 'center' }}>
+                <Text style={{ color: '#666' }}>— 已加载全部消息 —</Text>
+              </View>
             ) : null
           }
-          ListFooterComponent={isTyping ? renderTypingIndicator : null}
           showsVerticalScrollIndicator={false}
         />
 
@@ -1240,7 +1191,7 @@ export default function ChatScreen() {
                 type: 'gift',  // 特殊类型，用于前端渲染
                 createdAt: new Date().toISOString(),
               };
-              addMessage(sessionId, giftEventMessage);
+              addMessage(giftEventMessage);
               
               // 再添加 AI 回复
               if (reactionMessage) {
@@ -1250,10 +1201,10 @@ export default function ChatScreen() {
                   content: reactionMessage,
                   createdAt: new Date().toISOString(),
                 };
-                addMessage(sessionId, aiMessage);
+                addMessage(aiMessage);
               }
               
-              setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+              // inverted list: 新消息在顶部，不需要滚动
             }
             
             // 4. 更新亲密度
