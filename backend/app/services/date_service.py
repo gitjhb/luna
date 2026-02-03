@@ -26,35 +26,38 @@ DATE_SCENARIOS = [
     "stargazing",      # 星空露营
 ]
 
-# 角色专属约会场景配置
-# 只有 sakura 有专属场景，其他角色暂时用通用场景
+# 角色专属约会场景配置（照片解锁场景）
 # 注意：key 要用前端的 characterId (UUID 格式)
-CHARACTER_DATE_SCENES: Dict[str, Dict[str, dict]] = {
+CHARACTER_EXCLUSIVE_SCENES: Dict[str, Dict[str, dict]] = {
     # Sakura - 元气少女
     "e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e": {
         "bedroom": {
-            "name": "卧室",
+            "name": "Sakura的卧室",
             "icon": "🛏️",
-            "description": "芽衣的私人空间",
+            "description": "她的私人空间，温馨可爱",
             "required_level": 1,
+            "is_exclusive": True,
         },
         "beach": {
-            "name": "海滩",
+            "name": "夏日海滩",
             "icon": "🏖️",
             "description": "阳光沙滩，青春的气息",
             "required_level": 20,
+            "is_exclusive": True,
         },
         "ocean": {
             "name": "海边露台",
             "icon": "🌊",
             "description": "浪漫的海边夜晚",
             "required_level": 20,
+            "is_exclusive": True,
         },
         "school": {
-            "name": "教室",
+            "name": "放学后的教室",
             "icon": "🏫",
-            "description": "放学后的秘密约会",
+            "description": "只有你们两个的秘密时光",
             "required_level": 20,
+            "is_exclusive": True,
         },
     },
 }
@@ -425,36 +428,49 @@ You are on a date with the user!
         character_id: str,
     ) -> List[dict]:
         """
-        获取角色专属的约会场景列表（带锁定状态）
+        获取约会场景列表：专属场景 + 通用场景
         
-        只有 sakura 有专属场景，其他角色返回通用场景
+        专属场景有等级锁定，通用场景始终可用
         """
         from app.services.intimacy_service import intimacy_service
+        from app.services.scenarios import get_scenario
         
-        # 检查是否有角色专属场景
-        if character_id not in CHARACTER_DATE_SCENES:
-            # 返回通用场景（不锁定）
-            return self.get_date_scenarios()
-        
-        # 获取用户等级
-        intimacy_data = await intimacy_service.get_or_create_intimacy(user_id, character_id)
-        user_level = intimacy_data.get("current_level", 1)
-        
-        # 构建带锁定状态的场景列表
-        scenes = CHARACTER_DATE_SCENES[character_id]
         scenarios = []
-        for scene_id, scene_config in scenes.items():
-            required_level = scene_config.get("required_level", 1)
-            is_locked = user_level < required_level
+        
+        # 1. 添加角色专属场景（如果有）
+        if character_id in CHARACTER_EXCLUSIVE_SCENES:
+            # 获取用户等级
+            intimacy_data = await intimacy_service.get_or_create_intimacy(user_id, character_id)
+            user_level = intimacy_data.get("current_level", 1)
             
-            scenarios.append({
-                "id": scene_id,
-                "name": scene_config["name"],
-                "icon": scene_config.get("icon", "💕"),
-                "description": scene_config.get("description", ""),
-                "required_level": required_level,
-                "is_locked": is_locked,
-            })
+            exclusive_scenes = CHARACTER_EXCLUSIVE_SCENES[character_id]
+            for scene_id, scene_config in exclusive_scenes.items():
+                required_level = scene_config.get("required_level", 1)
+                is_locked = user_level < required_level
+                
+                scenarios.append({
+                    "id": scene_id,
+                    "name": scene_config["name"],
+                    "icon": scene_config.get("icon", "💕"),
+                    "description": scene_config.get("description", ""),
+                    "required_level": required_level,
+                    "is_locked": is_locked,
+                    "is_exclusive": True,
+                })
+        
+        # 2. 添加通用约会场景（始终可用）
+        for scenario_id in DATE_SCENARIOS:
+            scenario = get_scenario(scenario_id)
+            if scenario:
+                scenarios.append({
+                    "id": scenario.id,
+                    "name": scenario.name,
+                    "icon": scenario.icon,
+                    "description": scenario.description,
+                    "required_level": 0,
+                    "is_locked": False,
+                    "is_exclusive": False,
+                })
         
         return scenarios
 
