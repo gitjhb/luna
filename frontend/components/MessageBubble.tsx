@@ -18,6 +18,8 @@ import {
   Pressable,
   Dimensions,
   Platform,
+  Share,
+  ActivityIndicator,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import Animated, {
@@ -28,6 +30,7 @@ import Animated, {
   withTiming,
   runOnJS,
   Easing,
+  interpolate,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
@@ -56,6 +59,7 @@ interface MessageBubbleProps {
   onReaction?: (reaction: string, xpBonus: number) => void;
   onReply?: (content: string) => void;
   showToast?: (message: string) => void;
+  messageReaction?: string | null; // Persisted reaction from chat history
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -69,18 +73,22 @@ export default function MessageBubble({
   onReaction,
   onReply,
   showToast,
+  messageReaction,
 }: MessageBubbleProps) {
   const { theme } = useTheme();
   const isCyberpunk = theme.id === 'cyberpunk-2077';
   const [showMenu, setShowMenu] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
-  const [selectedReaction, setSelectedReaction] = useState<string | null>(null);
+  const [selectedReaction, setSelectedReaction] = useState<string | null>(messageReaction || null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [pressedEmoji, setPressedEmoji] = useState<string | null>(null);
   
   // Animation values
   const scale = useSharedValue(1);
   const reactionScale = useSharedValue(0);
   const reactionOpacity = useSharedValue(0);
-  const menuScale = useSharedValue(0);
+  const menuOpacity = useSharedValue(0);
+  const menuScale = useSharedValue(0.9);
   
   // Bubble press animation style
   const bubbleAnimatedStyle = useAnimatedStyle(() => ({
@@ -93,69 +101,94 @@ export default function MessageBubble({
     opacity: reactionOpacity.value,
   }));
   
-  // Menu animation style
+  // Menu animation style - elegant fade + subtle scale, no bouncing
   const menuAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: menuScale.value }],
-    opacity: menuScale.value,
+    opacity: menuOpacity.value,
   }));
+  
+  // Open menu with elegant animation (no bouncing)
+  const openMenu = useCallback(() => {
+    setIsLoading(true);
+    setShowMenu(true);
+    menuScale.value = 0.9;
+    menuOpacity.value = 0;
+    
+    // Small delay for loading effect
+    setTimeout(() => {
+      setIsLoading(false);
+      menuScale.value = withTiming(1, { duration: 200, easing: Easing.out(Easing.cubic) });
+      menuOpacity.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
+    }, 150);
+  }, [menuScale, menuOpacity]);
+  
+  // Close menu with elegant fade out
+  const closeMenu = useCallback(() => {
+    menuOpacity.value = withTiming(0, { duration: 120, easing: Easing.in(Easing.cubic) });
+    menuScale.value = withTiming(0.95, { duration: 120, easing: Easing.in(Easing.cubic) }, () => {
+      runOnJS(setShowMenu)(false);
+    });
+  }, [menuScale, menuOpacity]);
   
   // Handle copy text
   const handleCopy = useCallback(async () => {
     try {
       await Clipboard.setStringAsync(content);
       showToast?.('已复制到剪贴板 ✓');
-      setShowMenu(false);
+      closeMenu();
     } catch (error) {
       console.error('Failed to copy:', error);
     }
-  }, [content, showToast]);
+  }, [content, showToast, closeMenu]);
   
-  // Handle reaction selection
+  // Handle reaction selection with visual feedback
   const handleReaction = useCallback((reaction: typeof REACTIONS[0]) => {
-    setSelectedReaction(reaction.emoji);
-    setShowMenu(false);
+    // Visual feedback - mark as pressed
+    setPressedEmoji(reaction.emoji);
     
-    // Animate floating reaction
-    reactionScale.value = 0;
-    reactionOpacity.value = 1;
-    reactionScale.value = withSequence(
-      withSpring(1.5, { damping: 8, stiffness: 200 }),
-      withTiming(1, { duration: 200 })
-    );
-    
-    // Float up and fade out
+    // Short delay to show press state
     setTimeout(() => {
-      reactionOpacity.value = withTiming(0, { duration: 500 });
-    }, 800);
-    
-    // Clear reaction after animation
-    setTimeout(() => {
-      setSelectedReaction(null);
-    }, 1500);
-    
-    // Callback for XP bonus
-    onReaction?.(reaction.name, reaction.xpBonus);
-  }, [onReaction, reactionScale, reactionOpacity]);
+      setSelectedReaction(reaction.emoji);
+      closeMenu();
+      
+      // Animate floating reaction
+      reactionScale.value = 0;
+      reactionOpacity.value = 1;
+      reactionScale.value = withSequence(
+        withTiming(1.3, { duration: 150, easing: Easing.out(Easing.cubic) }),
+        withTiming(1, { duration: 100 })
+      );
+      
+      // Callback for XP bonus - this should update chat history
+      onReaction?.(reaction.name, reaction.xpBonus);
+      
+      setPressedEmoji(null);
+    }, 100);
+  }, [onReaction, reactionScale, reactionOpacity, closeMenu]);
   
   // Handle reply
   const handleReply = useCallback(() => {
-    setShowMenu(false);
+    closeMenu();
     onReply?.(content);
-  }, [content, onReply]);
+  }, [content, onReply, closeMenu]);
   
-  // Open menu with animation
-  const openMenu = useCallback(() => {
-    setShowMenu(true);
-    menuScale.value = 0;
-    menuScale.value = withSpring(1, { damping: 12, stiffness: 200 });
-  }, [menuScale]);
-  
-  // Close menu
-  const closeMenu = useCallback(() => {
-    menuScale.value = withTiming(0, { duration: 150 }, () => {
-      runOnJS(setShowMenu)(false);
-    });
-  }, [menuScale]);
+  // Handle share to social media
+  const handleShare = useCallback(async () => {
+    try {
+      const result = await Share.share({
+        message: content,
+        // For X/Twitter sharing on iOS
+      });
+      
+      if (result.action === Share.sharedAction) {
+        showToast?.('已分享 ✓');
+      }
+      closeMenu();
+    } catch (error) {
+      console.error('Share failed:', error);
+      showToast?.('分享失败');
+    }
+  }, [content, showToast, closeMenu]);
   
   // Long press gesture for menu
   const longPressGesture = Gesture.LongPress()
@@ -265,15 +298,16 @@ export default function MessageBubble({
               {content}
             </Text>
             
-            {/* Selected reaction indicator */}
+            {/* Persisted reaction indicator (shows permanently) */}
             {selectedReaction && (
-              <Animated.View style={[
-                styles.reactionBadge, 
-                floatingReactionStyle,
+              <View style={[
+                styles.reactionBadge,
                 { borderColor: theme.colors.background.primary }
               ]}>
-                <Text style={styles.reactionBadgeText}>{selectedReaction}</Text>
-              </Animated.View>
+                <Animated.Text style={[styles.reactionBadgeText, floatingReactionStyle]}>
+                  {selectedReaction}
+                </Animated.Text>
+              </View>
             )}
           </View>
         </Animated.View>
@@ -302,69 +336,105 @@ export default function MessageBubble({
               })
             }
           ]}>
+            {/* Loading indicator */}
+            {isLoading && (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={theme.colors.primary.main} />
+              </View>
+            )}
+            
             {/* Reaction Bar */}
-            <View style={[styles.reactionBar, { borderBottomColor: theme.colors.border }]}>
-              {REACTIONS.map((reaction) => (
-                <TouchableOpacity
-                  key={reaction.name}
-                  style={[
-                    styles.reactionButton,
-                    isCyberpunk && {
-                      backgroundColor: 'rgba(0, 240, 255, 0.1)',
-                      borderWidth: 1,
-                      borderColor: 'rgba(0, 240, 255, 0.2)',
-                    }
-                  ]}
-                  onPress={() => handleReaction(reaction)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.reactionEmoji}>{reaction.emoji}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {!isLoading && (
+              <View style={[styles.reactionBar, { borderBottomColor: theme.colors.border }]}>
+                {REACTIONS.map((reaction) => (
+                  <TouchableOpacity
+                    key={reaction.name}
+                    style={[
+                      styles.reactionButton,
+                      isCyberpunk && {
+                        backgroundColor: 'rgba(0, 240, 255, 0.1)',
+                        borderWidth: 1,
+                        borderColor: 'rgba(0, 240, 255, 0.2)',
+                      },
+                      // Press feedback - scale and glow effect
+                      pressedEmoji === reaction.emoji && {
+                        transform: [{ scale: 1.2 }],
+                        backgroundColor: 'rgba(0, 240, 255, 0.25)',
+                        borderColor: theme.colors.primary.main,
+                      },
+                      // Currently selected reaction
+                      selectedReaction === reaction.emoji && {
+                        backgroundColor: 'rgba(255, 42, 109, 0.2)',
+                        borderColor: theme.colors.accent.pink,
+                      }
+                    ]}
+                    onPress={() => handleReaction(reaction)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.reactionEmoji,
+                      pressedEmoji === reaction.emoji && { transform: [{ scale: 1.1 }] }
+                    ]}>{reaction.emoji}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
             
             {/* Menu Actions */}
-            <View style={styles.menuActions}>
-              <TouchableOpacity style={[
-                styles.menuItem,
-                isCyberpunk && { backgroundColor: 'rgba(0, 240, 255, 0.08)' }
-              ]} onPress={handleCopy}>
-                <Ionicons name="copy-outline" size={20} color={isCyberpunk ? theme.colors.primary.main : '#fff'} />
-                <Text style={[styles.menuItemText, isCyberpunk && { color: theme.colors.primary.main }]}>复制</Text>
-              </TouchableOpacity>
-              
-              {!isUser && onReply && (
+            {!isLoading && (
+              <View style={styles.menuActions}>
                 <TouchableOpacity style={[
                   styles.menuItem,
                   isCyberpunk && { backgroundColor: 'rgba(0, 240, 255, 0.08)' }
-                ]} onPress={handleReply}>
-                  <Ionicons name="arrow-undo-outline" size={20} color={isCyberpunk ? theme.colors.primary.main : '#fff'} />
-                  <Text style={[styles.menuItemText, isCyberpunk && { color: theme.colors.primary.main }]}>回复</Text>
+                ]} onPress={handleCopy}>
+                  <Ionicons name="copy-outline" size={20} color={isCyberpunk ? theme.colors.primary.main : '#fff'} />
+                  <Text style={[styles.menuItemText, isCyberpunk && { color: theme.colors.primary.main }]}>复制</Text>
                 </TouchableOpacity>
-              )}
-              
-              {!isUser && (
-                <TouchableOpacity 
-                  style={[
+                
+                {!isUser && onReply && (
+                  <TouchableOpacity style={[
                     styles.menuItem,
-                    isCyberpunk && { backgroundColor: 'rgba(255, 42, 109, 0.12)' }
-                  ]} 
-                  onPress={() => {
-                    handleReaction({ emoji: '❤️', name: 'love', xpBonus: 2 });
-                  }}
-                >
-                  <Ionicons name="heart-outline" size={20} color={theme.colors.accent.pink} />
-                  <Text style={[styles.menuItemText, { color: theme.colors.accent.pink }]}>喜欢</Text>
+                    isCyberpunk && { backgroundColor: 'rgba(0, 240, 255, 0.08)' }
+                  ]} onPress={handleReply}>
+                    <Ionicons name="arrow-undo-outline" size={20} color={isCyberpunk ? theme.colors.primary.main : '#fff'} />
+                    <Text style={[styles.menuItemText, isCyberpunk && { color: theme.colors.primary.main }]}>回复</Text>
+                  </TouchableOpacity>
+                )}
+                
+                {/* Share button */}
+                <TouchableOpacity style={[
+                  styles.menuItem,
+                  isCyberpunk && { backgroundColor: 'rgba(0, 240, 255, 0.08)' }
+                ]} onPress={handleShare}>
+                  <Ionicons name="share-social-outline" size={20} color={isCyberpunk ? theme.colors.primary.main : '#fff'} />
+                  <Text style={[styles.menuItemText, isCyberpunk && { color: theme.colors.primary.main }]}>分享</Text>
                 </TouchableOpacity>
-              )}
-            </View>
+                
+                {!isUser && (
+                  <TouchableOpacity 
+                    style={[
+                      styles.menuItem,
+                      isCyberpunk && { backgroundColor: 'rgba(255, 42, 109, 0.12)' }
+                    ]} 
+                    onPress={() => {
+                      handleReaction({ emoji: '❤️', name: 'love', xpBonus: 2 });
+                    }}
+                  >
+                    <Ionicons name="heart-outline" size={20} color={theme.colors.accent.pink} />
+                    <Text style={[styles.menuItemText, { color: theme.colors.accent.pink }]}>喜欢</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
             
             {/* Preview of message */}
-            <View style={[styles.previewContainer, { borderTopColor: theme.colors.border }]}>
-              <Text style={[styles.previewText, { color: theme.colors.text.tertiary }]} numberOfLines={2}>
-                {content}
-              </Text>
-            </View>
+            {!isLoading && (
+              <View style={[styles.previewContainer, { borderTopColor: theme.colors.border }]}>
+                <Text style={[styles.previewText, { color: theme.colors.text.tertiary }]} numberOfLines={2}>
+                  {content}
+                </Text>
+              </View>
+            )}
           </Animated.View>
         </Pressable>
       </Modal>
@@ -463,6 +533,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  // Loading container
+  loadingContainer: {
+    paddingVertical: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   menuContainer: {
     padding: spacing.lg,

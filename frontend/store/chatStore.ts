@@ -88,6 +88,7 @@ export interface Message {
   creditsDeducted?: number;
   createdAt: string;
   extraData?: ExtraData;   // Debug info from backend
+  reaction?: string;       // User's emoji reaction to this message
 }
 
 export interface ChatSession {

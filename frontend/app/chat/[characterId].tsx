@@ -178,10 +178,12 @@ export default function ChatScreen() {
     return () => keyboardShowListener.remove();
   }, []);
 
-  // Scroll to bottom when messages load (initial load)
+  // Scroll to bottom only on initial load, not when loading more history
+  const hasScrolledToBottom = useRef(false);
   useEffect(() => {
-    if (messages.length > 0 && !isInitializing) {
+    if (messages.length > 0 && !isInitializing && !hasScrolledToBottom.current) {
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
+      hasScrolledToBottom.current = true;
     }
   }, [messages.length, isInitializing]);
 
@@ -373,9 +375,11 @@ export default function ChatScreen() {
       );
       
       if (olderMessages.length > 0) {
-        // Prepend older messages to the beginning
+        // Prepend older messages to the beginning, dedupe by messageId
         const currentMessages = useChatStore.getState().messagesBySession[sessionId] || [];
-        setMessages(sessionId, [...olderMessages, ...currentMessages]);
+        const existingIds = new Set(currentMessages.map(m => m.messageId));
+        const uniqueOlderMessages = olderMessages.filter(m => !existingIds.has(m.messageId));
+        setMessages(sessionId, [...uniqueOlderMessages, ...currentMessages]);
         setOldestMessageId(oldestId);
       }
       
@@ -664,7 +668,28 @@ export default function ChatScreen() {
   }, []);
   
   // Handle emoji reaction - awards XP bonus
-  const handleReaction = useCallback(async (reactionName: string, xpBonus: number) => {
+  const handleReaction = useCallback(async (reactionName: string, xpBonus: number, messageId?: string) => {
+    // Get emoji from reaction name
+    const reactionEmojis: Record<string, string> = {
+      love: '❤️',
+      haha: '😂',
+      wow: '😍',
+      sad: '😢',
+      like: '👍',
+      fire: '🔥',
+    };
+    const emoji = reactionEmojis[reactionName] || '❤️';
+    
+    // Update message in chat history with reaction
+    if (messageId && sessionId) {
+      const updatedMessages = messages.map(msg => 
+        msg.messageId === messageId 
+          ? { ...msg, reaction: emoji }
+          : msg
+      );
+      setMessages(sessionId, updatedMessages);
+    }
+    
     // Award XP for reaction
     const newXp = relationshipXp + xpBonus;
     const newMax = relationshipMaxXp;
@@ -698,7 +723,7 @@ export default function ChatScreen() {
     }
     
     showToast(`+${xpBonus} 亲密度 💕`);
-  }, [relationshipXp, relationshipMaxXp, relationshipLevel, params.characterId, setIntimacy, showToast]);
+  }, [relationshipXp, relationshipMaxXp, relationshipLevel, params.characterId, setIntimacy, showToast, messages, sessionId, setMessages]);
   
   // Handle reply to message
   const handleReply = useCallback((content: string) => {
@@ -771,9 +796,10 @@ export default function ChatScreen() {
           isLocked={isLocked}
           contentRating={item.contentRating}
           onUnlock={handleUnlock}
-          onReaction={!isUser ? handleReaction : undefined}
+          onReaction={!isUser ? (reactionName, xpBonus) => handleReaction(reactionName, xpBonus, item.messageId) : undefined}
           onReply={!isUser ? handleReply : undefined}
           showToast={showToast}
+          messageReaction={item.reaction}
         />
       </View>
     );
@@ -902,9 +928,13 @@ export default function ChatScreen() {
           keyExtractor={(item) => item.messageId}
           renderItem={renderMessage}
           contentContainerStyle={styles.messagesList}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
           onScroll={handleScroll}
           scrollEventThrottle={100}
+          // Maintain scroll position when loading older messages
+          maintainVisibleContentPosition={{
+            minIndexForVisible: 0,
+            autoscrollToTopThreshold: 10,
+          }}
           ListHeaderComponent={
             isLoadingMore ? (
               <View style={{ padding: 10, alignItems: 'center' }}>
