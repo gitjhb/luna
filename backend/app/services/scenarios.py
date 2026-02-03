@@ -107,6 +107,39 @@ SCENARIOS: dict[str, Scenario] = {
         ambiance=None,
         icon="💬",
     ),
+    # === Sakura 专属场景 ===
+    "bedroom": Scenario(
+        id="bedroom",
+        name="卧室",
+        description="芽衣的私人空间",
+        context="You are in Sakura's cozy bedroom. Soft pink curtains filter the afternoon light. Plushies and manga are scattered around. A faint scent of strawberry hangs in the air. This is her private sanctuary, and she's let you in.",
+        ambiance="intimate, cute, private, youthful",
+        icon="🛏️",
+    ),
+    "beach": Scenario(
+        id="beach",
+        name="海滩",
+        description="阳光沙滩，青春的气息",
+        context="You are at a sunny beach with Sakura. She's wearing a cute swimsuit, her hair tied up. The waves lap gently at the shore. Seagulls cry overhead. The summer sun is warm on your skin. She's excited and playful.",
+        ambiance="summery, youthful, playful, romantic",
+        icon="🏖️",
+    ),
+    "ocean": Scenario(
+        id="ocean",
+        name="海边露台",
+        description="浪漫的海边夜晚",
+        context="You are on a seaside terrace at night with Sakura. The moon reflects on the calm ocean. A gentle sea breeze carries the scent of salt. String lights illuminate the terrace softly. She leans against the railing, looking at the stars.",
+        ambiance="romantic, peaceful, intimate, dreamy",
+        icon="🌊",
+    ),
+    "school": Scenario(
+        id="school",
+        name="教室",
+        description="放学后的秘密约会",
+        context="You are in an empty classroom after school with Sakura. The setting sun casts long shadows through the windows. Dust motes float in the golden light. The distant sounds of club activities echo. She's being secretive and a bit nervous.",
+        ambiance="nostalgic, secretive, youthful, tender",
+        icon="🏫",
+    ),
 }
 
 # Character default scenarios mapping
