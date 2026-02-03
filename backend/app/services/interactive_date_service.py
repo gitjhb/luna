@@ -1065,6 +1065,9 @@ class InteractiveDateService:
             # 提取 content
             response = llm_response.get("choices", [{}])[0].get("message", {}).get("content", "")
             
+            # 打印原始AI生成内容供参考
+            logger.info(f"📅 [DATE] Stage {stage_num} AI raw response:\n{response}")
+            
             # 解析响应
             stage_data = self._parse_stage_response(response)
             if not stage_data:
