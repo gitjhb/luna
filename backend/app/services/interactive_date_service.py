@@ -1482,34 +1482,33 @@ class InteractiveDateService:
         from app.services.date_service import date_service
         await date_service._trigger_first_date_event(session.user_id, session.character_id)
         
-        # 保存约会摘要到聊天记忆，让 AI 记住约会内容并影响后续对话
+        # 保存简化的约会事件到聊天历史（作为特殊气泡显示）
         try:
             from app.services.chat_service import chat_service
             from app.services.character_config import get_character_config
             
-            # 获取角色名
             character = get_character_config(session.character_id)
             character_name = character.name if character else "角色"
             
-            # 获取情绪状态描述
-            emotion_state = emotion_engine.score_to_state(new_emotion_score)
-            emotion_desc = self._get_emotion_description(emotion_state.value, emotion_change)
+            # 简化的事件消息 - 前端会渲染成特殊气泡
+            ending_desc_map = {
+                "perfect": "完美",
+                "good": "愉快",
+                "normal": "普通",
+                "bad": "尴尬",
+            }
+            ending_desc = ending_desc_map.get(ending_type, "普通")
             
-            # 构建约会事件记忆 - 格式清晰，AI 容易理解
-            date_event = f"""【约会事件】和{character_name}在{session.scenario_name}约会
-结局：{self._get_ending_title(ending_type)}
-情绪变化：{emotion_change:+d}
-当前状态：{emotion_desc}
-事件摘要：{story_summary[:200]}..."""
+            # 格式：[date] 场景名 | 结局类型
+            date_event = f"[date] {session.scenario_name}｜{ending_desc}的约会"
 
-            # 保存为系统消息到聊天历史
             await chat_service.add_system_memory(
                 user_id=session.user_id,
                 character_id=session.character_id,
                 memory_content=date_event,
                 memory_type="date",
             )
-            logger.info(f"📅 [DATE] Memory saved: emotion {emotion_change:+d}, state: {emotion_state.value}")
+            logger.info(f"📅 [DATE] Memory saved: {date_event}")
         except Exception as e:
             logger.warning(f"Failed to save date memory to chat: {e}")
         

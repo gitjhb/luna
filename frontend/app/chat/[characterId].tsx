@@ -710,8 +710,27 @@ export default function ChatScreen() {
       }
     }
     
+    // 💕 约会事件消息 - 特殊渲染 (居中的小卡片)
+    if (isSystem && item.content.startsWith('[date]')) {
+      // 格式: "[date] 场景名｜结局描述"
+      const dateMatch = item.content.match(/\[date\]\s*(.+)｜(.+)/);
+      const sceneName = dateMatch ? dateMatch[1] : '约会';
+      const endingText = dateMatch ? dateMatch[2] : '完成了约会';
+      
+      return (
+        <View style={styles.giftEventRow}>
+          <View style={[styles.giftEventBubble, { backgroundColor: 'rgba(236, 72, 153, 0.15)', borderColor: 'rgba(236, 72, 153, 0.3)' }]}>
+            <Text style={styles.giftEventIcon}>💕</Text>
+            <Text style={[styles.giftEventText, { color: '#EC4899' }]}>
+              {sceneName} · {endingText}
+            </Text>
+          </View>
+        </View>
+      );
+    }
+    
     // 🎁 礼物事件消息 - 特殊渲染 (居中的小灰条)
-    if (isGift || isSystem) {
+    if (isGift || (isSystem && item.content.includes('[送出礼物]'))) {
       // 解析礼物名称 (格式: "[送出礼物] 🌹 玫瑰")
       const giftMatch = item.content.match(/\[送出礼物\]\s*(.+)/);
       const giftText = giftMatch ? giftMatch[1] : item.content;
@@ -724,6 +743,11 @@ export default function ChatScreen() {
           </View>
         </View>
       );
+    }
+    
+    // 其他系统消息不显示
+    if (isSystem) {
+      return null;
     }
     
     return (
