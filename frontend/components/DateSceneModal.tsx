@@ -799,17 +799,6 @@ export default function DateSceneModal({
           <Text style={styles.affectionText}>{affectionScore}</Text>
         </View>
         
-        {/* 角色头像/表情 */}
-        <View style={styles.characterAvatarContainer}>
-          {characterId ? (
-            <Image source={getCharacterAvatar(characterId, characterAvatar)} style={styles.characterAvatar} />
-          ) : (
-            <View style={styles.characterAvatarPlaceholder}>
-              <Text style={styles.expressionEmoji}>{getExpression()}</Text>
-            </View>
-          )}
-        </View>
-        
         {/* 阶段进度 */}
         <View style={styles.phaseContainer}>
           <Text style={styles.phaseText}>PHASE {progress.current} / {progress.total}</Text>
@@ -1440,27 +1429,27 @@ const styles = StyleSheet.create({
     color: '#FFD93D',
   },
   
-  // 中间区域 - 场景图片/角色立绘展示
+  // 中间区域 - 场景图片/角色立绘展示（背景层）
   middleArea: {
     position: 'absolute',
     top: 0, // 从顶部开始
     left: 0,
     right: 0,
-    height: SCREEN_HEIGHT * 0.6, // 占屏幕 60%
+    height: SCREEN_HEIGHT * 0.55, // 占屏幕 55%，给 BottomSheet 留空间
     justifyContent: 'flex-start',
     alignItems: 'center',
     overflow: 'hidden',
-    zIndex: 1, // 在顶部状态栏之下
+    zIndex: -1, // 放在最底层，不覆盖任何 UI
   },
   backgroundAvatar: {
     width: SCREEN_WIDTH * 0.85,
-    height: SCREEN_HEIGHT * 0.6,
+    height: SCREEN_HEIGHT * 0.55,
     marginTop: 60, // 给顶部状态栏留空间
     opacity: 1,
   },
   sceneImage: {
     width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT * 0.6,
+    height: SCREEN_HEIGHT * 0.55,
   },
   scenarioEmoji: {
     fontSize: 64,
