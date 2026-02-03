@@ -28,8 +28,10 @@ DATE_SCENARIOS = [
 
 # 角色专属约会场景配置
 # 只有 sakura 有专属场景，其他角色暂时用通用场景
+# 注意：key 要用前端的 characterId (UUID 格式)
 CHARACTER_DATE_SCENES: Dict[str, Dict[str, dict]] = {
-    "sakura": {
+    # Sakura - 元气少女
+    "e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e": {
         "bedroom": {
             "name": "卧室",
             "icon": "🛏️",
