@@ -1410,6 +1410,25 @@ class InteractiveDateService:
         except Exception as e:
             logger.warning(f"Failed to save date story to memories: {e}")
         
+        # 记录到历史事件列表（显示在"事件"tab里）
+        try:
+            from app.services.stats_service import StatsService
+            from app.core.database import get_db
+            
+            async with get_db() as db:
+                await StatsService.record_event(
+                    db=db,
+                    user_id=session.user_id,
+                    character_id=session.character_id,
+                    event_type="date",
+                    title=f"{self._get_ending_title(ending_type)}",
+                    description=f"在{session.scenario_name}约会",
+                    metadata={"scenario": session.scenario_name, "ending": ending_type},
+                )
+            logger.info(f"📅 [DATE] Event recorded: {ending_type} at {session.scenario_name}")
+        except Exception as e:
+            logger.warning(f"Failed to record date event: {e}")
+        
         # 给予 XP 奖励（使用 award_xp_direct 直接加数值）
         xp_awarded = rewards["xp"]
         try:
