@@ -552,9 +552,14 @@ class EventStoryGenerator:
         relationship_state: Optional[Dict[str, Any]],
         db_session: Optional[AsyncSession] = None,
     ) -> Optional[EventMemory]:
-        """Save generated story to database (UPSERT - update if exists)"""
+        """
+        Save generated story to database.
+        
+        对于 first_* 类型的事件（如 first_date, first_kiss），只保留第一次的记录，不覆盖。
+        约会故事的详细内容保存在 date_sessions.story_summary 里，每次约会都有独立记录。
+        """
         try:
-            async def _upsert(session):
+            async def _save(session):
                 # 查找现有记录
                 result = await session.execute(
                     select(EventMemory).where(
@@ -568,7 +573,12 @@ class EventStoryGenerator:
                 existing = result.scalar_one_or_none()
                 
                 if existing:
-                    # 更新现有记录
+                    # 对于 first_* 事件，保留第一次的记录，不覆盖
+                    if event_type.startswith("first_"):
+                        logger.info(f"Skipped updating {event_type} (keeping first record): {existing.id}")
+                        return existing
+                    
+                    # 其他事件可以更新
                     existing.story_content = story_content
                     existing.context_summary = context_summary
                     existing.intimacy_level = relationship_state.get("intimacy_stage") if relationship_state else None
@@ -601,10 +611,10 @@ class EventStoryGenerator:
                     return event_memory
             
             if db_session:
-                return await _upsert(db_session)
+                return await _save(db_session)
             else:
                 async with get_db() as session:
-                    return await _upsert(session)
+                    return await _save(session)
                     
         except Exception as e:
             logger.exception(f"Error saving story: {e}")
