@@ -409,18 +409,26 @@ class InteractiveDateService:
         """
         # 检查角色情绪（太生气不能约会）
         from app.services.emotion_service import emotion_service
-        EMOTION_THRESHOLD = -40
+        
+        # 角色约会情绪阈值配置（默认-20）
+        CHARACTER_DATE_EMOTION_THRESHOLD = {
+            "e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e": -20,  # Sakura
+            "a1b2c3d4-e5f6-7890-abcd-ef1234567890": -30,  # Mei (芽衣，傲娇所以稍低)
+        }
+        DEFAULT_EMOTION_THRESHOLD = -20
+        
+        emotion_threshold = CHARACTER_DATE_EMOTION_THRESHOLD.get(character_id, DEFAULT_EMOTION_THRESHOLD)
         
         try:
             emotion_status = await emotion_service.get_status(user_id, character_id)
             current_emotion = emotion_status.get("current_score", 0)
-            if current_emotion < EMOTION_THRESHOLD:
+            if current_emotion < emotion_threshold:
                 return {
                     "can_date": False,
                     "reason": "emotion_too_low",
                     "current_emotion": current_emotion,
-                    "required_emotion": EMOTION_THRESHOLD,
-                    "message": "她现在心情不好，不想和你约会。试试送个礼物哄哄她？",
+                    "required_emotion": emotion_threshold,
+                    "message": "她不是很想约会呢，提升下好感再来吧～",
                 }
         except Exception as e:
             logger.warning(f"Failed to check emotion: {e}")
@@ -510,18 +518,16 @@ class InteractiveDateService:
         # 扣除约会费用（30月石）
         try:
             from app.services.wallet_service import wallet_service
-            deduct_result = await wallet_service.deduct_coins(
+            success = await wallet_service.deduct(
                 user_id=user_id,
                 amount=DATE_COST,
-                reason="date_start",
-                description=f"约会 - {scenario.name}"
+                reason=f"约会 - {scenario.name}"
             )
-            if not deduct_result.get("success"):
+            if not success:
                 return {
                     "success": False,
                     "error": f"月石不足，约会需要 {DATE_COST} 月石",
                     "required": DATE_COST,
-                    "current_balance": deduct_result.get("balance", 0),
                 }
             logger.info(f"💰 Date cost deducted: {DATE_COST} coins from user {user_id}")
         except Exception as e:

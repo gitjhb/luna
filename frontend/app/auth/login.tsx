@@ -13,6 +13,7 @@ import {
   Dimensions,
   Alert,
 } from 'react-native';
+import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -22,9 +23,12 @@ import { useUserStore } from '../../store/userStore';
 import { authService } from '../../services/authService';
 import { ReferralCodeModal } from '../../components/ReferralCodeModal';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// 背景配置：切换视频/图片
+const USE_VIDEO_BACKGROUND = true;
 const BG_IMAGE = 'https://i.pinimg.com/originals/8b/1c/a0/8b1ca08def61220dc83e5c3d91e55cde.jpg';
+const BG_VIDEO = require('../../assets/characters/sakura/videos/beach_reward.mp4');
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -77,17 +81,34 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Background Image */}
-      <ImageBackground
-        source={{ uri: BG_IMAGE }}
-        style={styles.backgroundImage}
-        resizeMode="cover"
-      >
-        <LinearGradient
-          colors={['rgba(26,16,37,0.2)', 'rgba(26,16,37,0.6)', 'rgba(26,16,37,0.98)'] as [string, string, string]}
-          style={styles.overlay}
-        />
-      </ImageBackground>
+      {/* Background Video/Image */}
+      {USE_VIDEO_BACKGROUND ? (
+        <View style={styles.backgroundVideo}>
+          <Video
+            source={BG_VIDEO}
+            style={StyleSheet.absoluteFillObject}
+            resizeMode={ResizeMode.COVER}
+            shouldPlay
+            isLooping
+            isMuted
+          />
+          <LinearGradient
+            colors={['rgba(26,16,37,0.1)', 'rgba(26,16,37,0.5)', 'rgba(26,16,37,0.98)'] as [string, string, string]}
+            style={styles.overlay}
+          />
+        </View>
+      ) : (
+        <ImageBackground
+          source={{ uri: BG_IMAGE }}
+          style={styles.backgroundImage}
+          resizeMode="cover"
+        >
+          <LinearGradient
+            colors={['rgba(26,16,37,0.2)', 'rgba(26,16,37,0.6)', 'rgba(26,16,37,0.98)'] as [string, string, string]}
+            style={styles.overlay}
+          />
+        </ImageBackground>
+      )}
 
       <SafeAreaView style={styles.safeArea}>
         {/* Spacer to push content down */}
@@ -197,6 +218,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: SCREEN_HEIGHT * 0.55,
+  },
+  backgroundVideo: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,

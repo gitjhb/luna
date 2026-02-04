@@ -5,7 +5,7 @@
  * 所有数据从后端 API 获取
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
+import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -121,6 +122,9 @@ export default function CharacterInfoPanel({
   const [gallery, setGallery] = useState<{scene: string; name: string; photoType: string; image: any; unlocked: boolean}[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<{image: any; name: string} | null>(null);
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
+  const [unlockedVideos, setUnlockedVideos] = useState<{id: string; name: string; video: any; thumbnail: any}[]>([]);
+  const [selectedVideo, setSelectedVideo] = useState<{video: any; name: string} | null>(null);
+  const [videoFillMode, setVideoFillMode] = useState<'cover' | 'contain'>('cover');
 
   // Load data when panel opens
   useEffect(() => {
@@ -141,6 +145,7 @@ export default function CharacterInfoPanel({
       loadGifts(),
       loadGallery(),
       loadMemories(),
+      loadUnlockedVideos(),
     ]);
     
     setLoading(false);
@@ -292,17 +297,51 @@ export default function CharacterInfoPanel({
 
   const loadMemories = async () => {
     try {
-      const data = await api.get<any[]>(`/characters/${characterId}/memories`);
-      setMemories(data.map(m => ({
+      // Load event memories (stories from dates, milestones, etc.)
+      const data = await api.get<any>(`/events/me/${characterId}`);
+      const eventMemories = data.memories || [];
+      setMemories(eventMemories.map((m: any) => ({
         id: m.id || m.memory_id,
-        content: m.content,
-        importance: m.importance || 'medium',
-        createdAt: m.created_at || m.createdAt,
+        content: m.story_content || m.content,
+        importance: 'high',
+        createdAt: m.generated_at || m.created_at,
+        eventType: m.event_type,
       })));
     } catch (e) {
-      console.log('Memories API not available');
+      console.log('Event memories API not available:', e);
       setMemories([]);
     }
+  };
+
+  // 角色背景视频配置
+  const getProfileVideo = (charId: string) => {
+    if (charId === 'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e') {
+      return require('../assets/characters/sakura/videos/profile_bg.mp4');
+    }
+    return null;
+  };
+
+  // 所有可解锁的视频配置（按角色）
+  const getAllVideos = (charId: string) => {
+    // Sakura 的视频
+    if (charId === 'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e') {
+      return [
+        { 
+          id: 'beach_reward', 
+          name: '海滩彩蛋 🎬', 
+          video: require('../assets/characters/sakura/videos/beach_reward.mp4'),
+          thumbnail: require('../assets/characters/sakura/scenes/beach-perfect.jpeg'),
+        },
+      ];
+    }
+    return [];
+  };
+
+  const loadUnlockedVideos = async () => {
+    // 测试入口：直接显示所有视频作为"已解锁"福利
+    // 后续可以接入后端API进行真正的解锁验证
+    const allVideos = getAllVideos(characterId);
+    setUnlockedVideos(allVideos);
   };
 
   const getGiftIcon = (giftType: string): string => {
@@ -340,7 +379,7 @@ export default function CharacterInfoPanel({
   const renderTabs = () => (
     <View style={styles.tabBar}>
       {[
-        { key: 'profile', icon: 'person', label: '资料' },
+        { key: 'profile', icon: 'pulse', label: '状态' },
         { key: 'events', icon: 'time', label: '事件' },
         { key: 'gifts', icon: 'gift', label: '礼物' },
         { key: 'gallery', icon: 'images', label: '相册' },
@@ -364,50 +403,39 @@ export default function CharacterInfoPanel({
     </View>
   );
 
-  // 资料页
+  // 状态页 (原资料页)
+  const profileVideo = getProfileVideo(characterId);
+  
   const renderProfile = () => (
-    <ScrollView style={styles.profileContent} showsVerticalScrollIndicator={false}>
-      {/* 高清头像 */}
-      <View style={styles.avatarSection}>
-        <Image
-          source={getCharacterAvatar(characterId, avatarUrl)}
-          style={styles.largeAvatar}
-          resizeMode="cover"
-        />
-        <LinearGradient
-          colors={['transparent', 'rgba(26,16,37,0.9)']}
-          style={styles.avatarGradient}
-        />
-        <View style={styles.avatarInfo}>
-          <Text style={styles.characterNameLarge}>{characterName}</Text>
-          <View style={styles.levelBadge}>
-            <Ionicons name="heart" size={14} color="#FF69B4" />
-            <Text style={styles.levelText}>Lv.{intimacyLevel}</Text>
+    <ScrollView 
+      style={[styles.profileContent, profileVideo && styles.profileContentTransparent]} 
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={profileVideo && styles.profileContentContainer}
+    >
+      {/* 无视频时显示静态头像 */}
+      {!profileVideo && (
+        <View style={styles.avatarSection}>
+          <Image
+            source={getCharacterAvatar(characterId, avatarUrl)}
+            style={styles.largeAvatar}
+            resizeMode="cover"
+          />
+          <LinearGradient
+            colors={['transparent', 'rgba(26,16,37,0.9)']}
+            style={styles.avatarGradient}
+          />
+          <View style={styles.avatarInfo}>
+            <Text style={styles.characterNameLarge}>{characterName}</Text>
+            <View style={styles.levelBadge}>
+              <Ionicons name="heart" size={14} color="#FF69B4" />
+              <Text style={styles.levelText}>Lv.{intimacyLevel}</Text>
+            </View>
           </View>
         </View>
-      </View>
-
-      {/* 📖 回忆录入口 */}
-      {onOpenMemories && (
-        <TouchableOpacity style={styles.memoriesButton} onPress={onOpenMemories}>
-          <LinearGradient
-            colors={['rgba(139, 92, 246, 0.2)', 'rgba(236, 72, 153, 0.2)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.memoriesButtonGradient}
-          >
-            <Text style={styles.memoriesButtonIcon}>📖</Text>
-            <View style={styles.memoriesButtonContent}>
-              <Text style={styles.memoriesButtonTitle}>回忆录</Text>
-              <Text style={styles.memoriesButtonSubtitle}>重温与{characterName}的精彩时刻</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.5)" />
-          </LinearGradient>
-        </TouchableOpacity>
       )}
 
       {/* 情绪状态 */}
-      <View style={styles.statsCard}>
+      <View style={[styles.statsCard, profileVideo && styles.statsCardTransparent]}>
         <Text style={styles.cardTitle}>当前状态</Text>
         {isVip ? (
           <View style={styles.emotionRow}>
@@ -563,10 +591,98 @@ export default function CharacterInfoPanel({
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* 🎬 已解锁视频区域 - 隐藏福利 */}
+        {unlockedVideos.length > 0 && (
+          <>
+            <View style={styles.galleryDivider} />
+            <View style={styles.galleryHeader}>
+              <Text style={styles.sectionTitle}>🎬 特别收藏</Text>
+              <View style={styles.secretBadge}>
+                <Text style={styles.secretBadgeText}>彩蛋</Text>
+              </View>
+            </View>
+            <Text style={styles.galleryHint}>✨ 恭喜发现隐藏内容！</Text>
+            
+            <View style={styles.videoGrid}>
+              {unlockedVideos.map((video) => (
+                <TouchableOpacity 
+                  key={video.id} 
+                  style={styles.videoItem}
+                  activeOpacity={0.7}
+                  onPress={() => setSelectedVideo({ video: video.video, name: video.name })}
+                >
+                  <Image 
+                    source={video.thumbnail} 
+                    style={styles.videoThumbnail}
+                  />
+                  <View style={styles.videoPlayOverlay}>
+                    <View style={styles.videoPlayButton}>
+                      <Ionicons name="play" size={24} color="#fff" />
+                    </View>
+                  </View>
+                  <View style={styles.photoLabel}>
+                    <Text style={styles.photoLabelText}>{video.name}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
       </ScrollView>
     );
   };
   
+  // 视频全屏播放 Modal
+  const renderVideoModal = () => (
+    <Modal
+      visible={!!selectedVideo}
+      transparent={false}
+      animationType="fade"
+      onRequestClose={() => {
+        setSelectedVideo(null);
+        setVideoFillMode('cover');
+      }}
+      statusBarTranslucent
+    >
+      <View style={styles.videoModalOverlay}>
+        {/* 关闭按钮 */}
+        <TouchableOpacity 
+          style={styles.videoCloseButton}
+          onPress={() => {
+            setSelectedVideo(null);
+            setVideoFillMode('cover');
+          }}
+        >
+          <Ionicons name="close-circle" size={36} color="rgba(255,255,255,0.7)" />
+        </TouchableOpacity>
+        
+        {/* 缩放切换按钮 */}
+        <TouchableOpacity 
+          style={styles.videoScaleButton}
+          onPress={() => setVideoFillMode(prev => prev === 'cover' ? 'contain' : 'cover')}
+        >
+          <Ionicons 
+            name={videoFillMode === 'cover' ? 'contract-outline' : 'expand-outline'} 
+            size={28} 
+            color="rgba(255,255,255,0.7)" 
+          />
+        </TouchableOpacity>
+        
+        {selectedVideo && (
+          <Video
+            source={selectedVideo.video}
+            style={styles.videoModalPlayer}
+            useNativeControls
+            resizeMode={videoFillMode === 'cover' ? ResizeMode.COVER : ResizeMode.CONTAIN}
+            isLooping
+            shouldPlay
+          />
+        )}
+      </View>
+    </Modal>
+  );
+
   // 照片全屏查看 Modal
   const renderPhotoModal = () => (
     <Modal
@@ -600,52 +716,56 @@ export default function CharacterInfoPanel({
     </Modal>
   );
 
-  // 记忆页 (Debug)
+  // 记忆页 - 展示与角色的回忆故事
   const renderMemory = () => (
     <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.debugHeader}>
-        <Text style={styles.sectionTitle}>角色记忆</Text>
-        <View style={styles.debugBadge}>
-          <Text style={styles.debugBadgeText}>DEBUG</Text>
-        </View>
-      </View>
+      {/* 📖 回忆录入口 */}
+      {onOpenMemories && (
+        <TouchableOpacity style={styles.memoriesButton} onPress={onOpenMemories}>
+          <LinearGradient
+            colors={['rgba(139, 92, 246, 0.2)', 'rgba(236, 72, 153, 0.2)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.memoriesButtonGradient}
+          >
+            <Text style={styles.memoriesButtonIcon}>📖</Text>
+            <View style={styles.memoriesButtonContent}>
+              <Text style={styles.memoriesButtonTitle}>回忆录</Text>
+              <Text style={styles.memoriesButtonSubtitle}>重温与{characterName}的精彩时刻</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.5)" />
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
+      
+      <Text style={[styles.sectionTitle, { marginTop: 16 }]}>约会记录</Text>
       
       {memories.length === 0 ? (
         <View style={styles.emptyState}>
           <Ionicons name="bulb-outline" size={48} color={theme.colors.text.tertiary} />
           <Text style={styles.emptyText}>还没有记忆</Text>
+          <Text style={[styles.emptyText, { fontSize: 14, marginTop: 8 }]}>
+            继续和{characterName}聊天、约会，创造更多回忆 💕
+          </Text>
         </View>
       ) : (
         memories.map((memory) => (
           <View key={memory.id} style={styles.memoryItem}>
             <View style={styles.memoryHeader}>
-              <View style={[
-                styles.importanceDot,
-                { backgroundColor: memory.importance === 'high' ? '#E74C3C' : 
-                  memory.importance === 'medium' ? '#F39C12' : '#95A5A6' }
-              ]} />
-              <Text style={styles.memoryDate}>{memory.createdAt}</Text>
+              <View style={[styles.importanceDot, { backgroundColor: '#EC4899' }]} />
+              <Text style={styles.memoryDate}>
+                {memory.createdAt ? new Date(memory.createdAt).toLocaleDateString('zh-CN', {
+                  month: 'short',
+                  day: 'numeric',
+                }) : ''}
+              </Text>
             </View>
-            <Text style={styles.memoryContent}>{memory.content}</Text>
+            <Text style={styles.memoryContent} numberOfLines={4}>
+              {memory.content}
+            </Text>
           </View>
         ))
       )}
-
-      {/* Debug 信息 */}
-      <View style={styles.debugSection}>
-        <Text style={styles.debugTitle}>状态数据</Text>
-        <View style={styles.debugCode}>
-          <Text style={styles.debugText}>
-            {JSON.stringify({
-              characterId,
-              intimacyLevel,
-              emotionScore,
-              emotionState,
-              stats,
-            }, null, 2)}
-          </Text>
-        </View>
-      </View>
     </ScrollView>
   );
 
@@ -671,31 +791,63 @@ export default function CharacterInfoPanel({
         <BlurView intensity={20} style={styles.blurBackground} />
         
         <View style={styles.panel}>
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color="#fff" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>{characterName}</Text>
-            <View style={{ width: 40 }} />
-          </View>
-
-          {/* Tabs */}
-          {renderTabs()}
-
-          {/* Content */}
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={theme.colors.primary.main} />
-            </View>
-          ) : (
-            renderContent()
+          {/* 视频背景层 - 状态tab时全屏显示 */}
+          {activeTab === 'profile' && profileVideo && (
+            <Video
+              source={profileVideo}
+              style={styles.videoBgFull}
+              resizeMode={ResizeMode.COVER}
+              isLooping
+              isMuted
+              shouldPlay
+            />
           )}
+          
+          {/* 非视频模式的Header */}
+          {!(activeTab === 'profile' && profileVideo) && (
+            <View style={styles.header}>
+              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                <Ionicons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>{characterName}</Text>
+              <View style={{ width: 40 }} />
+            </View>
+          )}
+          
+          {/* 视频模式：下拉手柄 */}
+          {activeTab === 'profile' && profileVideo && (
+            <TouchableOpacity style={styles.pullDownHandle} onPress={onClose} activeOpacity={0.8}>
+              <View style={styles.handleBar} />
+            </TouchableOpacity>
+          )}
+
+          {/* 底部内容区 - 视频模式时半透明浮在底部 */}
+          <View style={[
+            styles.bottomContentArea,
+            activeTab === 'profile' && profileVideo && styles.bottomContentAreaFloating
+          ]}>
+            {/* Tabs */}
+            <View style={activeTab === 'profile' && profileVideo ? styles.tabsFloating : undefined}>
+              {renderTabs()}
+            </View>
+
+            {/* Content */}
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={theme.colors.primary.main} />
+              </View>
+            ) : (
+              renderContent()
+            )}
+          </View>
         </View>
       </View>
       
       {/* Photo Fullscreen Modal */}
       {renderPhotoModal()}
+      
+      {/* Video Fullscreen Modal */}
+      {renderVideoModal()}
     </Modal>
   );
 }
@@ -715,6 +867,48 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     overflow: 'hidden',
   },
+  videoBgFull: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  pullDownHandle: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  handleBar: {
+    width: 40,
+    height: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    borderRadius: 3,
+    marginTop: 12,
+  },
+  bottomContentArea: {
+    flex: 1,
+  },
+  bottomContentAreaFloating: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    maxHeight: SCREEN_HEIGHT * 0.35,
+    backgroundColor: 'rgba(26, 16, 37, 0.9)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  tabsFloating: {
+    paddingTop: 8,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -723,6 +917,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.1)',
+    zIndex: 10,
   },
   closeButton: {
     width: 40,
@@ -766,6 +961,14 @@ const styles = StyleSheet.create({
   profileContent: {
     flex: 1,
     padding: 16,
+  },
+  profileContentTransparent: {
+    backgroundColor: 'transparent',
+    paddingTop: 0,
+  },
+  statsCardTransparent: {
+    backgroundColor: 'transparent',
+    marginTop: 0,
   },
   loadingContainer: {
     flex: 1,
@@ -1213,5 +1416,84 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginTop: 16,
     textAlign: 'center',
+  },
+  
+  // Video Section Styles
+  galleryDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginVertical: 24,
+  },
+  secretBadge: {
+    backgroundColor: 'rgba(255, 215, 0, 0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.4)',
+  },
+  secretBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FFD700',
+  },
+  videoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    paddingBottom: 40,
+  },
+  videoItem: {
+    width: (SCREEN_WIDTH - 56) / 2,
+    aspectRatio: 16 / 9,
+    borderRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  videoThumbnail: {
+    width: '100%',
+    height: '100%',
+  },
+  videoPlayOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoPlayButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(236, 72, 153, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoModalOverlay: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoModalPlayer: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+  },
+  videoCloseButton: {
+    position: 'absolute',
+    top: 50,
+    right: 16,
+    zIndex: 100,
+    padding: 8,
+  },
+  videoScaleButton: {
+    position: 'absolute',
+    top: 50,
+    left: 16,
+    zIndex: 100,
+    padding: 8,
   },
 });

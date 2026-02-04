@@ -241,23 +241,26 @@ class IntimacyService:
     def calculate_level(cls, total_xp: float) -> int:
         """
         Calculate level from total XP.
-        Level 1 = 0 XP, Level 2 = 6 XP, etc.
-        Uses xp_for_level() for consistent threshold lookup.
+        Uses xp_for_level() thresholds for consistent lookup.
+        
+        Level progression:
+        - Levels 1-10: Use EARLY_LEVEL_XP table
+        - Levels 11+: Use exponential formula: BASE_XP * (MULTIPLIER ** (level - 6))
         """
-        # Binary search style: find highest level where xp_for_level(level) <= total_xp
-        # Check early levels (1-6)
+        import math
+        
+        # Check early levels first (1-10)
         for level in range(len(cls.EARLY_LEVEL_XP), 0, -1):
-            if total_xp >= cls.xp_for_level(level):
-                # Check if we're at max early level and need exponential
-                if level >= len(cls.EARLY_LEVEL_XP):
-                    # Use exponential formula for higher levels
-                    import math
-                    if total_xp < cls.BASE_XP:
-                        return level
-                    extra_levels = int(math.log(total_xp / cls.BASE_XP) / math.log(cls.MULTIPLIER))
-                    return len(cls.EARLY_LEVEL_XP) + extra_levels
+            if total_xp >= cls.EARLY_LEVEL_XP[level - 1]:
+                # Found the base level, now check if we're in exponential range
+                if level == len(cls.EARLY_LEVEL_XP):  # At level 10, check for higher
+                    # Exponential formula: xp = BASE_XP * (MULTIPLIER ** (level - 6))
+                    # Reverse: level = 6 + log(xp / BASE_XP) / log(MULTIPLIER)
+                    if total_xp >= cls.BASE_XP:
+                        computed_level = 6 + int(math.log(total_xp / cls.BASE_XP) / math.log(cls.MULTIPLIER))
+                        return min(max(computed_level, level), cls.MAX_LEVEL)
                 return level
-        return 1  # Level starts at 1, not 0
+        return 1  # Level starts at 1
         
     @classmethod
     def _legacy_calculate_level(cls, total_xp: float) -> int:

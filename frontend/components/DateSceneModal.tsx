@@ -786,7 +786,15 @@ export default function DateSceneModal({
         <View style={styles.cooldownBox}>
           <Text style={styles.cooldownIcon}>⏰</Text>
           <Text style={styles.cooldownText}>
-            约会冷却中，还需等待 {cooldownInfo.remainingMinutes} 分钟
+            约会冷却中，还需等待 {(() => {
+              const mins = cooldownInfo.remainingMinutes;
+              if (mins >= 60) {
+                const hours = Math.floor(mins / 60);
+                const remainMins = mins % 60;
+                return remainMins > 0 ? `${hours} 小时 ${remainMins} 分钟` : `${hours} 小时`;
+              }
+              return `${mins} 分钟`;
+            })()}
           </Text>
           <TouchableOpacity 
             style={styles.resetCooldownBtn}

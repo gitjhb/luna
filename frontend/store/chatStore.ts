@@ -79,11 +79,13 @@ export interface Message {
   messageId: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  type?: 'text' | 'image' | 'gift';  // gift = 送礼事件消息
+  type?: 'text' | 'image' | 'gift' | 'video';  // video = 视频消息
   isLocked?: boolean;      // For locked/blurred content
   contentRating?: 'safe' | 'flirty' | 'spicy' | 'explicit';
   unlockPrompt?: string;
   imageUrl?: string;
+  videoUrl?: string;       // 视频 URL 或本地资源 ID
+  videoThumbnail?: string; // 视频封面图
   tokensUsed?: number;
   creditsDeducted?: number;
   createdAt: string;

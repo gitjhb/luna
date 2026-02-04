@@ -48,6 +48,7 @@ import CharacterInfoPanel from '../../components/CharacterInfoPanel';
 import GiftBottomSheet from '../../components/GiftBottomSheet';
 import MockModeBanner from '../../components/MockModeBanner';
 import MessageBubble from '../../components/MessageBubble';
+import VideoMessageBubble from '../../components/VideoMessageBubble';
 import { ToastProvider, useToast } from '../../components/Toast';
 import { useEmotionTheme } from '../../hooks/useEmotionTheme';
 import { EmotionEffectsLayer, EmotionIndicator } from '../../components/EmotionEffects';
@@ -319,6 +320,22 @@ export default function ChatScreen() {
               };
               // Use store method for initial greeting (before useMessages is ready)
               addMessageToStore(session.sessionId, greetingMessage);
+              
+              // 🎬 测试入口：Sakura 发送视频消息
+              if (params.characterId === 'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e') {
+                setTimeout(() => {
+                  const videoMessage: Message = {
+                    messageId: `video-${Date.now()}`,
+                    role: 'assistant',
+                    type: 'video',
+                    content: '送你一个小惊喜～ 💕',
+                    videoUrl: 'sakura_beach_reward',
+                    createdAt: new Date().toISOString(),
+                    tokensUsed: 0,
+                  };
+                  addMessageToStore(session.sessionId, videoMessage);
+                }, 1500);
+              }
             }
           } catch (e) {
             console.log('Could not load character greeting:', e);
@@ -570,6 +587,15 @@ export default function ChatScreen() {
     }
   };
 
+  // 📸 拍照状态
+  const [newPhotoUri, setNewPhotoUri] = useState<string | null>(null);
+  const [showPhotoPreview, setShowPhotoPreview] = useState(false);
+  
+  // Mock照片资源（后续替换为AI生成）
+  const MOCK_PHOTOS: Record<string, any> = {
+    'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e': require('../../assets/characters/sakura/photos/photo_bedroom_01.jpg'),
+  };
+  
   // 📸 新拍照功能 (消费月石)
   const handleTakePhoto = async () => {
     if (photoLoading) return;
@@ -577,6 +603,13 @@ export default function ChatScreen() {
     // 检查等级
     if ((relationshipLevel || 1) < 3) {
       Alert.alert('等级不足', '需要 Lv.3 解锁拍照功能');
+      return;
+    }
+    
+    // 检查月石余额（30月石/张）
+    const PHOTO_COST = 30;
+    if ((wallet?.totalCredits || 0) < PHOTO_COST) {
+      Alert.alert('月石不足', `拍照需要 ${PHOTO_COST} 月石，请先充值`);
       return;
     }
     
@@ -592,15 +625,32 @@ export default function ChatScreen() {
         updateWallet({ totalCredits: result.new_balance });
       }
       
-      Alert.alert(
-        result.is_first ? '🎉 首次拍照！' : '📸 拍照成功！',
-        `已保存到相册\n消费 ${result.cost} 月石`,
-        [{ text: '查看', onPress: () => {/* TODO: 打开相册 */} }, { text: '好的' }]
-      );
+      // 使用Mock照片（后续替换为AI生成的URL）
+      const mockPhoto = MOCK_PHOTOS[params.characterId];
+      if (mockPhoto) {
+        // 获取本地资源的URI
+        const resolvedSource = Image.resolveAssetSource(mockPhoto);
+        setNewPhotoUri(resolvedSource.uri);
+        setShowPhotoPreview(true);
+      } else {
+        Alert.alert(
+          result.is_first ? '🎉 首次拍照！' : '📸 拍照成功！',
+          `已保存到相册\n消费 ${result.cost} 月石`
+        );
+      }
     } catch (e: any) {
       Alert.alert('拍照失败', e.message);
     } finally {
       setPhotoLoading(false);
+    }
+  };
+  
+  // 设置照片为聊天背景
+  const handleSetPhotoAsBackground = () => {
+    if (newPhotoUri) {
+      setBackgroundImage(newPhotoUri);
+      setShowPhotoPreview(false);
+      Alert.alert('✨ 背景已更换', '新照片已设为聊天背景');
     }
   };
 
@@ -772,6 +822,28 @@ export default function ChatScreen() {
     // 其他系统消息不显示
     if (isSystem) {
       return null;
+    }
+    
+    // 🎬 视频消息
+    if (item.type === 'video') {
+      return (
+        <View style={[styles.messageRow, styles.messageRowAI]}>
+          <TouchableOpacity onPress={() => router.push({
+            pathname: '/character/[characterId]',
+            params: { characterId: params.characterId },
+          })}>
+            <Image source={getCharacterAvatar(params.characterId, characterAvatar)} style={styles.avatar} />
+          </TouchableOpacity>
+          <View style={[styles.bubble, styles.bubbleAI]}>
+            <VideoMessageBubble
+              videoId={item.videoUrl}
+              videoUrl={item.videoUrl?.startsWith('http') ? item.videoUrl : undefined}
+              caption={item.content}
+              characterName={characterName}
+            />
+          </View>
+        </View>
+      );
     }
     
     return (
@@ -1006,13 +1078,69 @@ export default function ChatScreen() {
             <TouchableOpacity 
               style={styles.actionButton} 
               onPress={async () => {
-                // 加载场景数据后打开互动约会
                 try {
+                  // 先检查约会状态（情绪、冷却等）
+                  const status = await api.get<{
+                    can_date: boolean;
+                    reason?: string;
+                    message?: string;
+                    cooldown_remaining_minutes?: number;
+                  }>(`/dates/status/${params.characterId}`);
+                  
+                  if (!status.can_date) {
+                    if (status.reason === 'emotion_too_low') {
+                      Alert.alert('😔 约会失败', status.message || '她不是很想约会呢，提升下好感再来吧～');
+                      return;
+                    }
+                    if (status.reason === 'cooldown') {
+                      const mins = status.cooldown_remaining_minutes || 0;
+                      const timeText = mins >= 60 
+                        ? `${Math.floor(mins / 60)} 小时 ${mins % 60} 分钟`
+                        : `${mins} 分钟`;
+                      Alert.alert(
+                        '⏰ 约会冷却中', 
+                        `还需等待 ${timeText}`,
+                        [
+                          { text: '好的', style: 'cancel' },
+                          { 
+                            text: '💎 50月石重置', 
+                            onPress: async () => {
+                              // 检查余额
+                              if ((wallet?.totalCredits || 0) < 50) {
+                                Alert.alert('月石不足', '重置冷却需要 50 月石');
+                                return;
+                              }
+                              try {
+                                const result = await api.post<{ success: boolean; new_balance: number }>('/dates/interactive/reset-cooldown', {
+                                  character_id: params.characterId,
+                                });
+                                if (result.success) {
+                                  updateWallet({ totalCredits: result.new_balance });
+                                  Alert.alert('✅ 重置成功', '可以约会啦！');
+                                }
+                              } catch (e: any) {
+                                Alert.alert('重置失败', e.message || '请稍后再试');
+                              }
+                            }
+                          },
+                        ]
+                      );
+                      return;
+                    }
+                    if (status.reason === 'already_in_date') {
+                      // 有进行中的约会，继续打开
+                    } else {
+                      Alert.alert('❌ 无法约会', status.message || '暂时无法约会');
+                      return;
+                    }
+                  }
+                  
+                  // 加载场景数据后打开互动约会
                   const { scenarios } = await api.get<{ scenarios: Array<{id: string; name: string; icon: string; description?: string; required_level?: number; is_locked?: boolean}> }>(`/dates/scenarios?character_id=${params.characterId}`);
                   setDateScenarios(scenarios || []);
                   setShowDateSceneModal(true);
                 } catch (e) {
-                  console.error('Failed to load scenarios:', e);
+                  console.error('Failed to check date status:', e);
                   // 降级到简单模式
                   setShowDateModal(true);
                 }
@@ -1052,10 +1180,25 @@ export default function ChatScreen() {
             </View>
             
             {/* Send Button - 动态主题色 */}
+            {/* 长按发送测试视频（仅Sakura，开发测试用） */}
             <TouchableOpacity 
               style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]} 
               onPress={handleSend}
-              disabled={!inputText.trim()}
+              onLongPress={() => {
+                if (params.characterId === 'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e' && sessionId) {
+                  const videoMessage: Message = {
+                    messageId: `video-${Date.now()}`,
+                    role: 'assistant',
+                    type: 'video',
+                    content: '看看这个～ 只给你看哦 💕',
+                    videoUrl: 'sakura_beach_reward',
+                    createdAt: new Date().toISOString(),
+                    tokensUsed: 0,
+                  };
+                  addMessage(videoMessage);
+                }
+              }}
+              delayLongPress={800}
             >
               <LinearGradient
                 colors={inputText.trim() 
@@ -1166,6 +1309,11 @@ export default function ChatScreen() {
               <IntimacyInfoPanel
                 characterId={params.characterId}
                 currentLevel={relationshipLevel || 1}
+                currentXp={cachedIntimacy?.totalXp || 0}
+                xpProgress={cachedIntimacy ? 
+                  Math.min(100, (cachedIntimacy.xpProgressInLevel / Math.max(1, cachedIntimacy.xpForNextLevel - cachedIntimacy.xpForCurrentLevel)) * 100) 
+                  : 0
+                }
               />
             </ScrollView>
           </View>
@@ -1553,6 +1701,55 @@ export default function ChatScreen() {
                 }}
               >
                 <Text style={styles.activeDateCancelBtnText}>取消约会</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      
+      {/* 📸 照片预览Modal */}
+      <Modal
+        visible={showPhotoPreview}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPhotoPreview(false)}
+      >
+        <View style={styles.photoPreviewOverlay}>
+          <View style={styles.photoPreviewContainer}>
+            {/* 关闭按钮 */}
+            <TouchableOpacity 
+              style={styles.photoPreviewClose}
+              onPress={() => setShowPhotoPreview(false)}
+            >
+              <Ionicons name="close" size={28} color="#fff" />
+            </TouchableOpacity>
+            
+            {/* 照片 */}
+            {newPhotoUri && (
+              <Image
+                source={{ uri: newPhotoUri }}
+                style={styles.photoPreviewImage}
+                resizeMode="contain"
+              />
+            )}
+            
+            {/* 标题 */}
+            <Text style={styles.photoPreviewTitle}>📸 新照片！</Text>
+            <Text style={styles.photoPreviewSubtitle}>已保存到相册</Text>
+            
+            {/* 操作按钮 */}
+            <View style={styles.photoPreviewButtons}>
+              <TouchableOpacity
+                style={styles.photoPreviewBtnSecondary}
+                onPress={() => setShowPhotoPreview(false)}
+              >
+                <Text style={styles.photoPreviewBtnText}>关闭</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.photoPreviewBtnPrimary}
+                onPress={handleSetPhotoAsBackground}
+              >
+                <Text style={styles.photoPreviewBtnTextPrimary}>设为背景</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2501,5 +2698,74 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  // 📸 照片预览样式
+  photoPreviewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoPreviewContainer: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  photoPreviewClose: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  photoPreviewImage: {
+    width: '90%',
+    height: '55%',
+    borderRadius: 16,
+  },
+  photoPreviewTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#fff',
+    marginTop: 24,
+  },
+  photoPreviewSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.6)',
+    marginTop: 8,
+  },
+  photoPreviewButtons: {
+    flexDirection: 'row',
+    gap: 16,
+    marginTop: 32,
+  },
+  photoPreviewBtnSecondary: {
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  photoPreviewBtnPrimary: {
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 25,
+    backgroundColor: '#EC4899',
+  },
+  photoPreviewBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  photoPreviewBtnTextPrimary: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

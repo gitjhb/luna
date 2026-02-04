@@ -192,11 +192,21 @@ class DateService:
             "scenario_context": scenario.context,
         }
         
+        # 检查是否是第一次约会
+        existing_first_date = await event_story_generator.get_event_memories(
+            user_id=user_id,
+            character_id=character_id,
+            event_type=EventType.FIRST_DATE,
+        )
+        
+        # 第一次用 FIRST_DATE，后续用 DATE（每次都记录）
+        event_type_to_use = EventType.FIRST_DATE if not existing_first_date else EventType.DATE
+        
         # 生成约会故事
         story_result = await event_story_generator.generate_event_story(
             user_id=user_id,
             character_id=character_id,
-            event_type=EventType.FIRST_DATE,
+            event_type=event_type_to_use,
             chat_history=[],  # 约会故事不需要聊天历史
             memory_context=f"约会场景：{scenario.name}\n{scenario.context}",
             relationship_state=relationship_state,
@@ -215,7 +225,7 @@ class DateService:
         
         # 给予 XP 奖励
         xp_reward = 50
-        await intimacy_service.add_xp(user_id, character_id, xp_reward)
+        await intimacy_service.award_xp_direct(user_id, character_id, xp_reward, reason="date_complete")
         
         # 提升情绪
         await emotion_engine.update_score(user_id, character_id, 15)
@@ -301,7 +311,7 @@ class DateService:
         
         # 给予 XP 奖励
         xp_reward = 50  # 约会奖励 50 XP
-        await intimacy_service.add_xp(user_id, character_id, xp_reward)
+        await intimacy_service.award_xp_direct(user_id, character_id, xp_reward, reason="date_complete")
         
         # 提升情绪
         await emotion_engine.update_score(user_id, character_id, 15)

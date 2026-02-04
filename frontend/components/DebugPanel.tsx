@@ -16,8 +16,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Modal,
-  TextInput,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -79,67 +77,10 @@ const debugApi = {
 // Compact floating button that expands to full panel
 export const DebugButton: React.FC<DebugPanelProps> = (props) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [levelInput, setLevelInput] = useState('');
-  const [emotionInput, setEmotionInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [fullStatus, setFullStatus] = useState<any>(null);
   
   const hasData = props.extraData?.game || props.extraData?.l1;
   const emotionState = props.extraData?.game?.emotion_state || props.emotionState;
-  
-  // 设置等级
-  const handleSetLevel = async () => {
-    const level = parseInt(levelInput);
-    if (!props.characterId || isNaN(level) || level < 1 || level > 50) {
-      Alert.alert('错误', '请输入有效等级 (1-50)');
-      return;
-    }
-    setLoading(true);
-    try {
-      const result = await debugApi.setLevel(props.characterId, level);
-      Alert.alert('成功', `等级已设置: ${result.old_level} → ${result.new_level}`);
-      setLevelInput('');
-      props.onStateChanged?.();
-    } catch (e: any) {
-      Alert.alert('失败', e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // 设置情绪
-  const handleSetEmotion = async () => {
-    const emo = parseInt(emotionInput);
-    if (!props.characterId || isNaN(emo) || emo < -100 || emo > 100) {
-      Alert.alert('错误', '请输入有效情绪值 (-100 到 100)');
-      return;
-    }
-    setLoading(true);
-    try {
-      const result = await debugApi.setEmotion(props.characterId, emo);
-      Alert.alert('成功', `情绪已设置: ${result.old_emotion} → ${result.new_emotion}`);
-      setEmotionInput('');
-      props.onStateChanged?.();
-    } catch (e: any) {
-      Alert.alert('失败', e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // 获取完整状态
-  const handleGetStatus = async () => {
-    if (!props.characterId) return;
-    setLoading(true);
-    try {
-      const status = await debugApi.getStatus(props.characterId);
-      setFullStatus(status);
-    } catch (e: any) {
-      Alert.alert('失败', e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
   
   // Compact indicator color based on emotion
   const getEmotionColor = (emotion: string): string => {
@@ -479,103 +420,59 @@ export const DebugButton: React.FC<DebugPanelProps> = (props) => {
               {/* Debug Controls */}
               {props.characterId && (
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>🎮 Debug Controls</Text>
+                  <Text style={styles.sectionTitle}>🎮 等级调整</Text>
                   
-                  {/* Set Level */}
-                  <View style={styles.controlRow}>
-                    <Text style={styles.controlLabel}>等级:</Text>
-                    <TextInput
-                      style={styles.controlInput}
-                      value={levelInput}
-                      onChangeText={setLevelInput}
-                      placeholder="1-50"
-                      placeholderTextColor="rgba(255,255,255,0.3)"
-                      keyboardType="number-pad"
-                    />
+                  {/* Level Up/Down Buttons */}
+                  <View style={styles.levelButtonsRow}>
                     <TouchableOpacity
-                      style={[styles.controlButton, loading && styles.controlButtonDisabled]}
-                      onPress={handleSetLevel}
-                      disabled={loading}
+                      style={[styles.levelButton, styles.levelDownButton, loading && styles.controlButtonDisabled]}
+                      onPress={async () => {
+                        const newLevel = Math.max(1, props.intimacyLevel - 1);
+                        if (newLevel === props.intimacyLevel) return;
+                        setLoading(true);
+                        try {
+                          await debugApi.setLevel(props.characterId!, newLevel);
+                          props.onStateChanged?.();
+                        } catch (e) {
+                          console.log('降级失败');
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      disabled={loading || props.intimacyLevel <= 1}
                     >
-                      <Text style={styles.controlButtonText}>设置</Text>
+                      <Ionicons name="remove" size={24} color="#fff" />
+                      <Text style={styles.levelButtonText}>降级</Text>
                     </TouchableOpacity>
-                  </View>
-                  
-                  {/* Set Emotion */}
-                  <View style={styles.controlRow}>
-                    <Text style={styles.controlLabel}>情绪:</Text>
-                    <TextInput
-                      style={styles.controlInput}
-                      value={emotionInput}
-                      onChangeText={setEmotionInput}
-                      placeholder="-100~100"
-                      placeholderTextColor="rgba(255,255,255,0.3)"
-                      keyboardType="numbers-and-punctuation"
-                    />
-                    <TouchableOpacity
-                      style={[styles.controlButton, loading && styles.controlButtonDisabled]}
-                      onPress={handleSetEmotion}
-                      disabled={loading}
-                    >
-                      <Text style={styles.controlButtonText}>设置</Text>
-                    </TouchableOpacity>
-                  </View>
-                  
-                  {/* Get Full Status */}
-                  <TouchableOpacity
-                    style={[styles.statusButton, loading && styles.controlButtonDisabled]}
-                    onPress={handleGetStatus}
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Text style={styles.statusButtonText}>📊 查看完整状态</Text>
-                    )}
-                  </TouchableOpacity>
-                  
-                  {/* Full Status Display */}
-                  {fullStatus && (
-                    <View style={styles.statusDisplay}>
-                      <View style={styles.statusRow}>
-                        <Text style={styles.statusKey}>角色:</Text>
-                        <Text style={styles.statusValue}>{fullStatus.character_name} ({fullStatus.archetype})</Text>
-                      </View>
-                      <View style={styles.statusRow}>
-                        <Text style={styles.statusKey}>等级:</Text>
-                        <Text style={styles.statusValue}>LV {fullStatus.level} (XP: {fullStatus.xp})</Text>
-                      </View>
-                      <View style={styles.statusRow}>
-                        <Text style={styles.statusKey}>亲密度X:</Text>
-                        <Text style={styles.statusValue}>{fullStatus.intimacy_x}</Text>
-                      </View>
-                      <View style={styles.statusRow}>
-                        <Text style={styles.statusKey}>情绪:</Text>
-                        <Text style={styles.statusValue}>{fullStatus.emotion}</Text>
-                      </View>
-                      <View style={styles.statusRow}>
-                        <Text style={styles.statusKey}>阶段:</Text>
-                        <Text style={styles.statusValue}>{fullStatus.stage_name}</Text>
-                      </View>
-                      <View style={styles.statusRow}>
-                        <Text style={styles.statusKey}>Power:</Text>
-                        <Text style={styles.statusValue}>{fullStatus.power}</Text>
-                      </View>
-                      <View style={styles.statusRow}>
-                        <Text style={styles.statusKey}>已解锁:</Text>
-                        <Text style={styles.statusValue}>{fullStatus.unlocked_features?.length || 0} 个功能</Text>
-                      </View>
-                      <View style={styles.statusRow}>
-                        <Text style={styles.statusKey}>下一解锁:</Text>
-                        <Text style={styles.statusValue}>LV {fullStatus.next_unlock_level}</Text>
-                      </View>
-                      {fullStatus.events?.length > 0 && (
-                        <View style={styles.statusRow}>
-                          <Text style={styles.statusKey}>事件:</Text>
-                          <Text style={styles.statusValue}>{fullStatus.events.join(', ')}</Text>
-                        </View>
-                      )}
+                    
+                    <View style={styles.currentLevelDisplay}>
+                      <Text style={styles.currentLevelText}>LV {props.intimacyLevel}</Text>
                     </View>
+                    
+                    <TouchableOpacity
+                      style={[styles.levelButton, styles.levelUpButton, loading && styles.controlButtonDisabled]}
+                      onPress={async () => {
+                        const newLevel = Math.min(50, props.intimacyLevel + 1);
+                        if (newLevel === props.intimacyLevel) return;
+                        setLoading(true);
+                        try {
+                          await debugApi.setLevel(props.characterId!, newLevel);
+                          props.onStateChanged?.();
+                        } catch (e) {
+                          console.log('升级失败');
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      disabled={loading || props.intimacyLevel >= 50}
+                    >
+                      <Ionicons name="add" size={24} color="#fff" />
+                      <Text style={styles.levelButtonText}>升级</Text>
+                    </TouchableOpacity>
+                  </View>
+                  
+                  {loading && (
+                    <ActivityIndicator size="small" color="#A855F7" style={{ marginTop: 10 }} />
                   )}
                 </View>
               )}
@@ -704,72 +601,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 20,
   },
-  // Debug Controls
-  controlRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  controlLabel: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.7)',
-    width: 50,
-  },
-  controlInput: {
-    flex: 1,
-    height: 36,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    color: '#fff',
-    fontSize: 14,
-    marginRight: 8,
-  },
-  controlButton: {
-    backgroundColor: '#A855F7',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
   controlButtonDisabled: {
     opacity: 0.5,
-  },
-  controlButtonText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  statusButton: {
-    backgroundColor: 'rgba(168, 85, 247, 0.3)',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  statusButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  statusDisplay: {
-    marginTop: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    borderRadius: 8,
-    padding: 10,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    marginBottom: 4,
-  },
-  statusKey: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.5)',
-    width: 70,
-  },
-  statusValue: {
-    fontSize: 12,
-    color: '#fff',
-    flex: 1,
   },
   // Subsection styles
   subsection: {
@@ -820,6 +653,43 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 8,
     marginLeft: 'auto',
+  },
+  // Level Up/Down buttons
+  levelButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  levelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 6,
+  },
+  levelDownButton: {
+    backgroundColor: 'rgba(255, 107, 107, 0.3)',
+  },
+  levelUpButton: {
+    backgroundColor: 'rgba(107, 203, 119, 0.3)',
+  },
+  levelButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  currentLevelDisplay: {
+    backgroundColor: 'rgba(168, 85, 247, 0.3)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  currentLevelText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
   },
 });
 

@@ -4,14 +4,19 @@
  * Message bubble for chat interface
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Image,
+  Modal,
+  Dimensions,
 } from 'react-native';
+import { Video, ResizeMode } from 'expo-av';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,11 +26,13 @@ interface Message {
   messageId: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  type?: 'text' | 'image';
+  type?: 'text' | 'image' | 'video';
   isLocked?: boolean;
   contentRating?: 'safe' | 'flirty' | 'spicy' | 'explicit';
   unlockPrompt?: string;
   imageUrl?: string;
+  videoUrl?: any;  // Can be require() or { uri: string }
+  videoThumbnail?: any;
   createdAt: string;
 }
 
@@ -42,6 +49,8 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
 }) => {
   const isUser = message.role === 'user';
   const accentColor = isSpicyMode ? theme.colors.accent.pink : theme.colors.primary.main;
+  const [videoModalVisible, setVideoModalVisible] = useState(false);
+  const [videoFillMode, setVideoFillMode] = useState<'cover' | 'contain'>('cover');
 
   // Locked content - show blurred message with unlock overlay
   if (message.isLocked) {
@@ -74,6 +83,83 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
             </View>
           </BlurView>
         </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // Video message
+  if (message.type === 'video' && message.videoUrl) {
+    return (
+      <View style={[styles.container, styles.containerAssistant]}>
+        <TouchableOpacity 
+          style={styles.videoBubble}
+          onPress={() => setVideoModalVisible(true)}
+          activeOpacity={0.8}
+        >
+          {message.videoThumbnail ? (
+            <Image
+              source={message.videoThumbnail}
+              style={styles.videoThumbnail}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.videoThumbnail, styles.videoPlaceholder]} />
+          )}
+          <View style={styles.videoPlayOverlay}>
+            <View style={styles.videoPlayButton}>
+              <Ionicons name="play" size={24} color="#fff" />
+            </View>
+          </View>
+          {message.content && (
+            <View style={styles.videoCaption}>
+              <Text style={styles.videoCaptionText}>{message.content}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+        
+        {/* Video fullscreen modal */}
+        <Modal
+          visible={videoModalVisible}
+          transparent={false}
+          animationType="fade"
+          onRequestClose={() => {
+            setVideoModalVisible(false);
+            setVideoFillMode('cover');
+          }}
+          statusBarTranslucent
+        >
+          <View style={styles.videoModalOverlay}>
+            <TouchableOpacity 
+              style={styles.videoCloseButton}
+              onPress={() => {
+                setVideoModalVisible(false);
+                setVideoFillMode('cover');
+              }}
+            >
+              <Ionicons name="close-circle" size={36} color="rgba(255,255,255,0.7)" />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.videoScaleButton}
+              onPress={() => setVideoFillMode(prev => prev === 'cover' ? 'contain' : 'cover')}
+            >
+              <Ionicons 
+                name={videoFillMode === 'cover' ? 'contract-outline' : 'expand-outline'} 
+                size={28} 
+                color="rgba(255,255,255,0.7)" 
+              />
+            </TouchableOpacity>
+            
+            <Video
+              source={message.videoUrl}
+              style={styles.videoModalPlayer}
+              useNativeControls
+              resizeMode={videoFillMode === 'cover' ? ResizeMode.COVER : ResizeMode.CONTAIN}
+              isLooping
+              shouldPlay
+            />
+          </View>
+        </Modal>
       </View>
     );
   }
@@ -200,5 +286,75 @@ const styles = StyleSheet.create({
   messageImage: {
     width: 240,
     height: 240,
+  },
+  // Video message styles
+  videoBubble: {
+    maxWidth: '75%',
+    borderRadius: theme.borderRadius.xl,
+    overflow: 'hidden',
+    ...getShadow('md'),
+    position: 'relative',
+  },
+  videoThumbnail: {
+    width: 240,
+    height: 180,
+  },
+  videoPlaceholder: {
+    backgroundColor: '#1a1025',
+  },
+  videoPlayOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoPlayButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(236, 72, 153, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoCaption: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  videoCaptionText: {
+    color: '#fff',
+    fontSize: 13,
+  },
+  videoModalOverlay: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoModalPlayer: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+  },
+  videoCloseButton: {
+    position: 'absolute',
+    top: 50,
+    right: 16,
+    zIndex: 100,
+    padding: 8,
+  },
+  videoScaleButton: {
+    position: 'absolute',
+    top: 50,
+    left: 16,
+    zIndex: 100,
+    padding: 8,
   },
 });

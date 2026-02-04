@@ -11,11 +11,15 @@ import { getIntimacyConfig, StageInfo, getStageEmoji } from '../services/intimac
 interface IntimacyInfoPanelProps {
   characterId?: string;
   currentLevel: number;
+  currentXp?: number;
+  xpProgress?: number;  // 0-100 当前等级内的进度百分比
 }
 
 export const IntimacyInfoPanel: React.FC<IntimacyInfoPanelProps> = ({
   characterId,
   currentLevel,
+  currentXp = 0,
+  xpProgress = 0,
 }) => {
   const [stages, setStages] = useState<StageInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,6 +63,16 @@ export const IntimacyInfoPanel: React.FC<IntimacyInfoPanelProps> = ({
             {stages.find(s => isStageActive(s))?.stage_name_cn || ''}
           </Text>
         </View>
+        
+        {/* 经验条 */}
+        <View style={styles.xpBarSection}>
+          <View style={styles.xpBarBackground}>
+            <View style={[styles.xpBarFill, { width: `${xpProgress}%` }]} />
+          </View>
+          <Text style={styles.xpBarText}>
+            {currentXp} XP · {xpProgress.toFixed(0)}%
+          </Text>
+        </View>
       </View>
 
       {/* 阶段列表 */}
@@ -80,7 +94,7 @@ export const IntimacyInfoPanel: React.FC<IntimacyInfoPanelProps> = ({
                 <Text style={styles.stageLevel}>LV {stage.level_range}</Text>
               </View>
             </View>
-            <Text style={styles.stageDesc}>{stage.description}</Text>
+            <Text style={styles.stageDesc}>{stage.ai_attitude || stage.description}</Text>
             {stage.key_unlocks && stage.key_unlocks.length > 0 && (
               <View style={styles.stageFeatures}>
                 {stage.key_unlocks.map((unlock, idx) => (
@@ -140,6 +154,25 @@ const styles = StyleSheet.create({
   currentStageName: {
     fontSize: 18,
     color: '#A855F7',
+  },
+  xpBarSection: {
+    marginTop: 12,
+  },
+  xpBarBackground: {
+    height: 8,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  xpBarFill: {
+    height: '100%',
+    backgroundColor: '#A855F7',
+    borderRadius: 4,
+  },
+  xpBarText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 4,
   },
   sectionTitle: {
     fontSize: 16,

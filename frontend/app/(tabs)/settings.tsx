@@ -12,11 +12,16 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+import * as StoreReview from 'expo-store-review';
 import { useTheme, themeList, ThemeConfig } from '../../theme/config';
 import { useUserStore } from '../../store/userStore';
 import { useChatStore } from '../../store/chatStore';
@@ -24,6 +29,9 @@ import { SubscriptionModal } from '../../components/SubscriptionModal';
 import { InterestsSelector } from '../../components/InterestsSelector';
 import { settingsService } from '../../services/settingsService';
 import { paymentService } from '../../services/paymentService';
+
+// Notification preferences storage key
+const NOTIFICATION_PREFS_KEY = '@luna_notification_prefs';
 
 interface SettingItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -68,6 +76,256 @@ const SettingSection = ({ title, children, theme }: { title: string; children: R
     <View style={styles.sectionContent}>{children}</View>
   </View>
 );
+
+// Notification Settings types
+interface NotificationPrefs {
+  messageNotifications: boolean;
+  dateReminders: boolean;
+  activityNotifications: boolean;
+}
+
+const defaultNotificationPrefs: NotificationPrefs = {
+  messageNotifications: true,
+  dateReminders: true,
+  activityNotifications: true,
+};
+
+// Notification Settings Component
+const NotificationSettings = ({ theme }: { theme: ThemeConfig }) => {
+  const [prefs, setPrefs] = useState<NotificationPrefs>(defaultNotificationPrefs);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadNotificationPrefs();
+    checkPermission();
+  }, []);
+
+  const loadNotificationPrefs = async () => {
+    try {
+      const stored = await AsyncStorage.getItem(NOTIFICATION_PREFS_KEY);
+      if (stored) {
+        setPrefs(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.log('Failed to load notification prefs:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkPermission = async () => {
+    const { status } = await Notifications.getPermissionsAsync();
+    setHasPermission(status === 'granted');
+  };
+
+  const requestPermission = async () => {
+    if (!Device.isDevice) {
+      Alert.alert('提示', '通知功能需要在真实设备上使用');
+      return false;
+    }
+
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    if (finalStatus !== 'granted') {
+      Alert.alert(
+        '需要通知权限',
+        '请在系统设置中启用通知权限，以便接收消息提醒。',
+        [{ text: '我知道了' }]
+      );
+      return false;
+    }
+
+    setHasPermission(true);
+    return true;
+  };
+
+  const savePrefs = async (newPrefs: NotificationPrefs) => {
+    try {
+      await AsyncStorage.setItem(NOTIFICATION_PREFS_KEY, JSON.stringify(newPrefs));
+      setPrefs(newPrefs);
+    } catch (e) {
+      console.log('Failed to save notification prefs:', e);
+    }
+  };
+
+  const handleToggle = async (key: keyof NotificationPrefs, value: boolean) => {
+    if (value && !hasPermission) {
+      const granted = await requestPermission();
+      if (!granted) return;
+    }
+    
+    const newPrefs = { ...prefs, [key]: value };
+    await savePrefs(newPrefs);
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: theme.colors.text.tertiary }]}>通知设置</Text>
+        <View style={[styles.sectionContent, { padding: 20, alignItems: 'center' }]}>
+          <ActivityIndicator color={theme.colors.primary.main} />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.section}>
+      <Text style={[styles.sectionTitle, { color: theme.colors.text.tertiary }]}>通知设置</Text>
+      <View style={styles.sectionContent}>
+        {/* Permission warning */}
+        {hasPermission === false && (
+          <TouchableOpacity 
+            style={[styles.permissionBanner, { backgroundColor: `${theme.colors.warning || '#F59E0B'}20` }]}
+            onPress={requestPermission}
+          >
+            <Ionicons name="warning-outline" size={20} color={theme.colors.warning || '#F59E0B'} />
+            <Text style={[styles.permissionText, { color: theme.colors.warning || '#F59E0B' }]}>
+              点击授权通知权限
+            </Text>
+          </TouchableOpacity>
+        )}
+        
+        {/* Message notifications */}
+        <View style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}>
+          <View style={[styles.settingIcon, { backgroundColor: `${theme.colors.primary.main}20` }]}>
+            <Ionicons name="chatbubble-outline" size={20} color={theme.colors.primary.main} />
+          </View>
+          <View style={styles.settingContent}>
+            <Text style={styles.settingTitle}>消息通知</Text>
+            <Text style={[styles.settingSubtitle, { color: theme.colors.text.tertiary }]}>
+              收到新消息时提醒
+            </Text>
+          </View>
+          <Switch
+            value={prefs.messageNotifications}
+            onValueChange={(v) => handleToggle('messageNotifications', v)}
+            trackColor={{ false: 'rgba(255,255,255,0.2)', true: theme.colors.primary.main }}
+            thumbColor="#fff"
+          />
+        </View>
+
+        {/* Date reminders */}
+        <View style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}>
+          <View style={[styles.settingIcon, { backgroundColor: `${theme.colors.primary.main}20` }]}>
+            <Ionicons name="heart-outline" size={20} color={theme.colors.primary.main} />
+          </View>
+          <View style={styles.settingContent}>
+            <Text style={styles.settingTitle}>约会提醒</Text>
+            <Text style={[styles.settingSubtitle, { color: theme.colors.text.tertiary }]}>
+              约会时间到时提醒
+            </Text>
+          </View>
+          <Switch
+            value={prefs.dateReminders}
+            onValueChange={(v) => handleToggle('dateReminders', v)}
+            trackColor={{ false: 'rgba(255,255,255,0.2)', true: theme.colors.primary.main }}
+            thumbColor="#fff"
+          />
+        </View>
+
+        {/* Activity notifications */}
+        <View style={[styles.settingItem, { borderBottomWidth: 0 }]}>
+          <View style={[styles.settingIcon, { backgroundColor: `${theme.colors.primary.main}20` }]}>
+            <Ionicons name="sparkles-outline" size={20} color={theme.colors.primary.main} />
+          </View>
+          <View style={styles.settingContent}>
+            <Text style={styles.settingTitle}>活动通知</Text>
+            <Text style={[styles.settingSubtitle, { color: theme.colors.text.tertiary }]}>
+              新活动和优惠提醒
+            </Text>
+          </View>
+          <Switch
+            value={prefs.activityNotifications}
+            onValueChange={(v) => handleToggle('activityNotifications', v)}
+            trackColor={{ false: 'rgba(255,255,255,0.2)', true: theme.colors.primary.main }}
+            thumbColor="#fff"
+          />
+        </View>
+      </View>
+    </View>
+  );
+};
+
+// Rate App Card Component
+const RateAppCard = ({ theme }: { theme: ThemeConfig }) => {
+  const [canReview, setCanReview] = useState(false);
+
+  useEffect(() => {
+    checkReviewAvailability();
+  }, []);
+
+  const checkReviewAvailability = async () => {
+    const isAvailable = await StoreReview.isAvailableAsync();
+    setCanReview(isAvailable);
+  };
+
+  const handleRateApp = async () => {
+    if (await StoreReview.hasAction()) {
+      try {
+        await StoreReview.requestReview();
+      } catch (e) {
+        console.log('Failed to request review:', e);
+        Alert.alert('提示', '暂时无法打开评分页面，请稍后再试');
+      }
+    } else {
+      Alert.alert('提示', '此功能在当前设备上不可用');
+    }
+  };
+
+  return (
+    <View style={styles.section}>
+      <Text style={[styles.sectionTitle, { color: theme.colors.text.tertiary }]}>支持我们</Text>
+      <TouchableOpacity 
+        style={[
+          styles.rateCard,
+          { 
+            backgroundColor: 'rgba(255, 255, 255, 0.06)',
+            borderColor: theme.colors.primary.main,
+          }
+        ]}
+        onPress={handleRateApp}
+        activeOpacity={0.8}
+      >
+        <LinearGradient
+          colors={[`${theme.colors.primary.main}30`, 'transparent']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.rateCardGradient}
+        >
+          <View style={styles.rateCardContent}>
+            <View style={styles.rateStars}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Ionicons 
+                  key={star} 
+                  name="star" 
+                  size={24} 
+                  color="#FFD700" 
+                  style={styles.starIcon}
+                />
+              ))}
+            </View>
+            <Text style={styles.rateTitle}>喜欢 Luna 吗？</Text>
+            <Text style={[styles.rateSubtitle, { color: theme.colors.text.secondary }]}>
+              给我们一个五星好评，帮助更多人发现 Luna ✨
+            </Text>
+            <View style={[styles.rateButton, { backgroundColor: theme.colors.primary.main }]}>
+              <Ionicons name="heart" size={16} color="#fff" />
+              <Text style={styles.rateButtonText}>给我们评分</Text>
+            </View>
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
+  );
+};
 
 // Theme Selector Component
 const ThemeSelector = () => {
@@ -309,16 +567,12 @@ export default function SettingsScreen() {
             </View>
           </SettingSection>
 
+          {/* Notification Settings Section */}
+          <NotificationSettings theme={theme} />
+
           {/* Preferences Section */}
           <SettingSection title="Preferences" theme={theme}>
             {/* NSFW toggle removed - only available on web version for App Store compliance */}
-            <SettingItem
-              icon="notifications-outline"
-              title="Notifications"
-              subtitle="Push notifications"
-              onPress={() => {}}
-              theme={theme}
-            />
             <SettingItem
               icon="language-outline"
               title="Language"
@@ -342,6 +596,9 @@ export default function SettingsScreen() {
             />
           </SettingSection>
 
+          {/* Rate App Card */}
+          <RateAppCard theme={theme} />
+
           {/* Support Section */}
           <SettingSection title="Support" theme={theme}>
             <SettingItem
@@ -353,12 +610,6 @@ export default function SettingsScreen() {
             <SettingItem
               icon="chatbox-ellipses-outline"
               title="Contact Us"
-              onPress={() => {}}
-              theme={theme}
-            />
-            <SettingItem
-              icon="star-outline"
-              title="Rate App"
               onPress={() => {}}
               theme={theme}
             />
@@ -539,5 +790,63 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  // Notification settings styles
+  permissionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    marginHorizontal: 12,
+    marginTop: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  permissionText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  // Rate app card styles
+  rateCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  rateCardGradient: {
+    padding: 24,
+  },
+  rateCardContent: {
+    alignItems: 'center',
+  },
+  rateStars: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  starIcon: {
+    marginHorizontal: 2,
+  },
+  rateTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  rateSubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  rateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 25,
+    gap: 8,
+  },
+  rateButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
