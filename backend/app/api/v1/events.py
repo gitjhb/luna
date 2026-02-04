@@ -127,7 +127,7 @@ async def get_supported_event_types():
     return SupportedEventsResponse(events=events)
 
 
-@router.get("/{user_id}/{character_id}", response_model=EventMemoriesListResponse)
+@router.get("/user/{user_id}/{character_id}", response_model=EventMemoriesListResponse)
 async def get_event_memories(
     user_id: str,
     character_id: str,
@@ -135,8 +135,9 @@ async def get_event_memories(
     event_type: Optional[str] = Query(None, description="Filter by event type"),
 ):
     """
-    Get all event memories for a user-character pair.
+    Get all event memories for a user-character pair (admin/debug use).
     
+    For normal users, use /me/{character_id} instead.
     Optionally filter by event_type.
     """
     # Verify user access (optional: check if request user matches user_id)
@@ -174,7 +175,7 @@ async def get_event_memories(
         )
 
 
-@router.get("/{user_id}/{character_id}/{event_type}", response_model=EventMemoryResponse)
+@router.get("/user/{user_id}/{character_id}/{event_type}", response_model=EventMemoryResponse)
 async def get_specific_event_memory(
     user_id: str,
     character_id: str,

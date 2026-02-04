@@ -78,22 +78,29 @@ export default function ChatsScreen() {
     });
   };
 
-  const handleDeleteSession = (session: ChatSession) => {
-    Alert.alert('删除对话', `确定删除与 ${session.characterName} 的对话吗？`, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await chatService.deleteSession(session.sessionId);
-            deleteSession(session.sessionId);
-          } catch (error) {
-            Alert.alert('错误', '删除失败');
-          }
+  const handleClearMessages = (session: ChatSession) => {
+    // Simple confirmation for clearing chat history only
+    Alert.alert(
+      '清除聊天记录',
+      `确定要清除与「${session.characterName}」的聊天记录吗？\n\n亲密度和其他关系数据将保留。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '清除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await chatService.deleteSession(session.sessionId);
+              deleteSession(session.sessionId);
+              Alert.alert('已清除', '聊天记录已清除');
+            } catch (error) {
+              console.error('Clear messages failed:', error);
+              Alert.alert('错误', '清除失败，请稍后重试');
+            }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   const formatTime = (dateString: string) => {
@@ -123,7 +130,7 @@ export default function ChatsScreen() {
     <TouchableOpacity
       style={styles.sessionCard}
       onPress={() => handleSessionPress(item)}
-      onLongPress={() => handleDeleteSession(item)}
+      onLongPress={() => handleClearMessages(item)}
       activeOpacity={0.8}
     >
       <Image

@@ -2,7 +2,7 @@
 Characters API Routes
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from uuid import UUID, uuid4
 from datetime import datetime
 from typing import List, Optional
@@ -472,17 +472,172 @@ async def get_character_memories(character_id: UUID, limit: int = 20):
         return []
 
 
-@router.get("/{character_id}/gallery", response_model=List[str])
-async def get_character_gallery(character_id: UUID):
-    """Get generated images with a character"""
-    from app.core.database import get_db
-    from app.services.stats_service import stats_service
+@router.get("/{character_id}/gallery")
+async def get_character_gallery(character_id: UUID, request: Request):
+    """Get unlocked photos for a character"""
+    from app.services.photo_unlock_service import photo_unlock_service
     
-    user_id = "demo-user-123"  # TODO: get from auth
+    # Get user_id from auth
+    user = getattr(request.state, "user", None)
+    user_id = str(user.user_id) if user else "demo-user-123"
+    
+    try:
+        photos = await photo_unlock_service.get_unlocked_photos(user_id, str(character_id))
+        return photos  # Returns list of {id, scene, photo_type, source, unlocked_at}
+    except Exception as e:
+        return []
+
+
+@router.delete("/{character_id}/user-data")
+async def delete_user_character_data(character_id: UUID, request: Request):
+    """
+    Delete ALL user data associated with a character.
+    
+    This permanently removes:
+    - All chat sessions and messages
+    - Intimacy progress
+    - Emotion scores
+    - Event memories
+    - Gift history
+    - Unlocked photos
+    
+    ⚠️ This action is IRREVERSIBLE!
+    """
+    import logging
+    from sqlalchemy import delete, select, and_
+    from app.core.database import get_db
+    from app.models.database.chat_models import ChatSession, ChatMessageDB
+    from app.models.database.intimacy_models import UserIntimacy, IntimacyActionLog
+    from app.models.database.emotion_models import UserCharacterEmotion
+    from app.models.database.event_memory_models import EventMemory
+    from app.models.database.gift_models import Gift
+    
+    logger = logging.getLogger(__name__)
+    
+    # Get user_id from auth (REQUIRED - no anonymous deletion allowed)
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required to delete character data")
+    user_id = str(user.user_id)
+    char_id = str(character_id)
+    
+    deleted_counts = {
+        "sessions": 0,
+        "messages": 0,
+        "intimacy": 0,
+        "emotions": 0,
+        "events": 0,
+        "gifts": 0,
+    }
     
     try:
         async with get_db() as db:
-            gallery = await stats_service.get_gallery(db, user_id, str(character_id))
-            return [g.image_url for g in gallery]
+            # 1. Get all session IDs for this user + character
+            result = await db.execute(
+                select(ChatSession.id).where(
+                    and_(
+                        ChatSession.user_id == user_id,
+                        ChatSession.character_id == char_id
+                    )
+                )
+            )
+            session_ids = [row[0] for row in result.fetchall()]
+            
+            # 2. Delete all messages in those sessions
+            if session_ids:
+                for sid in session_ids:
+                    msg_result = await db.execute(
+                        delete(ChatMessageDB).where(ChatMessageDB.session_id == sid)
+                    )
+                    deleted_counts["messages"] += msg_result.rowcount
+                
+                # 3. Delete all sessions
+                sess_result = await db.execute(
+                    delete(ChatSession).where(
+                        and_(
+                            ChatSession.user_id == user_id,
+                            ChatSession.character_id == char_id
+                        )
+                    )
+                )
+                deleted_counts["sessions"] = sess_result.rowcount
+            
+            # 4. Delete intimacy data
+            try:
+                intimacy_result = await db.execute(
+                    delete(UserIntimacy).where(
+                        and_(
+                            UserIntimacy.user_id == user_id,
+                            UserIntimacy.character_id == char_id
+                        )
+                    )
+                )
+                deleted_counts["intimacy"] = intimacy_result.rowcount
+                
+                # Delete intimacy action logs
+                await db.execute(
+                    delete(IntimacyActionLog).where(
+                        and_(
+                            IntimacyActionLog.user_id == user_id,
+                            IntimacyActionLog.character_id == char_id
+                        )
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Failed to delete intimacy: {e}")
+            
+            # 5. Delete emotion scores
+            try:
+                emotion_result = await db.execute(
+                    delete(UserCharacterEmotion).where(
+                        and_(
+                            UserCharacterEmotion.user_id == user_id,
+                            UserCharacterEmotion.character_id == char_id
+                        )
+                    )
+                )
+                deleted_counts["emotions"] = emotion_result.rowcount
+            except Exception as e:
+                logger.warning(f"Failed to delete emotions: {e}")
+            
+            # 6. Delete event memories
+            try:
+                event_result = await db.execute(
+                    delete(EventMemory).where(
+                        and_(
+                            EventMemory.user_id == user_id,
+                            EventMemory.character_id == char_id
+                        )
+                    )
+                )
+                deleted_counts["events"] = event_result.rowcount
+            except Exception as e:
+                logger.warning(f"Failed to delete events: {e}")
+            
+            # 7. Delete gift history
+            try:
+                gift_result = await db.execute(
+                    delete(Gift).where(
+                        and_(
+                            Gift.user_id == user_id,
+                            Gift.character_id == char_id
+                        )
+                    )
+                )
+                deleted_counts["gifts"] = gift_result.rowcount
+            except Exception as e:
+                logger.warning(f"Failed to delete gifts: {e}")
+            
+            await db.commit()
+            
+        logger.info(f"🗑️ Deleted user-character data: user={user_id}, char={char_id}, counts={deleted_counts}")
+        
+        return {
+            "success": True,
+            "message": "All character data deleted successfully",
+            "deleted": deleted_counts,
+        }
+        
     except Exception as e:
-        return []
+        logger.error(f"Failed to delete user-character data: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete data: {str(e)}")

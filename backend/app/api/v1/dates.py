@@ -49,6 +49,14 @@ class FreeInputRequest(BaseModel):
     user_input: str
 
 
+class ExtendDateRequest(BaseModel):
+    session_id: str
+
+
+class FinishDateRequest(BaseModel):
+    session_id: str
+
+
 class ResetCooldownRequest(BaseModel):
     character_id: str
 
@@ -204,6 +212,57 @@ async def abandon_interactive_date(request: AbandonDateRequest, req: Request):
         raise HTTPException(status_code=400, detail=result.get("error", "取消失败"))
     
     return result
+
+
+@router.post("/interactive/finish")
+async def finish_date(request: FinishDateRequest, req: Request):
+    """
+    结束约会（在检查点选择不延长时调用）
+    
+    生成结局并返回奖励
+    """
+    result = await interactive_date_service.finish_date(
+        session_id=request.session_id,
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "结束失败"))
+    
+    return result
+
+
+@router.post("/interactive/extend")
+async def extend_date(request: ExtendDateRequest, req: Request):
+    """
+    付费延长约会剧情（生成 bonus stage）
+    
+    费用：10 月石
+    上限：最多延长 3 章（原5章 + 3章bonus = 8章）
+    """
+    user_id = _get_user_id(req)
+    
+    result = await interactive_date_service.extend_date(
+        session_id=request.session_id,
+        user_id=user_id,
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "延长失败"))
+    
+    return result
+
+
+@router.get("/interactive/extend-price")
+async def get_extend_price():
+    """
+    获取延长剧情的价格
+    """
+    return {
+        "price": 10,
+        "currency": "月石",
+        "description": "继续约会剧情",
+        "max_extends": 3,
+    }
 
 
 @router.post("/interactive/reset-cooldown")

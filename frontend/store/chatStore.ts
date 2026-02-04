@@ -147,6 +147,7 @@ interface ChatState {
   addSession: (session: ChatSession) => void;
   updateSession: (sessionId: string, updates: Partial<ChatSession>) => void;
   deleteSession: (sessionId: string) => void;
+  deleteSessionByCharacterId: (characterId: string) => void;
   
   toggleSpicyMode: () => void;
   setSpicyMode: (enabled: boolean) => void;
@@ -275,6 +276,21 @@ export const useChatStore = create<ChatState>()(
     set({
       messagesBySession: rest,
     });
+  },
+  
+  deleteSessionByCharacterId: (characterId) => {
+    const session = get().sessions.find((s) => s.characterId === characterId);
+    if (session) {
+      set({
+        sessions: get().sessions.filter((s) => s.characterId !== characterId),
+      });
+      
+      // Clear messages for deleted session
+      const { [session.sessionId]: _, ...rest } = get().messagesBySession;
+      set({
+        messagesBySession: rest,
+      });
+    }
   },
   
   toggleSpicyMode: () => {

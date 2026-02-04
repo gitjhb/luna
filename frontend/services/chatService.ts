@@ -160,4 +160,28 @@ export const chatService = {
   deleteSession: async (sessionId: string): Promise<void> => {
     return api.delete<void>(`/chat/sessions/${sessionId}`);
   },
+  
+  /**
+   * Delete ALL user data for a character (IRREVERSIBLE!)
+   * 
+   * This removes:
+   * - All chat sessions and messages
+   * - Intimacy progress
+   * - Emotion scores
+   * - Event memories
+   * - Gift history
+   */
+  deleteCharacterData: async (characterId: string): Promise<{
+    success: boolean;
+    deleted: {
+      sessions: number;
+      messages: number;
+      intimacy: number;
+      emotions: number;
+      events: number;
+      gifts: number;
+    };
+  }> => {
+    return api.delete(`/characters/${characterId}/user-data`);
+  },
 };

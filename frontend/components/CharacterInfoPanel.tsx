@@ -118,7 +118,8 @@ export default function CharacterInfoPanel({
   });
   const [events, setEvents] = useState<HistoryEvent[]>([]);
   const [gifts, setGifts] = useState<GiftRecord[]>([]);
-  const [gallery, setGallery] = useState<string[]>([]);
+  const [gallery, setGallery] = useState<{scene: string; name: string; photoType: string; image: any; unlocked: boolean}[]>([]);
+  const [selectedPhoto, setSelectedPhoto] = useState<{image: any; name: string} | null>(null);
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
 
   // Load data when panel opens
@@ -233,13 +234,59 @@ export default function CharacterInfoPanel({
     }
   };
 
+  // 所有可解锁的照片配置（按角色）
+  // 每个场景有 3 种图片：基础版、普通版、完美版
+  const getAllPhotos = (charId: string) => {
+    // Sakura 的场景照片
+    if (charId === 'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e') {
+      return [
+        // 卧室 - 3 张
+        { scene: 'bedroom', name: '卧室', photoType: 'base', image: require('../assets/characters/sakura/scenes/bedroom.jpeg') },
+        { scene: 'bedroom', name: '卧室 💕', photoType: 'normal', image: require('../assets/characters/sakura/scenes/bedroom-normal.jpeg') },
+        { scene: 'bedroom', name: '卧室 ✨', photoType: 'perfect', image: require('../assets/characters/sakura/scenes/bedroom-perfect.jpeg') },
+        // 沙滩 - 3 张
+        { scene: 'beach', name: '沙滩', photoType: 'base', image: require('../assets/characters/sakura/scenes/beach.jpeg') },
+        { scene: 'beach', name: '沙滩 💕', photoType: 'normal', image: require('../assets/characters/sakura/scenes/beach-normal.jpeg') },
+        { scene: 'beach', name: '沙滩 ✨', photoType: 'perfect', image: require('../assets/characters/sakura/scenes/beach-perfect.jpeg') },
+        // 海边 - 3 张
+        { scene: 'ocean', name: '海边', photoType: 'base', image: require('../assets/characters/sakura/scenes/ocean.jpeg') },
+        { scene: 'ocean', name: '海边 💕', photoType: 'normal', image: require('../assets/characters/sakura/scenes/ocean-normal.jpeg') },
+        { scene: 'ocean', name: '海边 ✨', photoType: 'perfect', image: require('../assets/characters/sakura/scenes/ocean-perfect.jpeg') },
+        // 学校 - 3 张
+        { scene: 'school', name: '学校', photoType: 'base', image: require('../assets/characters/sakura/scenes/school.jpeg') },
+        { scene: 'school', name: '学校 💕', photoType: 'normal', image: require('../assets/characters/sakura/scenes/school-normal.jpeg') },
+        { scene: 'school', name: '学校 ✨', photoType: 'perfect', image: require('../assets/characters/sakura/scenes/school-perfect.jpeg') },
+      ];
+    }
+    return [];
+  };
+
   const loadGallery = async () => {
     try {
       const data = await api.get<any[]>(`/characters/${characterId}/gallery`);
-      setGallery(data.map(g => g.url || g.image_url));
+      // 新格式：{id, scene, photo_type, source, unlocked_at}
+      // 转换为 Set 方便查找
+      const unlockedSet = new Set(data.map(g => `${g.scene}:${g.photo_type}`));
+      
+      // 获取该角色的所有可能照片
+      const allPhotos = getAllPhotos(characterId);
+      
+      // 构建完整的照片列表（包含解锁状态）
+      const photoList = allPhotos.map(photo => ({
+        ...photo,
+        unlocked: unlockedSet.has(`${photo.scene}:${photo.photoType}`),
+      }));
+      
+      setGallery(photoList);
     } catch (e) {
       console.log('Gallery API not available');
-      setGallery([]);
+      // 即使 API 失败，也显示所有可能的照片（全锁定）
+      const allPhotos = getAllPhotos(characterId);
+      const photoList = allPhotos.map(photo => ({
+        ...photo,
+        unlocked: false,
+      }));
+      setGallery(photoList);
     }
   };
 
@@ -461,25 +508,96 @@ export default function CharacterInfoPanel({
   );
 
   // 相册页
-  const renderGallery = () => (
-    <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
-      <Text style={styles.sectionTitle}>生成图片</Text>
-      {gallery.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="images-outline" size={48} color={theme.colors.text.tertiary} />
-          <Text style={styles.emptyText}>还没有生成的图片</Text>
-          <Text style={styles.emptySubtext}>角色生成的图片会保存在这里</Text>
+  const renderGallery = () => {
+    const unlockedCount = gallery.filter(p => p.unlocked).length;
+    const totalCount = gallery.length;
+    
+    return (
+      <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.galleryHeader}>
+          <Text style={styles.sectionTitle}>照片收集</Text>
+          <Text style={styles.galleryProgress}>{unlockedCount}/{totalCount}</Text>
         </View>
-      ) : (
+        <Text style={styles.galleryHint}>💡 约会获得好结局可以解锁照片</Text>
+        
         <View style={styles.galleryGrid}>
-          {gallery.map((url, index) => (
-            <TouchableOpacity key={index} style={styles.galleryItem}>
-              <Image source={{ uri: url }} style={styles.galleryImage} />
+          {gallery.map((photo, index) => (
+            <TouchableOpacity 
+              key={`${photo.scene}-${photo.photoType}-${index}`} 
+              style={styles.galleryItem}
+              activeOpacity={photo.unlocked ? 0.7 : 1}
+              onPress={() => {
+                if (photo.unlocked) {
+                  setSelectedPhoto({ image: photo.image, name: photo.name });
+                }
+              }}
+            >
+              {photo.unlocked ? (
+                // 解锁：显示真实图片
+                <Image 
+                  source={photo.image} 
+                  style={styles.galleryImage}
+                />
+              ) : (
+                // 未解锁：只显示占位背景，不加载原图
+                <View style={[styles.galleryImage, styles.lockedPlaceholder]}>
+                  <LinearGradient
+                    colors={['#2a1a3a', '#1a1025']}
+                    style={StyleSheet.absoluteFillObject}
+                  />
+                </View>
+              )}
+              {!photo.unlocked && (
+                <View style={styles.lockedOverlay}>
+                  <Ionicons name="lock-closed" size={24} color="#fff" />
+                </View>
+              )}
+              {photo.unlocked && photo.photoType === 'perfect' && (
+                <View style={styles.perfectBadge}>
+                  <Text style={styles.perfectBadgeText}>💕</Text>
+                </View>
+              )}
+              <View style={styles.photoLabel}>
+                <Text style={styles.photoLabelText}>{photo.name}</Text>
+              </View>
             </TouchableOpacity>
           ))}
         </View>
-      )}
-    </ScrollView>
+      </ScrollView>
+    );
+  };
+  
+  // 照片全屏查看 Modal
+  const renderPhotoModal = () => (
+    <Modal
+      visible={!!selectedPhoto}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setSelectedPhoto(null)}
+    >
+      <TouchableOpacity 
+        style={styles.photoModalOverlay}
+        activeOpacity={1}
+        onPress={() => setSelectedPhoto(null)}
+      >
+        <TouchableOpacity 
+          style={styles.photoModalClose}
+          onPress={() => setSelectedPhoto(null)}
+        >
+          <Ionicons name="close" size={28} color="#fff" />
+        </TouchableOpacity>
+        {selectedPhoto && (
+          <>
+            <Image
+              source={selectedPhoto.image}
+              style={styles.photoModalImage}
+              resizeMode="contain"
+            />
+            <Text style={styles.photoModalName}>{selectedPhoto.name}</Text>
+          </>
+        )}
+      </TouchableOpacity>
+    </Modal>
   );
 
   // 记忆页 (Debug)
@@ -575,6 +693,9 @@ export default function CharacterInfoPanel({
           )}
         </View>
       </View>
+      
+      {/* Photo Fullscreen Modal */}
+      {renderPhotoModal()}
     </Modal>
   );
 }
@@ -885,6 +1006,64 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  galleryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  galleryProgress: {
+    fontSize: 14,
+    color: '#FF6B9D',
+    fontWeight: '600',
+  },
+  galleryHint: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    marginBottom: 16,
+  },
+  galleryImageLocked: {
+    opacity: 0.6,
+  },
+  lockedOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  perfectBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(255,107,157,0.9)',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  perfectBadgeText: {
+    fontSize: 12,
+  },
+  photoLabel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
+  },
+  photoLabelText: {
+    fontSize: 11,
+    color: '#fff',
+    textAlign: 'center',
+  },
 
   // Memory Tab
   debugHeader: {
@@ -998,5 +1177,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255, 255, 255, 0.5)',
     marginTop: 2,
+  },
+  
+  // Locked Placeholder (no image loaded)
+  lockedPlaceholder: {
+    backgroundColor: '#1a1025',
+  },
+  
+  // Photo Fullscreen Modal
+  photoModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoModalClose: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  photoModalImage: {
+    width: SCREEN_WIDTH * 0.95,
+    height: SCREEN_HEIGHT * 0.7,
+  },
+  photoModalName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginTop: 16,
+    textAlign: 'center',
   },
 });

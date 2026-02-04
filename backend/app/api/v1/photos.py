@@ -26,10 +26,11 @@ class UnlockedPhotosResponse(BaseModel):
 
 def _get_user_id(request: Request) -> str:
     """从请求中获取用户ID"""
-    user_id = getattr(request.state, "user_id", None)
-    if not user_id:
-        user_id = request.headers.get("X-User-ID", "demo-user")
-    return user_id
+    user = getattr(request.state, "user", None)
+    if user and hasattr(user, "user_id"):
+        return str(user.user_id)
+    # Fallback
+    return request.headers.get("X-User-ID", "demo-user-123")
 
 
 @router.get("/{character_id}/unlocked", response_model=UnlockedPhotosResponse)

@@ -364,8 +364,10 @@ class EventStoryGenerator:
         Returns:
             List of event memory dictionaries
         """
+        logger.info(f"📖 [MEMORIES] get_event_memories called: user={user_id}, char={character_id}")
         try:
             async def _query(session):
+                logger.info(f"📖 [MEMORIES] Session type: {type(session)}")
                 stmt = select(EventMemory).where(
                     and_(
                         EventMemory.user_id == user_id,
@@ -375,6 +377,7 @@ class EventStoryGenerator:
                 
                 result = await session.execute(stmt)
                 memories = result.scalars().all()
+                logger.info(f"📖 [MEMORIES] Found {len(memories)} memories")
                 return [memory.to_dict() for memory in memories]
             
             if db_session:

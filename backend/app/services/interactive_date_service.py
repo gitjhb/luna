@@ -33,7 +33,11 @@ logger = logging.getLogger(__name__)
 # Constants
 # =============================================================================
 
-DATE_STAGES = 5  # 约会阶段数
+DATE_STAGES = 5  # 约会基础阶段数
+MAX_BONUS_STAGES = 3  # 最多可延长的 bonus 阶段数
+MAX_TOTAL_STAGES = DATE_STAGES + MAX_BONUS_STAGES  # 最大总阶段数 (8)
+DATE_COST = 50  # 开始约会费用（月石）
+EXTEND_COST = 30  # 延长剧情费用（月石，一次性解锁全部 3 阶段）
 COOLDOWN_HOURS = 24  # 普通用户冷却时间
 VIP_COOLDOWN_HOURS = 6  # VIP 冷却时间
 
@@ -131,6 +135,7 @@ class DateSession:
     ending_type: Optional[str] = None
     xp_awarded: int = 0
     story_summary: Optional[str] = None
+    is_extended: bool = False  # 是否已付费延长（30月石解锁3阶段）
     
     started_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     completed_at: Optional[str] = None
@@ -150,6 +155,7 @@ class DateSession:
             "ending_type": self.ending_type,
             "xp_awarded": self.xp_awarded,
             "story_summary": self.story_summary,
+            "is_extended": self.is_extended,
             "started_at": self.started_at,
             "completed_at": self.completed_at,
             "cooldown_until": self.cooldown_until,
@@ -501,6 +507,27 @@ class InteractiveDateService:
         if not scenario:
             return {"success": False, "error": f"未知场景: {scenario_id}"}
         
+        # 扣除约会费用（30月石）
+        try:
+            from app.services.wallet_service import wallet_service
+            deduct_result = await wallet_service.deduct_coins(
+                user_id=user_id,
+                amount=DATE_COST,
+                reason="date_start",
+                description=f"约会 - {scenario.name}"
+            )
+            if not deduct_result.get("success"):
+                return {
+                    "success": False,
+                    "error": f"月石不足，约会需要 {DATE_COST} 月石",
+                    "required": DATE_COST,
+                    "current_balance": deduct_result.get("balance", 0),
+                }
+            logger.info(f"💰 Date cost deducted: {DATE_COST} coins from user {user_id}")
+        except Exception as e:
+            logger.error(f"Failed to deduct date cost: {e}")
+            return {"success": False, "error": "扣费失败，请稍后重试"}
+        
         # 创建会话
         session = DateSession(
             id=str(uuid4()),
@@ -611,10 +638,35 @@ class InteractiveDateService:
         logger.info(f"📅 [DATE] Option text: {chosen_option.text[:50]}...")
         logger.info(f"📅 [DATE] Affection change: {chosen_option.affection}, Total: {session.affection_score}")
         
-        # 检查是否是最后阶段
+        # 检查是否到达检查点（基础 5 阶段完成）
         if current_stage.stage_num >= DATE_STAGES:
-            # 结束约会，计算结局
-            return await self._complete_date(session)
+            # 检查是否已经延长过（session 有标记）
+            is_extended = getattr(session, 'is_extended', False)
+            
+            if current_stage.stage_num >= MAX_TOTAL_STAGES:
+                # 已达最大阶段，直接结束
+                await _save_session_to_db(session)
+                return await self.end_date(session.id)
+            
+            if is_extended:
+                # 已延长，继续正常流程
+                pass
+            else:
+                # 未延长，返回检查点让用户选择
+                await _save_session_to_db(session)
+                return {
+                    "success": True,
+                    "affection_change": chosen_option.affection,
+                    "at_checkpoint": True,
+                    "can_extend": True,
+                    "extend_cost": EXTEND_COST,
+                    "extend_stages": MAX_BONUS_STAGES,
+                    "progress": {
+                        "current": current_stage.stage_num,
+                        "total": DATE_STAGES,
+                    },
+                    "message": f"约会进行得很顺利！花费 {EXTEND_COST} 月石可以继续 {MAX_BONUS_STAGES} 个章节~",
+                }
         
         # 生成下一阶段
         next_stage = await self._generate_stage(
@@ -632,14 +684,20 @@ class InteractiveDateService:
         # 保存到数据库
         await _save_session_to_db(session)
         
+        # 如果下一阶段是最后阶段，标记一下
+        # 根据是否延长决定总阶段数和是否为最后阶段
+        total_stages = MAX_TOTAL_STAGES if session.is_extended else DATE_STAGES
+        is_final_stage = next_stage.stage_num >= total_stages
+        
         return {
             "success": True,
             "affection_change": chosen_option.affection,
             "stage": next_stage.to_dict(),
             "progress": {
                 "current": next_stage.stage_num,
-                "total": DATE_STAGES,
+                "total": total_stages,
             },
+            "is_final_stage": is_final_stage,
         }
     
     async def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
@@ -723,9 +781,31 @@ class InteractiveDateService:
         logger.info(f"Free input processed: session={session_id}, "
                    f"affection_change={affection_change}, input={user_input[:50]}")
         
-        # 检查是否是最后阶段
+        # 检查是否到达检查点
         if current_stage.stage_num >= DATE_STAGES:
-            return await self._complete_date(session)
+            is_extended = getattr(session, 'is_extended', False)
+            
+            if current_stage.stage_num >= MAX_TOTAL_STAGES:
+                await _save_session_to_db(session)
+                return await self.end_date(session.id)
+            
+            if is_extended:
+                pass  # 继续正常流程
+            else:
+                await _save_session_to_db(session)
+                return {
+                    "success": True,
+                    "affection_change": affection_change,
+                    "judge_comment": judge_result.get("comment", ""),
+                    "at_checkpoint": True,
+                    "can_extend": True,
+                    "extend_cost": EXTEND_COST,
+                    "extend_stages": MAX_BONUS_STAGES,
+                    "progress": {
+                        "current": current_stage.stage_num,
+                        "total": DATE_STAGES,
+                    },
+                }
         
         # 生成下一阶段，传入用户的自由输入
         next_stage = await self._generate_stage(
@@ -743,6 +823,9 @@ class InteractiveDateService:
         # 保存到数据库
         await _save_session_to_db(session)
         
+        total_stages = MAX_TOTAL_STAGES if session.is_extended else DATE_STAGES
+        is_final_stage = next_stage.stage_num >= total_stages
+        
         return {
             "success": True,
             "affection_change": affection_change,
@@ -750,8 +833,9 @@ class InteractiveDateService:
             "stage": next_stage.to_dict(),
             "progress": {
                 "current": next_stage.stage_num,
-                "total": DATE_STAGES,
+                "total": total_stages,
             },
+            "is_final_stage": is_final_stage,
         }
     
     async def _judge_free_input(
@@ -848,6 +932,273 @@ class InteractiveDateService:
             logger.error(f"Error judging free input: {e}")
             # 返回默认中等评价
             return {"affection_change": 5, "comment": "还不错~"}
+    
+    async def extend_date(
+        self,
+        session_id: str,
+        user_id: str,
+    ) -> Dict[str, Any]:
+        """
+        付费延长约会剧情（一次性解锁全部 3 个 bonus 阶段）
+        
+        费用：30 月石（一次性）
+        效果：解锁第 6、7、8 章
+        
+        Returns:
+            下一个 bonus stage 的剧情和选项
+        """
+        from app.services.payment_service import payment_service
+        from app.core.database import get_db
+        from app.models.database.date_models import DateSessionDB
+        
+        # 查找会话（先内存，再数据库）
+        session = _active_sessions.get(session_id)
+        if not session:
+            async with get_db() as db:
+                try:
+                    result = await db.execute(
+                        select(DateSessionDB).where(DateSessionDB.id == session_id)
+                    )
+                    db_session = result.scalar_one_or_none()
+                    if db_session:
+                        session = await _load_active_session_from_db(db_session.user_id, db_session.character_id)
+                except Exception as e:
+                    logger.error(f"Failed to load session {session_id}: {e}")
+        
+        if not session:
+            return {"success": False, "error": "约会会话不存在"}
+        
+        # 检查是否已经延长过
+        is_extended = getattr(session, 'is_extended', False)
+        if is_extended:
+            return {"success": False, "error": "已经延长过了，请继续约会"}
+        
+        # 检查是否已达到上限
+        current_stage = session.current_stage
+        if current_stage >= MAX_TOTAL_STAGES:
+            return {
+                "success": False, 
+                "error": f"已达到最大章节数（{MAX_TOTAL_STAGES}章），无法继续延长",
+                "max_reached": True,
+            }
+        
+        # 检查余额并扣费（一次性 30 月石解锁全部 3 阶段）
+        try:
+            wallet = await payment_service.get_wallet(user_id)
+            if wallet["total_credits"] < EXTEND_COST:
+                return {
+                    "success": False,
+                    "error": f"月石不足，需要 {EXTEND_COST} 月石",
+                    "required": EXTEND_COST,
+                    "current_balance": wallet["total_credits"],
+                }
+            
+            # 扣除月石
+            await payment_service.deduct_credits(user_id, EXTEND_COST)
+            new_balance = wallet["total_credits"] - EXTEND_COST
+            
+        except Exception as e:
+            logger.error(f"Payment error during extend: {e}")
+            return {"success": False, "error": "扣费失败，请稍后重试"}
+        
+        # 标记已延长（解锁全部 3 个额外阶段）
+        session.is_extended = True
+        
+        # 重新激活会话状态
+        session.status = DateStatus.IN_PROGRESS.value
+        
+        # 生成 bonus stage
+        next_stage_num = current_stage + 1
+        is_final_bonus = next_stage_num >= MAX_TOTAL_STAGES
+        
+        # 获取上一个选择
+        previous_choice = None
+        if session.stages:
+            last_stage = session.stages[-1]
+            if last_stage.user_choice is not None and last_stage.options:
+                previous_choice = last_stage.options[last_stage.user_choice].text
+        
+        bonus_stage = await self._generate_bonus_stage(
+            session=session,
+            stage_num=next_stage_num,
+            previous_choice=previous_choice,
+            is_final=is_final_bonus,
+        )
+        
+        if not bonus_stage:
+            # 退还月石
+            try:
+                await payment_service.add_credits(user_id, EXTEND_COST, "refund_extend_failed")
+                session.is_extended = False
+            except:
+                pass
+            return {"success": False, "error": "生成剧情失败，月石已退还"}
+        
+        session.stages.append(bonus_stage)
+        session.current_stage = next_stage_num
+        
+        # 缓存到内存并保存到数据库
+        _active_sessions[session.id] = session
+        await _save_session_to_db(session)
+        
+        logger.info(f"📅 [DATE] Extended to stage {next_stage_num}, cost={EXTEND_COST}, user={user_id}")
+        
+        remaining_extends = MAX_TOTAL_STAGES - next_stage_num
+        
+        return {
+            "success": True,
+            "credits_deducted": EXTEND_COST,
+            "new_balance": new_balance,
+            "stage": bonus_stage.to_dict(),
+            "progress": {
+                "current": next_stage_num,
+                "total": MAX_TOTAL_STAGES,
+                "is_bonus": True,
+            },
+            "can_extend_more": remaining_extends > 0,
+            "remaining_extends": remaining_extends,
+        }
+    
+    async def finish_date(
+        self,
+        session_id: str,
+    ) -> Dict[str, Any]:
+        """
+        结束约会（在检查点时用户选择不延长）
+        
+        生成结局并返回奖励
+        """
+        from app.core.database import get_db
+        from app.models.database.date_models import DateSessionDB
+        
+        # 查找会话
+        session = _active_sessions.get(session_id)
+        if not session:
+            async with get_db() as db:
+                try:
+                    result = await db.execute(
+                        select(DateSessionDB).where(DateSessionDB.id == session_id)
+                    )
+                    db_session = result.scalar_one_or_none()
+                    if db_session:
+                        session = await _load_active_session_from_db(db_session.user_id, db_session.character_id)
+                except Exception as e:
+                    logger.error(f"Failed to load session {session_id}: {e}")
+        
+        if not session:
+            return {"success": False, "error": "约会会话不存在"}
+        
+        if session.status != DateStatus.IN_PROGRESS.value:
+            return {"success": False, "error": "约会已结束"}
+        
+        # 调用 _complete_date 生成结局
+        return await self._complete_date(session)
+    
+    async def _generate_bonus_stage(
+        self,
+        session: DateSession,
+        stage_num: int,
+        previous_choice: Optional[str],
+        is_final: bool,
+    ) -> Optional[DateStage]:
+        """
+        生成 bonus stage（延长剧情）
+        
+        与普通 stage 类似，但主题更偏向于"意犹未尽的延续"
+        """
+        from app.services.scenarios import get_scenario
+        from app.services.character_config import get_character_config
+        from app.services.llm_service import GrokService
+        
+        try:
+            character = get_character_config(session.character_id)
+            scenario = get_scenario(session.scenario_id)
+            
+            # 构建之前的剧情摘要（只取最近3个阶段，避免 prompt 太长）
+            recent_stages = session.stages[-3:] if len(session.stages) > 3 else session.stages
+            previous_stages_text = ""
+            for s in recent_stages:
+                choice_text = ""
+                if s.user_choice is not None and s.options:
+                    choice_text = f"\n用户选择了: {s.options[s.user_choice].text}"
+                previous_stages_text += f"\n[第{s.stage_num}幕]\n{s.narrative[:200]}...{choice_text}\n"
+            
+            bonus_num = stage_num - DATE_STAGES  # 第几个 bonus（1, 2, 3）
+            
+            prompt = f"""你是 {character.name if character else '角色'}，正在和用户约会。
+
+## 背景
+这是约会的【额外章节 #{bonus_num}】，用户选择了付费继续体验更多剧情。
+场景：{scenario.name if scenario else session.scenario_name}
+当前好感度：{session.affection_score}
+
+## 之前的剧情
+{previous_stages_text}
+
+## 任务
+生成一个新的剧情章节，主题是"意犹未尽的甜蜜延续"：
+- 可以是约会后的散步、聊天、小插曲
+- 或者去另一个地方继续约会
+- 保持浪漫温馨的氛围
+- {"这是最后一章，需要一个温馨的收尾" if is_final else "留下继续的空间"}
+
+## 输出格式 (JSON)
+```json
+{{
+  "narrative": "150-250字的剧情描述，用第二人称'你'",
+  "character_expression": "happy/shy/surprised/excited",
+  "options": [
+    {{ "text": "甜蜜的选项", "type": "good", "affection": 12 }},
+    {{ "text": "普通的选项", "type": "neutral", "affection": 5 }},
+    {{ "text": "冷淡的选项", "type": "bad", "affection": -5 }}
+  ]
+}}
+```
+
+直接输出 JSON。"""
+
+            llm = GrokService()
+            llm_response = await llm.chat_completion(
+                messages=[
+                    {"role": "system", "content": "你是浪漫剧情生成器，擅长创作甜蜜的恋爱故事。"},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=1200,
+                temperature=0.85,
+            )
+            
+            response = llm_response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            stage_data = self._parse_stage_response(response)
+            
+            if not stage_data:
+                return self._create_fallback_stage(stage_num, is_final)
+            
+            # 构建选项
+            options = []
+            for i, opt in enumerate(stage_data.get("options", [])):
+                options.append(DateOption(
+                    id=i,
+                    text=opt["text"],
+                    type=opt.get("type", "neutral"),
+                    affection=max(-15, min(15, opt.get("affection", 0))),
+                ))
+            
+            if len(options) < 2:
+                options = [
+                    DateOption(0, "继续享受这美好时光", "good", 10),
+                    DateOption(1, "差不多该结束了", "neutral", 3),
+                ]
+            
+            return DateStage(
+                stage_num=stage_num,
+                narrative=stage_data.get("narrative", ""),
+                character_expression=stage_data.get("character_expression", "happy"),
+                options=options,
+            )
+            
+        except Exception as e:
+            logger.error(f"Error generating bonus stage: {e}")
+            return self._create_fallback_stage(stage_num, is_final)
     
     async def abandon_date(self, session_id: str) -> Dict[str, Any]:
         """放弃当前约会"""
@@ -1583,6 +1934,9 @@ class InteractiveDateService:
         if session.id in _active_sessions:
             del _active_sessions[session.id]
         
+        # 生成 finale_narrative：使用最后一个阶段的剧情 + 结局描述
+        finale_narrative = self._generate_finale_narrative(session, ending_type)
+        
         return {
             "success": True,
             "completed": True,
@@ -1591,6 +1945,7 @@ class InteractiveDateService:
                 "title": self._get_ending_title(ending_type),
                 "description": self._get_ending_description(ending_type, session.affection_score),
             },
+            "finale_narrative": finale_narrative,  # 结局剧情叙述
             "rewards": {
                 "xp": rewards["xp"],
                 "emotion_change": emotion_change,  # 情绪变化 -60 到 +60
@@ -1637,6 +1992,83 @@ class InteractiveDateService:
             "bad": "约会有些尴尬，她似乎想快点结束...",
         }
         return descriptions.get(ending_type, "约会结束了。")
+    
+    def _generate_finale_narrative(self, session: DateSession, ending_type: str) -> str:
+        """
+        生成结局的叙述性文字（用于 finale 阶段展示）
+        
+        组合最后阶段的剧情 + 用户选择 + 结局描述，形成完整的结局叙述
+        """
+        parts = []
+        
+        # 获取最后一个阶段
+        if session.stages:
+            last_stage = session.stages[-1]
+            
+            # 添加用户最后的选择
+            if last_stage.user_choice is not None and last_stage.options:
+                chosen = last_stage.options[last_stage.user_choice]
+                parts.append(f"你选择了：{chosen.text}")
+                parts.append("")
+        
+        # 根据结局类型添加不同的叙述
+        from app.services.character_config import get_character_config
+        character = get_character_config(session.character_id)
+        character_name = character.name if character else "她"
+        
+        finale_narratives = {
+            "perfect": f"""
+{character_name}的眼眸中闪烁着幸福的光芒，脸颊微微泛红。
+
+「今天...真的很开心。」她轻声说道，声音里带着一丝不舍。
+
+夕阳的余晖洒在你们身上，这一刻仿佛时间都静止了。她微微靠近你，空气中弥漫着淡淡的甜蜜。
+
+「下次...还想和你一起出来。」她害羞地低下头，嘴角却藏不住笑意。
+
+这是一次完美的约会，美好的回忆已经深深刻在心底。
+""".strip(),
+            
+            "good": f"""
+{character_name}开心地笑着，今天的约会让她心情很好。
+
+「谢谢你今天的陪伴~」她说道，「虽然有些小插曲，但整体很愉快呢。」
+
+她整理了一下头发，看着你的眼神中带着期待。
+
+「下次见面，要更有趣一点哦。」她俏皮地眨眨眼。
+
+这是一次愉快的约会，留下了温暖的回忆。
+""".strip(),
+            
+            "normal": f"""
+{character_name}礼貌地微笑着。
+
+「今天辛苦了。」她说道，语气平淡。
+
+约会进行得还算顺利，虽然没有特别的火花，但也不算糟糕。
+
+她看了看时间，「那我先走了，有空再联系吧。」
+
+这是一次普通的约会，算是一次还不错的体验。
+""".strip(),
+            
+            "bad": f"""
+{character_name}的表情有些僵硬，今天的约会似乎不太顺利。
+
+「那个...时间不早了。」她有些敷衍地说道。
+
+气氛变得有些尴尬，她明显想快点结束这次约会。
+
+「我先走了，回见。」她匆匆告别，留下略显失落的背影。
+
+这次约会有些失败，希望下次能有更好的表现...
+""".strip(),
+        }
+        
+        parts.append(finale_narratives.get(ending_type, "约会结束了..."))
+        
+        return "\n".join(parts)
     
     def _get_emotion_description(self, emotion_state: str, emotion_change: int) -> str:
         """获取情绪状态的描述，用于注入到聊天记忆"""

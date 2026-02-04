@@ -14,6 +14,10 @@ import {
   Dimensions,
   ActivityIndicator,
   Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,6 +31,8 @@ import { emotionService, EmotionStatus, EMOTION_DISPLAY } from '../../services/e
 import { Character, IntimacyStatus } from '../../types';
 import { getCharacterAvatar, getCharacterBackground } from '../../assets/characters';
 import { useUserStore } from '../../store/userStore';
+import { chatService } from '../../services/chatService';
+import { useChatStore } from '../../store/chatStore';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -81,6 +87,13 @@ export default function CharacterProfileScreen() {
   const [emotion, setEmotion] = useState<EmotionStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
+  
+  // Delete character modal state
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deleteInput, setDeleteInput] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  
+  const deleteSessionByCharacterId = useChatStore((s) => s.deleteSessionByCharacterId);
   const [stats, setStats] = useState<{
     streakDays: number;
     totalMessages: number;
@@ -158,6 +171,39 @@ export default function CharacterProfileScreen() {
   };
 
   const currentLevel = intimacy?.currentLevel || 1;
+  
+  // Delete character handlers
+  const handleDeletePress = () => {
+    setDeleteInput('');
+    setDeleteModalVisible(true);
+  };
+  
+  const confirmDelete = async () => {
+    if (deleteInput.toLowerCase() !== 'delete') return;
+    
+    setIsDeleting(true);
+    try {
+      await chatService.deleteCharacterData(params.characterId);
+      // Remove from local store if exists
+      if (deleteSessionByCharacterId) {
+        deleteSessionByCharacterId(params.characterId);
+      }
+      setDeleteModalVisible(false);
+      Alert.alert('已删除', `「${character?.name}」的所有数据已删除`, [
+        { text: '确定', onPress: () => router.back() }
+      ]);
+    } catch (error) {
+      console.error('Delete character data failed:', error);
+      Alert.alert('错误', '删除失败，请稍后重试');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+  
+  const cancelDelete = () => {
+    setDeleteModalVisible(false);
+    setDeleteInput('');
+  };
   
   // Get intimacy stage name
   const getStageName = (level: number): string => {
@@ -309,6 +355,20 @@ export default function CharacterProfileScreen() {
             )}
           </ProfileSection>
 
+          {/* Delete Character Button */}
+          <View style={styles.dangerSection}>
+            <TouchableOpacity 
+              style={styles.deleteButton}
+              onPress={handleDeletePress}
+            >
+              <Ionicons name="trash-outline" size={20} color="#ff4757" />
+              <Text style={styles.deleteButtonText}>删除角色数据</Text>
+            </TouchableOpacity>
+            <Text style={styles.deleteHint}>
+              删除后将清除与该角色的所有聊天记录、亲密度和记忆数据
+            </Text>
+          </View>
+
           <View style={{ height: 40 }} />
         </ScrollView>
       </SafeAreaView>
@@ -337,6 +397,76 @@ export default function CharacterProfileScreen() {
             <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
         </TouchableOpacity>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={cancelDelete}
+      >
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.deleteModalOverlay}
+        >
+          <View style={styles.deleteModalContent}>
+            <View style={styles.deleteModalIcon}>
+              <Ionicons name="warning" size={32} color="#ff4757" />
+            </View>
+            
+            <Text style={styles.deleteModalTitle}>删除角色数据</Text>
+            
+            <Text style={styles.deleteModalMessage}>
+              你将永久删除与「{character?.name}」的所有数据：
+            </Text>
+            
+            <View style={styles.deleteModalList}>
+              <Text style={styles.deleteModalListItem}>• 所有聊天记录</Text>
+              <Text style={styles.deleteModalListItem}>• 亲密度进度</Text>
+              <Text style={styles.deleteModalListItem}>• 情感记忆</Text>
+              <Text style={styles.deleteModalListItem}>• 解锁的照片</Text>
+            </View>
+            
+            <Text style={styles.deleteModalWarning}>此操作无法撤销！</Text>
+            
+            <Text style={styles.deleteModalInputLabel}>
+              请输入 <Text style={styles.deleteModalInputHighlight}>delete</Text> 确认删除：
+            </Text>
+            
+            <TextInput
+              style={styles.deleteModalInput}
+              value={deleteInput}
+              onChangeText={setDeleteInput}
+              placeholder="输入 delete"
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            
+            <View style={styles.deleteModalButtons}>
+              <TouchableOpacity 
+                style={styles.deleteModalCancelButton}
+                onPress={cancelDelete}
+              >
+                <Text style={styles.deleteModalCancelText}>取消</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[
+                  styles.deleteModalConfirmButton,
+                  deleteInput.toLowerCase() !== 'delete' && styles.deleteModalConfirmButtonDisabled
+                ]}
+                onPress={confirmDelete}
+                disabled={deleteInput.toLowerCase() !== 'delete' || isDeleting}
+              >
+                <Text style={styles.deleteModalConfirmText}>
+                  {isDeleting ? '删除中...' : '确认删除'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -650,5 +780,148 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  
+  // Danger Section (Delete)
+  dangerSection: {
+    marginTop: 24,
+    marginBottom: 8,
+    alignItems: 'center',
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 71, 87, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 71, 87, 0.3)',
+    gap: 8,
+  },
+  deleteButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#ff4757',
+  },
+  deleteHint: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.4)',
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 20,
+  },
+  
+  // Delete Confirmation Modal
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  deleteModalContent: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 71, 87, 0.3)',
+  },
+  deleteModalIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255, 71, 87, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  deleteModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 12,
+  },
+  deleteModalMessage: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  deleteModalList: {
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+    paddingLeft: 8,
+  },
+  deleteModalListItem: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.6)',
+    marginBottom: 4,
+  },
+  deleteModalWarning: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ff4757',
+    marginBottom: 16,
+  },
+  deleteModalInputLabel: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginBottom: 8,
+    alignSelf: 'flex-start',
+  },
+  deleteModalInputHighlight: {
+    color: '#ff4757',
+    fontWeight: '700',
+  },
+  deleteModalInput: {
+    width: '100%',
+    height: 48,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    marginBottom: 20,
+  },
+  deleteModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  deleteModalCancelButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteModalCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  deleteModalConfirmButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#ff4757',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteModalConfirmButtonDisabled: {
+    backgroundColor: 'rgba(255, 71, 87, 0.3)',
+  },
+  deleteModalConfirmText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

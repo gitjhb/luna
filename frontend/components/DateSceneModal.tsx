@@ -157,9 +157,21 @@ const dateApi = {
       character_id: characterId,
     });
   },
+  
+  extendDate: async (sessionId: string) => {
+    return api.post('/dates/interactive/extend', {
+      session_id: sessionId,
+    });
+  },
+  
+  finishDate: async (sessionId: string) => {
+    return api.post('/dates/interactive/finish', {
+      session_id: sessionId,
+    });
+  },
 };
 
-type Phase = 'select' | 'playing' | 'ending';
+type Phase = 'select' | 'playing' | 'checkpoint' | 'finale' | 'ending';
 
 export default function DateSceneModal({
   visible,
@@ -182,6 +194,12 @@ export default function DateSceneModal({
   const [rewards, setRewards] = useState<DateRewards | null>(null);
   const [storySummary, setStorySummary] = useState<string | null>(null);
   const [unlockedPhoto, setUnlockedPhoto] = useState<{scene: string; photo_type: string; is_new: boolean} | null>(null);
+  const [finaleNarrative, setFinaleNarrative] = useState<string | null>(null); // 结局剧情
+  const [pendingEndingResult, setPendingEndingResult] = useState<any>(null); // 暂存的结局数据
+  const [canExtend, setCanExtend] = useState(true); // 是否可以继续延长剧情
+  const [remainingExtends, setRemainingExtends] = useState(3); // 剩余可延长次数
+  const [isExtended, setIsExtended] = useState(false); // 是否已经延长过（一次性30月石）
+  const [extendLoading, setExtendLoading] = useState(false); // 延长加载状态
   const [affectionScore, setAffectionScore] = useState(50); // 起始好感度
   const [affectionFeedback, setAffectionFeedback] = useState<number | null>(null);
   const [showFreeInput, setShowFreeInput] = useState(false);
@@ -212,6 +230,7 @@ export default function DateSceneModal({
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const affectionAnim = useRef(new Animated.Value(0)).current;
+  const finaleAnim = useRef(new Animated.Value(0)).current; // finale 淡入动画
   
   // Bottom sheet ref and snap points
   const bottomSheetRef = useRef<BottomSheet>(null);
@@ -336,6 +355,18 @@ export default function DateSceneModal({
     }
   }, [currentStage, ending]);
   
+  // Animate finale phase (淡入效果)
+  useEffect(() => {
+    if (phase === 'finale') {
+      finaleAnim.setValue(0);
+      Animated.timing(finaleAnim, {
+        toValue: 1,
+        duration: 800, // 较慢的淡入，更有仪式感
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [phase]);
+  
   // 打乱选项顺序（避免用户猜出好坏选项）
   useEffect(() => {
     if (currentStage?.options && currentStage.options.length > 0) {
@@ -449,6 +480,7 @@ export default function DateSceneModal({
         setCurrentStage(result.stage);
         setProgress(result.progress);
         setSelectedScenario(result.scenario);
+        setIsExtended(false); // 重置延长状态
         setPhase('playing');
       }
     } catch (e: any) {
@@ -468,7 +500,14 @@ export default function DateSceneModal({
       if (session) {
         setSessionId(session.id);
         setAffectionScore(50 + (session.affection_score || 0));
-        setProgress({ current: session.current_stage, total: 5 });
+        
+        // 根据是否延长设置 total
+        const extended = session.is_extended || false;
+        setIsExtended(extended);
+        setProgress({ 
+          current: session.current_stage, 
+          total: extended ? 8 : 5 
+        });
         
         // Get last stage
         const lastStage = session.stages?.[session.stages.length - 1];
@@ -519,14 +558,30 @@ export default function DateSceneModal({
           setAffectionScore(prev => Math.max(0, Math.min(100, prev + result.affection_change)));
         }
         
-        if (result.completed) {
-          // Date completed - show ending
+        if (result.at_checkpoint) {
+          // 到达检查点 - 让用户选择是否继续
+          setCanExtend(result.can_extend);
+          setRemainingExtends(result.remaining_extends);
+          setProgress(result.progress);
+          setPhase('checkpoint');
+        } else if (result.completed) {
+          // Date completed - first show finale, then ending
+          // Store result for later
+          setPendingEndingResult(result);
           setEnding(result.ending);
           setRewards(result.rewards);
           setStorySummary(result.story_summary);
           setUnlockedPhoto(result.unlocked_photo || null);
-          setPhase('ending');
-          onDateCompleted?.(result);
+          
+          // 生成结局叙述：使用 story_summary 的最后部分，或者 ending.description
+          const finaleText = result.finale_narrative || 
+            result.ending?.description ||
+            '约会结束了，你们依依不舍地告别...';
+          setFinaleNarrative(finaleText);
+          
+          // 先进入 finale 阶段，不是直接 ending
+          setPhase('finale');
+          // 注意：不在这里调用 onDateCompleted，等用户看完结局后再调用
         } else {
           // Next stage
           setCurrentStage(result.stage);
@@ -564,13 +619,26 @@ export default function DateSceneModal({
           setAffectionScore(prev => Math.max(0, Math.min(100, prev + result.affection_change)));
         }
         
-        if (result.completed) {
+        if (result.at_checkpoint) {
+          // 到达检查点
+          setCanExtend(result.can_extend);
+          setRemainingExtends(result.remaining_extends);
+          setProgress(result.progress);
+          setPhase('checkpoint');
+        } else if (result.completed) {
+          // Date completed - first show finale, then ending
+          setPendingEndingResult(result);
           setEnding(result.ending);
           setRewards(result.rewards);
           setStorySummary(result.story_summary);
           setUnlockedPhoto(result.unlocked_photo || null);
-          setPhase('ending');
-          onDateCompleted?.(result);
+          
+          const finaleText = result.finale_narrative || 
+            result.ending?.description ||
+            '约会结束了，你们依依不舍地告别...';
+          setFinaleNarrative(finaleText);
+          
+          setPhase('finale');
         } else {
           setCurrentStage(result.stage);
           setProgress(result.progress);
@@ -605,6 +673,72 @@ export default function DateSceneModal({
       console.error('Failed to abandon date:', e);
     }
     onClose();
+  };
+  
+  // 付费延长剧情
+  const handleExtend = async () => {
+    if (!sessionId || extendLoading) return;
+    
+    setExtendLoading(true);
+    try {
+      const result = await dateApi.extendDate(sessionId);
+      
+      if (result.success) {
+        // 标记已延长（一次性解锁3阶段）
+        setIsExtended(true);
+        setCanExtend(false); // 已延长，不能再次延长
+        setRemainingExtends(0);
+        
+        // 回到 playing 阶段，显示新剧情
+        setCurrentStage(result.stage);
+        setProgress(result.progress); // 后端返回 x/8
+        setPhase('playing');
+        
+        // 显示扣费提示
+        const cost = result.credits_deducted || 30;
+        setJudgeComment(`💎 -${cost} 月石，解锁后续3章剧情！`);
+        setTimeout(() => setJudgeComment(null), 2500);
+      }
+    } catch (e: any) {
+      const errorMsg = e.response?.data?.detail || e.message || '延长失败';
+      setJudgeComment(`❌ ${errorMsg}`);
+      setTimeout(() => setJudgeComment(null), 3000);
+    } finally {
+      setExtendLoading(false);
+    }
+  };
+  
+  // 结束约会（在 checkpoint 阶段选择不延长）
+  const handleFinish = async () => {
+    if (!sessionId || loading) return;
+    
+    setLoading(true);
+    try {
+      const result = await dateApi.finishDate(sessionId);
+      
+      if (result.success && result.completed) {
+        // 进入结局
+        setPendingEndingResult(result);
+        setEnding(result.ending);
+        setRewards(result.rewards);
+        setStorySummary(result.story_summary);
+        setUnlockedPhoto(result.unlocked_photo || null);
+        
+        const finaleText = result.finale_narrative || 
+          result.ending?.description ||
+          '约会结束了，你们依依不舍地告别...';
+        setFinaleNarrative(finaleText);
+        
+        setPhase('finale');
+      }
+    } catch (e: any) {
+      console.error('Failed to finish date:', e);
+      const errorMsg = e.response?.data?.detail || '结束失败';
+      setJudgeComment(`❌ ${errorMsg}`);
+      setTimeout(() => setJudgeComment(null), 3000);
+    } finally {
+      setLoading(false);
+    }
   };
   
   // Get background gradient
@@ -799,9 +933,23 @@ export default function DateSceneModal({
           <Text style={styles.affectionText}>{affectionScore}</Text>
         </View>
         
-        {/* 阶段进度 */}
+        {/* 阶段进度 + 延长按钮 */}
         <View style={styles.phaseContainer}>
           <Text style={styles.phaseText}>PHASE {progress.current} / {progress.total}</Text>
+          {/* ➕ 延长按钮：未延长且未结束时显示 */}
+          {!isExtended && !ending && progress.total === 5 && (
+            <TouchableOpacity
+              style={styles.extendPlusButton}
+              onPress={handleExtend}
+              disabled={extendLoading}
+            >
+              {extendLoading ? (
+                <ActivityIndicator size="small" color="#FFD700" />
+              ) : (
+                <Text style={styles.extendPlusText}>➕</Text>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
       </View>
       
@@ -966,6 +1114,218 @@ export default function DateSceneModal({
     </LinearGradient>
   );
   
+  // Render checkpoint phase (选择是否继续约会)
+  const renderCheckpoint = () => (
+    <LinearGradient colors={getBackgroundGradient()} style={styles.playingContainer}>
+      {/* 顶部状态栏 */}
+      <View style={styles.topBar}>
+        <View style={styles.backBtn} />
+        
+        {/* 好感度 */}
+        <View style={styles.affectionContainer}>
+          <Text style={styles.heartIcon}>❤️</Text>
+          <View style={styles.affectionBarBg}>
+            <View style={[styles.affectionBarFill, { width: `${affectionScore}%` }]} />
+          </View>
+          <Text style={styles.affectionText}>{affectionScore}</Text>
+        </View>
+        
+        {/* 阶段进度 */}
+        <View style={styles.phaseContainer}>
+          <Text style={styles.phaseText}>PHASE {progress.current} / {progress.total}</Text>
+        </View>
+      </View>
+      
+      {/* 中间区域 - 场景图片 */}
+      <View style={styles.middleArea}>
+        {(() => {
+          const sceneId = activeSceneId || selectedScenario?.id;
+          const sceneImage = sceneId ? getSceneImage(characterId, sceneId) : null;
+          
+          if (sceneImage) {
+            return (
+              <Image 
+                source={sceneImage} 
+                style={styles.sceneImage}
+                resizeMode="cover"
+              />
+            );
+          } else if (characterId) {
+            return (
+              <Image 
+                source={getCharacterAvatar(characterId, characterAvatar)} 
+                style={styles.backgroundAvatar}
+                resizeMode="contain"
+              />
+            );
+          } else {
+            return <Text style={styles.scenarioEmoji}>{selectedScenario?.icon || '✨'}</Text>;
+          }
+        })()}
+      </View>
+      
+      {/* 底部选择区域 */}
+      <BottomSheet
+        ref={bottomSheetRef}
+        index={1}
+        snapPoints={snapPoints}
+        backgroundStyle={styles.bottomSheetBackground}
+        handleIndicatorStyle={styles.bottomSheetIndicator}
+      >
+        <BottomSheetScrollView contentContainerStyle={styles.bottomSheetContent}>
+          {/* 标题 */}
+          <View style={styles.checkpointHeader}>
+            <Text style={styles.checkpointIcon}>✨</Text>
+            <Text style={styles.checkpointTitle}>约会进行得很顺利...</Text>
+          </View>
+          
+          <Text style={styles.checkpointText}>
+            基础章节已完成！要继续享受更多甜蜜时光吗？
+          </Text>
+          
+          {/* 选择按钮 */}
+          <View style={styles.checkpointButtons}>
+            {/* 继续剧情按钮 */}
+            {canExtend && remainingExtends > 0 && (
+              <TouchableOpacity
+                style={styles.extendButton}
+                onPress={handleExtend}
+                disabled={extendLoading || loading}
+              >
+                <LinearGradient
+                  colors={['#FFD700', '#FFA500']}
+                  style={styles.extendButtonGradient}
+                >
+                  {extendLoading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Text style={styles.extendButtonText}>💎 继续剧情</Text>
+                      <Text style={styles.extendButtonPrice}>10 月石 · 还能延长{remainingExtends}次</Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+            
+            {/* 结束约会按钮 */}
+            <TouchableOpacity
+              style={styles.finishButton}
+              onPress={handleFinish}
+              disabled={loading || extendLoading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#FF6B9D" />
+              ) : (
+                <Text style={styles.finishButtonText}>结束约会，查看结局 →</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </BottomSheetScrollView>
+      </BottomSheet>
+    </LinearGradient>
+  );
+  
+  // Render finale phase (结局剧情展示，无选项)
+  const renderFinale = () => (
+    <LinearGradient colors={getBackgroundGradient()} style={styles.playingContainer}>
+      {/* 顶部状态栏 */}
+      <View style={styles.topBar}>
+        <View style={styles.backBtn} />
+        
+        {/* 好感度 */}
+        <View style={styles.affectionContainer}>
+          <Text style={styles.heartIcon}>❤️</Text>
+          <View style={styles.affectionBarBg}>
+            <View style={[styles.affectionBarFill, { width: `${affectionScore}%` }]} />
+          </View>
+          <Text style={styles.affectionText}>{affectionScore}</Text>
+        </View>
+        
+        {/* 完结标记 */}
+        <View style={styles.phaseContainer}>
+          <Text style={styles.phaseText}>~ THE END ~</Text>
+        </View>
+      </View>
+      
+      {/* 中间区域 - 场景图片 */}
+      <View style={styles.middleArea}>
+        {(() => {
+          const sceneId = activeSceneId || selectedScenario?.id;
+          const sceneImage = sceneId ? getSceneImage(characterId, sceneId) : null;
+          
+          if (sceneImage) {
+            return (
+              <Image 
+                source={sceneImage} 
+                style={styles.sceneImage}
+                resizeMode="cover"
+              />
+            );
+          } else if (characterId) {
+            return (
+              <Image 
+                source={getCharacterAvatar(characterId, characterAvatar)} 
+                style={styles.backgroundAvatar}
+                resizeMode="contain"
+              />
+            );
+          } else {
+            return <Text style={styles.scenarioEmoji}>{selectedScenario?.icon || '✨'}</Text>;
+          }
+        })()}
+      </View>
+      
+      {/* 底部结局剧情 */}
+      <BottomSheet
+        ref={bottomSheetRef}
+        index={1}
+        snapPoints={snapPoints}
+        backgroundStyle={styles.bottomSheetBackground}
+        handleIndicatorStyle={styles.bottomSheetIndicator}
+      >
+        <BottomSheetScrollView contentContainerStyle={styles.bottomSheetContent}>
+          <Animated.View style={{ opacity: finaleAnim }}>
+            {/* 结局标题 */}
+            <View style={styles.finaleHeader}>
+              <Text style={styles.finaleIcon}>
+                {ending?.type === 'perfect' ? '💕' :
+                 ending?.type === 'good' ? '😊' :
+                 ending?.type === 'normal' ? '🙂' : '😅'}
+              </Text>
+              <Text style={styles.finaleTitle}>{ending?.title || '约会结束'}</Text>
+            </View>
+            
+            {/* 结局剧情文字 */}
+            <Text style={styles.finaleNarrativeText}>
+              {finaleNarrative}
+            </Text>
+            
+            {/* 查看结算按钮 */}
+            <TouchableOpacity
+              style={styles.finaleContinueButton}
+              onPress={() => {
+                // 切换到 ending 结算页面
+                setPhase('ending');
+                // 现在才通知父组件完成（如果需要的话）
+                if (pendingEndingResult) {
+                  onDateCompleted?.(pendingEndingResult);
+                }
+              }}
+            >
+              <LinearGradient
+                colors={['#FF6B9D', '#C44569']}
+                style={styles.finaleContinueGradient}
+              >
+                <Text style={styles.finaleContinueText}>查看结算 →</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
+        </BottomSheetScrollView>
+      </BottomSheet>
+    </LinearGradient>
+  );
+  
   // Render ending phase
   const renderEnding = () => (
     <LinearGradient colors={['#1A1025', '#2D1B4E']} style={styles.endingContainer}>
@@ -1009,13 +1369,10 @@ export default function DateSceneModal({
           </View>
         )}
         
-        {/* Story Summary Preview */}
+        {/* Story Summary Saved Notice */}
         {storySummary && (
           <View style={styles.summaryBox}>
             <Text style={styles.summaryTitle}>📖 回忆已保存</Text>
-            <Text style={styles.summaryText} numberOfLines={3}>
-              {storySummary.substring(0, 150)}...
-            </Text>
           </View>
         )}
         
@@ -1042,6 +1399,8 @@ export default function DateSceneModal({
       <View style={styles.container}>
         {phase === 'select' && renderScenarioSelect()}
         {phase === 'playing' && renderPlaying()}
+        {phase === 'checkpoint' && renderCheckpoint()}
+        {phase === 'finale' && renderFinale()}
         {phase === 'ending' && renderEnding()}
       </View>
     </Modal>
@@ -1392,16 +1751,32 @@ const styles = StyleSheet.create({
   
   // 阶段进度
   phaseContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.4)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
+    gap: 6,
   },
   phaseText: {
     color: '#fff',
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 1,
+  },
+  extendPlusButton: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255, 215, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.5)',
+  },
+  extendPlusText: {
+    fontSize: 12,
   },
   
   // 好感度反馈
@@ -1683,5 +2058,107 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#fff',
+  },
+  
+  // === Finale Phase (结局剧情展示) ===
+  finaleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  finaleIcon: {
+    fontSize: 32,
+  },
+  finaleTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FF6B9D',
+  },
+  finaleNarrativeText: {
+    fontSize: 16,
+    color: '#fff',
+    lineHeight: 28,
+    letterSpacing: 0.3,
+    marginBottom: 24,
+  },
+  finaleContinueButton: {
+    marginTop: 16,
+  },
+  finaleContinueGradient: {
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  finaleContinueText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  
+  // 按钮容器
+  finaleButtonsContainer: {
+    gap: 12,
+    marginTop: 16,
+  },
+  
+  // 付费延长按钮
+  extendButton: {
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  extendButtonGradient: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  extendButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  extendButtonPrice: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+  },
+  
+  // Checkpoint phase styles
+  checkpointHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 10,
+  },
+  checkpointIcon: {
+    fontSize: 28,
+  },
+  checkpointTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  checkpointText: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.7)',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  checkpointButtons: {
+    gap: 12,
+  },
+  finishButton: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,157,0.3)',
+  },
+  finishButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FF6B9D',
   },
 });
