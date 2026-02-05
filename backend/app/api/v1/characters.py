@@ -304,7 +304,7 @@ CHARACTERS = [
         "is_spicy": False,
         "personality_traits": ["活泼", "开朗", "元气"],
         "system_prompt": SAKURA_PROMPT,
-        "personality": {"temperament": 4, "sensitivity": 4, "boundaries": 4, "forgiveness": 8, "jealousy": 3},
+        "personality": {"temperament": 4, "sensitivity": 7, "boundaries": 4, "forgiveness": 8, "jealousy": 3},
         "greeting": "哇！！你来啦你来啦！！*蹦蹦跳跳* 今天也要元气满满地度过哦！有什么开心的事情要告诉我吗？快快快~ ✨🌸",
         "is_active": True,
         "created_at": datetime.utcnow(),
