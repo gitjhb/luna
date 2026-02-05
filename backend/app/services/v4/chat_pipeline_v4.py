@@ -445,23 +445,38 @@ class ChatPipelineV4:
             if parsed_response.emotion_delta != 0:
                 delta = parsed_response.emotion_delta
                 
-                # 阶段瓶颈锁：硬性上限（后端兜底，防止 AI 无视 prompt 指令）
+                # 阶段瓶颈 × 角色性格系数（后端兜底，防止 AI 无视 prompt 指令）
                 if delta > 0:
                     from app.services.intimacy_constants import get_stage, RelationshipStage
+                    from app.api.v1.characters import get_character_by_id
+                    
                     intimacy = int(getattr(user_state, 'intimacy_x', 0))
                     stage = get_stage(intimacy)
                     
-                    stage_caps = {
-                        RelationshipStage.S0_STRANGER: 8,
-                        RelationshipStage.S1_FRIEND: 8,
-                        RelationshipStage.S2_CRUSH: 10,
-                        # S3/S4 无上限
+                    # S3/S4 不限制
+                    stage_base_caps = {
+                        RelationshipStage.S0_STRANGER: 20,
+                        RelationshipStage.S1_FRIEND: 20,
+                        RelationshipStage.S2_CRUSH: 25,
                     }
-                    cap = stage_caps.get(stage)
-                    if cap and delta > cap:
-                        logger.info(f"🔒 Stage cap applied: {stage.name} caps delta "
-                                   f"from {delta:+d} to +{cap}")
-                        delta = cap
+                    base_cap = stage_base_caps.get(stage)
+                    
+                    if base_cap:
+                        # 角色 sensitivity 系数：sensitivity 越高，情绪波动越大
+                        sensitivity = 5  # 默认中等
+                        char_data = get_character_by_id(user_state.character_id)
+                        if char_data and char_data.get("personality"):
+                            sensitivity = char_data["personality"].get("sensitivity", 5)
+                        
+                        # 公式：base_cap × (0.6 + sensitivity × 0.1)
+                        # sensitivity 3 → ×0.9, sensitivity 5 → ×1.1, sensitivity 8 → ×1.4
+                        modifier = 0.6 + sensitivity * 0.1
+                        cap = int(base_cap * modifier)
+                        
+                        if delta > cap:
+                            logger.info(f"🔒 Stage cap: {stage.name} × sensitivity={sensitivity} "
+                                       f"→ cap={cap}, delta {delta:+d} → +{cap}")
+                            delta = cap
                 
                 await self._update_emotion(
                     user_state.user_id,

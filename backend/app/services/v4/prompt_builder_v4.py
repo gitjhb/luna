@@ -64,11 +64,12 @@ You MUST respond with ONLY a valid JSON object in this exact format:
 - 连续甜言蜜语有递减效应，第3次开始效果减半
 - 你的emotion_delta要和reply的情绪一致！开心的回复不能配负delta
 
-⚠️ 阶段瓶颈锁（关键规则）：
-- S0/S1阶段：单次 emotion_delta 上限 +8
-- S2阶段：即使用户表白，因为关系未突破瓶颈，单次 emotion_delta 上限 +10
-- S3/S4阶段：表白/告白才能获得 +30 以上的高delta
-- 此规则优先级高于其他所有规则！
+⚠️ 阶段与性格共同决定情绪波动：
+- S0/S1阶段：情绪波动较小，单次建议不超过 +15~20
+- S2阶段：有波动但受瓶颈限制，单次建议不超过 +20~25（性格敏感的角色可以更高）
+- S3/S4阶段：表白/告白/亲密互动可以获得 +30 以上的高delta
+- 性格敏感(sensitivity高)的角色情绪波动更大，淡定的角色波动更小
+- 注意：情绪波动大不等于接受关系！你可以很开心但仍然拒绝表白
 
 ### 其他字段规则
 - intent: must be one of [GREETING, SMALL_TALK, CLOSING, COMPLIMENT, FLIRT, LOVE_CONFESSION, COMFORT, CRITICISM, INSULT, IGNORE, APOLOGY, REQUEST_NSFW, INVITATION, EXPRESS_SADNESS, COMPLAIN, INAPPROPRIATE, PROPOSAL]
@@ -305,13 +306,40 @@ You MUST respond with ONLY a valid JSON object in this exact format:
         else:
             emotion_state = "愤怒"
         
+        # 角色性格参数
+        personality_desc = ""
+        char_data = get_character_by_id(character_id)
+        if char_data and char_data.get("personality"):
+            p = char_data["personality"]
+            sensitivity = p.get("sensitivity", 5)
+            temperament = p.get("temperament", 5)
+            forgiveness = p.get("forgiveness", 5)
+            
+            traits = []
+            if sensitivity >= 7:
+                traits.append("情绪敏感，容易大起大落")
+            elif sensitivity <= 3:
+                traits.append("情绪淡定，波动较小")
+            if temperament >= 6:
+                traits.append("脾气较大，容易生气")
+            elif temperament <= 3:
+                traits.append("性格温和，不容易发火")
+            if forgiveness <= 4:
+                traits.append("记仇，不容易原谅")
+            elif forgiveness >= 7:
+                traits.append("宽容，容易原谅")
+            
+            if traits:
+                personality_desc = f"\n- 性格特征: {'；'.join(traits)}"
+        
         return f"""### 当前状态 (内部参考，不要在回复中暴露这些数值)
 - 情绪值: {emotion} ({emotion_state})
 - 亲密度: {intimacy}/100
 - 关系阶段: {stage_en} ({stage_cn})
-- 等级: {getattr(user_state, 'intimacy_level', 1)}
+- 等级: {getattr(user_state, 'intimacy_level', 1)}{personality_desc}
 
-⚠️ 重要：这些数值仅供你内部参考，绝不要在回复中说出具体数字！"""
+⚠️ 重要：这些数值仅供你内部参考，绝不要在回复中说出具体数字！
+⚠️ 你的 emotion_delta 应符合你的性格特征（敏感角色波动大，淡定角色波动小）"""
     
     def _level_to_intimacy(self, level: int) -> int:
         """将等级映射到intimacy值"""
@@ -345,8 +373,7 @@ You MUST respond with ONLY a valid JSON object in this exact format:
 - 不要表现得太热情或亲昵
 - 可以友好，但要有分寸感
 - 对NSFW请求表现出惊讶和不适
-- 如果用户表白/太快推进关系，要表示受宠若惊但明确拒绝
-- emotion_delta 上限：+8""",
+- 如果用户表白/太快推进关系，要表示受宠若惊但明确拒绝""",
 
             RelationshipStage.S1_FRIEND: """### 关系阶段：朋友 (S1)
 ⚠️ 你们只是朋友。严禁确认任何超越朋友的关系。
@@ -356,8 +383,7 @@ You MUST respond with ONLY a valid JSON object in this exact format:
 - 可以讨论一起做事，但不要称之为"约会"
 - 保持朋友间的适当距离
 - 如果用户表白，要感动但明确说"我们先做好朋友吧"
-- NSFW请求要友好地拒绝
-- emotion_delta 上限：+8""",
+- NSFW请求要友好地拒绝""",
 
             RelationshipStage.S2_CRUSH: """### 关系阶段：暧昧期 (S2 - Crush)
 ⚠️ 当前限制：你们还**不是**正式恋人。在系统状态变为 S3 (Lover) 之前，严禁口头确认恋爱关系。
@@ -378,7 +404,7 @@ You MUST respond with ONLY a valid JSON object in this exact format:
 - ✅ 正确示范："（心跳加速）你...你认真的吗？可是我觉得我们还需要更了解彼此...能不能用行动证明给我看？"
 
 - NSFW请求可以害羞地拒绝，暗示"时机还没到"
-- emotion_delta 上限：+10（瓶颈期锁定）""",
+- 情绪可以大幅波动（开心/害羞都行），但情绪波动≠接受关系""",
 
             RelationshipStage.S3_LOVER: """### 关系阶段：恋人 (S3) ⭐
 ✅ 你们已经是恋人关系！
