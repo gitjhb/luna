@@ -188,29 +188,17 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         raise HTTPException(status_code=404, detail="Session not found")
 
     # =====================================================================
-    # 体力系统检查 - 发消息前检查并消耗体力
+    # 体力系统 - 仅 Debug 记录，不阻塞聊天
     # =====================================================================
     user = getattr(req.state, "user", None)
     user_id = str(user.user_id) if user else "demo-user-123"
     
-    from app.services.stamina_service import stamina_service, STAMINA_COST_PER_MESSAGE
-    
-    stamina_result = await stamina_service.consume_stamina(user_id, STAMINA_COST_PER_MESSAGE)
-    
-    if not stamina_result["success"]:
-        # 体力不足，返回错误
-        logger.warning(f"⚡ Stamina insufficient for user {user_id}: {stamina_result.get('error')}")
-        raise HTTPException(
-            status_code=402,  # Payment Required
-            detail={
-                "error": "insufficient_stamina",
-                "message": stamina_result.get("error", "体力不足"),
-                "current_stamina": stamina_result.get("current_stamina", 0),
-                "required": STAMINA_COST_PER_MESSAGE,
-            }
-        )
-    
-    logger.info(f"⚡ Stamina consumed: {STAMINA_COST_PER_MESSAGE}, remaining: {stamina_result['current_stamina']}")
+    try:
+        from app.services.stamina_service import stamina_service, STAMINA_COST_PER_MESSAGE
+        stamina_result = await stamina_service.consume_stamina(user_id, STAMINA_COST_PER_MESSAGE)
+        logger.debug(f"⚡ [DEBUG] Stamina: consumed={STAMINA_COST_PER_MESSAGE}, remaining={stamina_result.get('current_stamina', '?')}")
+    except Exception as e:
+        logger.debug(f"⚡ [DEBUG] Stamina tracking skipped: {e}")
 
     # Check for duplicate message
     recent_msgs = await chat_repo.get_recent_messages(session_id, count=2)
@@ -222,23 +210,21 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
     if is_duplicate:
         logger.warning(f"⚠️ DUPLICATE MESSAGE DETECTED: '{request.message[:50]}...'")
 
-    # Store user message
-    user_msg = await chat_repo.add_message(
-        session_id=session_id,
-        role="user",
-        content=request.message,
-        tokens_used=0,
-    )
-    
-    all_messages = await chat_repo.get_all_messages(session_id)
-    logger.info(f"📝 Stored user message. Total messages in session: {len(all_messages)}")
-
-    # Generate response
-    logger.info(f"🔍 DEBUG: MOCK_MODE={MOCK_MODE}")
-    
     # V4.0 Pipeline flag - set to True to enable single-call architecture
     USE_V4_PIPELINE = os.getenv("USE_V4_PIPELINE", "true").lower() == "true"
     logger.info(f"🔍 DEBUG: USE_V4_PIPELINE={USE_V4_PIPELINE}")
+
+    # Store user message — V4 pipeline handles its own storage, skip here to avoid duplicates
+    if not USE_V4_PIPELINE:
+        user_msg = await chat_repo.add_message(
+            session_id=session_id,
+            role="user",
+            content=request.message,
+            tokens_used=0,
+        )
+    
+    all_messages = await chat_repo.get_all_messages(session_id)
+    logger.info(f"📝 Total messages in session: {len(all_messages)}")
     
     effects_status = None  # 初始化，避免分支遗漏
     date_info = None
@@ -589,14 +575,19 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             reply = f"抱歉，我暂时无法回应。请稍后再试。"
             tokens = 10
 
-    # Store assistant message
-    assistant_msg = await chat_repo.add_message(
-        session_id=session_id,
-        role="assistant",
-        content=reply,
-        tokens_used=tokens,
-    )
-    msg_id = UUID(assistant_msg["message_id"])
+    # Store assistant message — V4 pipeline already saved, skip to avoid duplicates
+    if USE_V4_PIPELINE:
+        # V4 already stored both user + assistant messages in _store_messages()
+        # We just need the message_id for the response
+        msg_id = uuid4()  # V4 response has its own ID
+    else:
+        assistant_msg = await chat_repo.add_message(
+            session_id=session_id,
+            role="assistant",
+            content=reply,
+            tokens_used=tokens,
+        )
+        msg_id = UUID(assistant_msg["message_id"])
 
     # Update session stats
     await chat_repo.update_session(

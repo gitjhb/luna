@@ -27,27 +27,9 @@ import { paymentService } from '../../services/paymentService';
 import { RechargeModal } from '../../components/RechargeModal';
 import { SubscriptionModal } from '../../components/SubscriptionModal';
 import { TransactionHistoryModal } from '../../components/TransactionHistoryModal';
+import { interestsService, InterestItem } from '../../services/interestsService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-// Predefined interests that users can select
-const INTEREST_OPTIONS = [
-  { id: 'movies', label: '电影', emoji: '🎬' },
-  { id: 'music', label: '音乐', emoji: '🎵' },
-  { id: 'gaming', label: '游戏', emoji: '🎮' },
-  { id: 'travel', label: '旅行', emoji: '✈️' },
-  { id: 'food', label: '美食', emoji: '🍜' },
-  { id: 'sports', label: '运动', emoji: '⚽' },
-  { id: 'reading', label: '阅读', emoji: '📚' },
-  { id: 'art', label: '艺术', emoji: '🎨' },
-  { id: 'tech', label: '科技', emoji: '💻' },
-  { id: 'anime', label: '动漫', emoji: '🎌' },
-  { id: 'pets', label: '宠物', emoji: '🐱' },
-  { id: 'fashion', label: '时尚', emoji: '👗' },
-  { id: 'photography', label: '摄影', emoji: '📷' },
-  { id: 'cooking', label: '烹饪', emoji: '👨‍🍳' },
-  { id: 'fitness', label: '健身', emoji: '💪' },
-];
 
 // Default avatar options
 const AVATAR_OPTIONS = [
@@ -81,9 +63,14 @@ export default function ProfileScreen() {
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [showTransactionHistory, setShowTransactionHistory] = useState(false);
   
-  // User preferences stored locally (in production, sync with backend)
+  // User preferences
   const [userAvatar, setUserAvatar] = useState(user?.avatar || AVATAR_OPTIONS[0]);
-  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
+  const [selectedInterestIds, setSelectedInterestIds] = useState<number[]>([]);
+  const [availableInterests, setAvailableInterests] = useState<InterestItem[]>([]);
+  const [savingInterests, setSavingInterests] = useState(false);
+
+  // Alias for backward compat in rendering
+  const selectedInterests = selectedInterestIds;
 
   useEffect(() => {
     loadData();
@@ -102,6 +89,18 @@ export default function ProfileScreen() {
           subscriptionTier: subscription.tier || 'free',
           subscriptionExpiresAt: subscription.expires_at || undefined,
         });
+      }
+      
+      // 加载兴趣列表和用户已选兴趣
+      try {
+        const [interestList, userInterests] = await Promise.all([
+          interestsService.getInterestList(),
+          interestsService.getUserInterests(),
+        ]);
+        setAvailableInterests(interestList.interests);
+        setSelectedInterestIds(userInterests.interestIds);
+      } catch (e) {
+        console.warn('Failed to load interests:', e);
       }
     } catch (error) {
       console.error('Failed to load profile data:', error);
@@ -154,17 +153,31 @@ export default function ProfileScreen() {
     setShowAvatarPicker(false);
   };
 
-  const toggleInterest = (interestId: string) => {
-    setSelectedInterests(prev => 
-      prev.includes(interestId) 
-        ? prev.filter(id => id !== interestId)
-        : [...prev, interestId]
-    );
+  const MAX_INTERESTS = 5;
+
+  const toggleInterest = (interestId: number) => {
+    setSelectedInterestIds(prev => {
+      if (prev.includes(interestId)) {
+        return prev.filter(id => id !== interestId);
+      }
+      if (prev.length >= MAX_INTERESTS) {
+        Alert.alert('提示', `最多选择${MAX_INTERESTS}个兴趣哦～`);
+        return prev;
+      }
+      return [...prev, interestId];
+    });
   };
 
-  const handleSaveInterests = () => {
-    // In production, save to backend
-    setShowInterestsPicker(false);
+  const handleSaveInterests = async () => {
+    setSavingInterests(true);
+    try {
+      await interestsService.updateUserInterests(selectedInterestIds);
+    } catch (e) {
+      console.warn('Failed to save interests:', e);
+    } finally {
+      setSavingInterests(false);
+      setShowInterestsPicker(false);
+    }
   };
 
   return (
@@ -303,14 +316,14 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
             <View style={styles.interestsCard}>
-              {selectedInterests.length > 0 ? (
+              {selectedInterestIds.length > 0 ? (
                 <View style={styles.interestTags}>
-                  {selectedInterests.map(id => {
-                    const interest = INTEREST_OPTIONS.find(i => i.id === id);
+                  {selectedInterestIds.map(id => {
+                    const interest = availableInterests.find(i => i.id === id);
                     return interest ? (
                       <View key={id} style={styles.interestTag}>
-                        <Text style={styles.interestTagEmoji}>{interest.emoji}</Text>
-                        <Text style={styles.interestTagText}>{interest.label}</Text>
+                        <Text style={styles.interestTagEmoji}>{interest.icon || '⭐'}</Text>
+                        <Text style={styles.interestTagText}>{interest.displayName?.replace(/^[^\s]+\s/, '') || interest.name}</Text>
                       </View>
                     ) : null;
                   })}
@@ -408,28 +421,28 @@ export default function ProfileScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>选择兴趣</Text>
-              <TouchableOpacity onPress={handleSaveInterests}>
-                <Text style={styles.modalDoneText}>完成</Text>
+              <Text style={styles.modalTitle}>选择兴趣（{selectedInterestIds.length}/{MAX_INTERESTS}）</Text>
+              <TouchableOpacity onPress={handleSaveInterests} disabled={savingInterests}>
+                <Text style={styles.modalDoneText}>{savingInterests ? '保存中...' : '完成'}</Text>
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.interestsGrid}>
               <View style={styles.interestsGridInner}>
-                {INTEREST_OPTIONS.map(interest => (
+                {availableInterests.map(interest => (
                   <TouchableOpacity
                     key={interest.id}
                     style={[
                       styles.interestOption,
-                      selectedInterests.includes(interest.id) && styles.interestOptionSelected,
+                      selectedInterestIds.includes(interest.id) && styles.interestOptionSelected,
                     ]}
                     onPress={() => toggleInterest(interest.id)}
                   >
-                    <Text style={styles.interestOptionEmoji}>{interest.emoji}</Text>
+                    <Text style={styles.interestOptionEmoji}>{interest.icon || '⭐'}</Text>
                     <Text style={[
                       styles.interestOptionText,
-                      selectedInterests.includes(interest.id) && styles.interestOptionTextSelected,
+                      selectedInterestIds.includes(interest.id) && styles.interestOptionTextSelected,
                     ]}>
-                      {interest.label}
+                      {interest.displayName?.replace(/^[^\s]+\s/, '') || interest.name}
                     </Text>
                   </TouchableOpacity>
                 ))}

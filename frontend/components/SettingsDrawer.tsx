@@ -9,7 +9,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Switch,
   ScrollView,
   Animated,
   Dimensions,
@@ -69,7 +68,7 @@ export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps
   const fadeAnim = useRef(new Animated.Value(0)).current;
   
   const { user, logout, isSubscribed } = useUserStore();
-  const { isSpicyMode, setSpicyMode } = useChatStore();
+  // chatStore import kept for potential future use
 
   useEffect(() => {
     if (visible) {
@@ -179,20 +178,6 @@ export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Preferences</Text>
             <View style={styles.sectionContent}>
-              <SettingItem
-                icon="flame-outline"
-                title="Spicy Mode"
-                subtitle={isSubscribed ? 'Unlock intimate content' : 'Premium only'}
-                rightElement={
-                  <Switch
-                    value={isSpicyMode}
-                    onValueChange={setSpicyMode}
-                    disabled={!isSubscribed}
-                    trackColor={{ false: '#3e3e3e', true: theme.colors.primary.main }}
-                    thumbColor={isSpicyMode ? '#fff' : '#f4f3f4'}
-                  />
-                }
-              />
               <SettingItem
                 icon="notifications-outline"
                 title="Notifications"

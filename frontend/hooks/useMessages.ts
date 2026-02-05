@@ -65,6 +65,8 @@ export function useMessages({ sessionId, characterId, enabled = true }: UseMessa
     enabled: enabled && !!sessionId,
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 30,   // 30 minutes (formerly cacheTime)
+    refetchOnWindowFocus: false,  // 防止键盘收起等触发 refetch 导致消息闪跳
+    refetchOnReconnect: false,
   });
 
   // Flatten all pages into a single array for inverted FlatList
@@ -76,9 +78,19 @@ export function useMessages({ sessionId, characterId, enabled = true }: UseMessa
   // 
   // We need: [newest_overall, ..., oldest_overall]
   // So: reverse each page, then flatten in order
-  const allMessages = query.data?.pages
-    .flatMap((page: MessagesPage) => [...page.messages].reverse())
-    ?? [];
+  // 
+  // DEDUP: optimistic adds + refetch can cause duplicates, so deduplicate by messageId
+  const allMessages = (() => {
+    const raw = query.data?.pages
+      .flatMap((page: MessagesPage) => [...page.messages].reverse())
+      ?? [];
+    const seen = new Set<string>();
+    return raw.filter((msg: Message) => {
+      if (seen.has(msg.messageId)) return false;
+      seen.add(msg.messageId);
+      return true;
+    });
+  })();
 
   // Add a new message to the cache (optimistic update)
   const addMessage = (message: Message) => {
@@ -86,6 +98,12 @@ export function useMessages({ sessionId, characterId, enabled = true }: UseMessa
       ['messages', characterId, sessionId],
       (oldData: any) => {
         if (!oldData) return oldData;
+        
+        // Dedup check: don't add if messageId already exists in any page
+        const exists = oldData.pages.some((page: MessagesPage) =>
+          page.messages.some((m: Message) => m.messageId === message.messageId)
+        );
+        if (exists) return oldData;
         
         // Add to the first page (newest messages)
         const newPages = [...oldData.pages];

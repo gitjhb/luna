@@ -160,6 +160,13 @@ app.include_router(dates.router, prefix="/api/v1", tags=["Dates"])
 app.include_router(photos.router, prefix="/api/v1", tags=["Photos"])
 app.include_router(stamina.router, prefix="/api/v1", tags=["Stamina"])
 
+# Static files (privacy policy, terms, etc.)
+import os
+from fastapi.staticfiles import StaticFiles
+static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "static")
+if os.path.isdir(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
 
 # ============================================================================
 # Health Check Endpoints

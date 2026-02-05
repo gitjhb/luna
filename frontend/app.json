@@ -6,7 +6,10 @@
     "orientation": "portrait",
     "scheme": "luna",
     "userInterfaceStyle": "dark",
+    "icon": "./assets/images/icon.png",
     "splash": {
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain",
       "backgroundColor": "#0A0A0F"
     },
     "assetBundlePatterns": [
@@ -14,13 +17,21 @@
     ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.luna.companion"
+      "bundleIdentifier": "com.luna.companion",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "用于拍照分享给角色",
+        "NSPhotoLibraryUsageDescription": "用于选择照片分享给角色",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0A0A0F"
       },
-      "package": "com.luna.companion"
+      "package": "com.luna.companion",
+      "versionCode": 1
     },
     "web": {
       "bundler": "metro",
@@ -36,7 +47,11 @@
     "extra": {
       "router": {
         "origin": false
+      },
+      "eas": {
+        "projectId": "074be23c-41ac-4c5e-86a2-c64ac88577e5"
       }
-    }
+    },
+    "owner": "hongbinj"
   }
 }

@@ -15,6 +15,8 @@ const mapCharacter = (data: any): Character => ({
   personalityTraits: data.personality_traits || data.personalityTraits || [],
   tierRequired: data.tier_required || data.tierRequired || 'free',
   isSpicy: data.is_spicy || data.isSpicy || false,
+  isRomanceable: data.is_romanceable ?? data.isRomanceable ?? true,
+  characterType: data.character_type || data.characterType || 'romantic',
   tags: data.tags || data.personality_traits || data.personalityTraits || [],
   greeting: data.greeting,
   // Extended profile fields

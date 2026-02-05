@@ -21,8 +21,11 @@ export const characterAvatars: Record<string, any> = {
   // 芽衣 (Mei) - 赛博高中生
   'a5b6c7d8-e9f0-4a1b-2c3d-4e5f6a7b8c9d': require('./mei.jpg'),
   
-  // The Phantom (魅影) - 神秘魅惑歌姬 [Premium/Spicy]
-  'b6c7d8e9-f0a1-4b2c-3d4e-5f6a7b8c9d0e': require('./phantom.jpg'),
+  // Vera - 性感成熟的酒吧老板娘 [Spicy]
+  'b6c7d8e9-f0a1-4b2c-3d4e-5f6a7b8c9d0e': require('./vera.jpg'),
+  
+  // 煤球 - 毒舌黑猫搭子 [Buddy]
+  'a7b8c9d0-e1f2-4a3b-5c6d-7e8f9a0b1c2d': require('./meiqiu.jpg'),
 };
 
 // Character background images
@@ -42,8 +45,11 @@ export const characterBackgrounds: Record<string, any> = {
   // 芽衣
   'a5b6c7d8-e9f0-4a1b-2c3d-4e5f6a7b8c9d': require('./mei.jpg'),
   
-  // The Phantom
-  'b6c7d8e9-f0a1-4b2c-3d4e-5f6a7b8c9d0e': require('./phantom.jpg'),
+  // Vera
+  'b6c7d8e9-f0a1-4b2c-3d4e-5f6a7b8c9d0e': require('./vera.jpg'),
+  
+  // 煤球
+  'a7b8c9d0-e1f2-4a3b-5c6d-7e8f9a0b1c2d': require('./meiqiu.jpg'),
 };
 
 /**

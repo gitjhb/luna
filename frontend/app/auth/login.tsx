@@ -184,6 +184,11 @@ export default function LoginScreen() {
             )}
           </View>
 
+          {/* AI Disclaimer */}
+          <Text style={styles.aiDisclaimer}>
+            🤖 本应用角色对话内容由 AI 生成，不代表真实人物观点
+          </Text>
+
           {/* Terms */}
           <Text style={styles.termsText}>
             注册即表示同意{' '}
@@ -360,6 +365,12 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  aiDisclaimer: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.4)',
+    textAlign: 'center',
+    marginBottom: 8,
   },
   termsText: {
     fontSize: 12,

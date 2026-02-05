@@ -33,7 +33,7 @@ import { useMessages } from '../../hooks/useMessages';
 import { useGiftStore, GiftCatalogItem } from '../../store/giftStore';
 
 // NSFW mode costs 2 extra credits per message
-const NSFW_MODE_CREDIT_COST = 2;
+// const NSFW_MODE_CREDIT_COST = 2;  // Disabled - spicy mode is free now
 import { chatService } from '../../services/chatService';
 import { api } from '../../services/api';
 import { intimacyService } from '../../services/intimacyService';
@@ -73,7 +73,7 @@ const DEFAULT_BACKGROUND = 'https://i.imgur.com/vB5HQXQ.jpg';
 export default function ChatScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ characterId: string; characterName: string; sessionId?: string; backgroundUrl?: string; avatarUrl?: string }>();
-  
+
   const { wallet, deductCredits, updateWallet, isSubscribed } = useUserStore();
   // NSFW mode disabled on mobile for App Store compliance (web only)
   const isSpicyMode = false; // useChatStore((s) => s.isSpicyMode);
@@ -89,13 +89,13 @@ export default function ChatScreen() {
     setIntimacy,
     updateSession,
   } = useChatStore();
-  
+
   const cachedIntimacy = useChatStore((s) => s.intimacyByCharacter[params.characterId]);
-  
+
   const [inputText, setInputText] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(params.sessionId || null);
   const [isInitializing, setIsInitializing] = useState(true);
-  
+
   // 📬 React Query 消息管理
   const {
     messages,
@@ -132,21 +132,21 @@ export default function ChatScreen() {
   const [emotionState, setEmotionState] = useState('neutral');
   const [lastExtraData, setLastExtraData] = useState<ExtraData | null>(null);  // Debug info
   const [lastTokensUsed, setLastTokensUsed] = useState<number>(0);
-  
+
   // 🔒 瓶颈锁状态
   const [bottleneckLocked, setBottleneckLocked] = useState(false);
   const [bottleneckLockLevel, setBottleneckLockLevel] = useState<number | null>(null);
   const [bottleneckRequiredTier, setBottleneckRequiredTier] = useState<number | null>(null);
-  
+
   // 📖 剧情系统状态
   const [showEventStoryModal, setShowEventStoryModal] = useState(false);
   const [selectedEventPlaceholder, setSelectedEventPlaceholder] = useState<EventStoryPlaceholder | null>(null);
   const [showMemoriesModal, setShowMemoriesModal] = useState(false);
   const [readEventIds, setReadEventIds] = useState<Set<string>>(new Set());
-  
+
   // 📜 聊天分页 - 由 useMessages hook 管理
   // hasNextPage, isFetchingNextPage, fetchNextPage 来自 useMessages
-  
+
   // 💕 进行中的约会提醒
   const [showActiveDateAlert, setShowActiveDateAlert] = useState(false);
   const [activeDateSession, setActiveDateSession] = useState<{
@@ -154,7 +154,7 @@ export default function ChatScreen() {
     stage_num: number;
     scenario_name: string;
   } | null>(null);
-  
+
   // 🎉 第一次约会庆祝弹窗
   const [showFirstDateCelebration, setShowFirstDateCelebration] = useState(false);
   const [firstDateResult, setFirstDateResult] = useState<{
@@ -162,7 +162,7 @@ export default function ChatScreen() {
     xp: number;
     affection: number;
   } | null>(null);
-  
+
   // 🎨 动态主题 - 根据情绪状态自动切换
   const {
     theme: emotionTheme,
@@ -172,19 +172,19 @@ export default function ChatScreen() {
     glowEnabled,
     emotionHint,
   } = useEmotionTheme(emotionScore, emotionState, isSpicyMode);
-  
+
   // 礼物特效
-  const { 
-    isVisible: showGiftEffect, 
-    currentGift, 
-    sendGift: triggerGiftEffect, 
-    hideGift 
+  const {
+    isVisible: showGiftEffect,
+    currentGift,
+    sendGift: triggerGiftEffect,
+    hideGift
   } = useGiftEffect();
-  
+
   const flatListRef = useRef<FlatList>(null);
   const previousLevelRef = useRef<number | null>(null);
   const isSendingRef = useRef(false);  // Prevent duplicate sends
-  
+
   // Animated progress bar
   const xpProgressAnim = useRef(new Animated.Value(0)).current;
 
@@ -197,7 +197,7 @@ export default function ChatScreen() {
     const safeXp = Math.max(0, relationshipXp);
     const safeMax = Math.max(1, relationshipMaxXp); // Avoid division by zero
     const progress = (safeXp / safeMax) * 100;
-    
+
     Animated.timing(xpProgressAnim, {
       toValue: Math.max(0, Math.min(progress, 100)), // Clamp between 0-100
       duration: 500,
@@ -231,7 +231,7 @@ export default function ChatScreen() {
   const initializeSession = async () => {
     try {
       setIsInitializing(true);
-      
+
       // Step 1: Check for cached session first (instant load)
       const cachedSession = useChatStore.getState().getSessionByCharacterId(params.characterId);
       if (cachedSession) {
@@ -242,7 +242,7 @@ export default function ChatScreen() {
         if (cachedSession.characterBackground) setBackgroundImage(cachedSession.characterBackground);
         // Messages are already in store from cache, no need to set again
       }
-      
+
       // Step 2: Fetch intimacy status (and cache it locally)
       try {
         const intimacyStatus = await intimacyService.getStatus(params.characterId);
@@ -275,7 +275,7 @@ export default function ChatScreen() {
           setRelationshipMaxXp(6);
         }
       }
-      
+
       // Step 2.5: Fetch emotion status
       try {
         const emotionStatus = await emotionService.getStatus(params.characterId);
@@ -287,7 +287,7 @@ export default function ChatScreen() {
       } catch (e) {
         console.log('Emotion status not available:', e);
       }
-      
+
       // Step 3: Sync with backend - get or create session
       const session = await chatService.getOrCreateSession(params.characterId);
       setSessionId(session.sessionId);
@@ -295,7 +295,7 @@ export default function ChatScreen() {
       if (session.characterName) setCharacterName(session.characterName);
       if (session.characterAvatar) setCharacterAvatar(session.characterAvatar);
       if (session.characterBackground) setBackgroundImage(session.characterBackground);
-      
+
       // Update session in store
       const existingSession = useChatStore.getState().getSessionByCharacterId(params.characterId);
       if (existingSession) {
@@ -303,7 +303,7 @@ export default function ChatScreen() {
       } else {
         useChatStore.getState().addSession(session);
       }
-      
+
       // Step 4: Messages will be loaded by useMessages hook automatically
       // Just check if we need to show greeting for new sessions
       try {
@@ -311,7 +311,7 @@ export default function ChatScreen() {
           session.sessionId,
           1  // Just check if any messages exist
         );
-        
+
         // Step 5: If no messages yet, show character's greeting
         if (history.length === 0) {
           try {
@@ -326,7 +326,7 @@ export default function ChatScreen() {
               };
               // Use store method for initial greeting (before useMessages is ready)
               addMessageToStore(session.sessionId, greetingMessage);
-              
+
               // 🎬 测试入口：Sakura 发送视频消息
               if (params.characterId === 'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e') {
                 setTimeout(() => {
@@ -336,6 +336,22 @@ export default function ChatScreen() {
                     type: 'video',
                     content: '送你一个小惊喜～ 💕',
                     videoUrl: 'sakura_beach_reward',
+                    createdAt: new Date().toISOString(),
+                    tokensUsed: 0,
+                  };
+                  addMessageToStore(session.sessionId, videoMessage);
+                }, 1500);
+              }
+
+              // 🎬 Vera intro 视频
+              if (params.characterId === 'b6c7d8e9-f0a1-4b2c-3d4e-5f6a7b8c9d0e') {
+                setTimeout(() => {
+                  const videoMessage: Message = {
+                    messageId: `video-${Date.now()}`,
+                    role: 'assistant',
+                    type: 'video',
+                    content: '来，先看看姐姐给你准备的～ 🍷',
+                    videoUrl: 'vera_intro',
                     createdAt: new Date().toISOString(),
                     tokensUsed: 0,
                   };
@@ -356,7 +372,7 @@ export default function ChatScreen() {
     } finally {
       setIsInitializing(false);
       // Inverted list: no need to scroll, newest messages are already visible
-      
+
       // 检查是否有进行中的约会
       try {
         const dateStatus = await api.get<any>(`/dates/status/${params.characterId}`);
@@ -373,7 +389,7 @@ export default function ChatScreen() {
 
   // 📜 加载更多历史消息 - 由 useMessages 的 fetchNextPage 处理
   // inverted FlatList 使用 onEndReached 触发加载更多
-  
+
   // 处理滚动事件（用于其他UI效果，不用于分页）
   const handleScroll = (event: any) => {
     // 可以在这里添加滚动相关的UI效果
@@ -382,13 +398,13 @@ export default function ChatScreen() {
   const handleSend = async () => {
     const text = inputText.trim();
     if (!text || !sessionId || isTyping || isSendingRef.current) return;  // Prevent duplicate sends
-    
+
     // Immediately block further sends using ref (sync, not async like state)
     isSendingRef.current = true;
-    
+
     Keyboard.dismiss();
     setInputText('');
-    
+
     const userMessage: Message = {
       messageId: `user-${Date.now()}`,
       role: 'user',
@@ -396,32 +412,21 @@ export default function ChatScreen() {
       createdAt: new Date().toISOString(),
     };
     addMessage(userMessage);
-    
+
     // inverted list: 新消息在顶部，不需要滚动
     setTyping(true, params.characterId);
-    
+
     try {
       // Check if user is subscribed for NSFW mode
-      if (isSpicyMode && !isSubscribed) {
-        setTyping(false);
-        setShowSubscriptionModal(true);
-        return;
-      }
-      
-      // Check if user has enough credits for NSFW mode
-      if (isSpicyMode && (wallet?.totalCredits || 0) < NSFW_MODE_CREDIT_COST) {
-        Alert.alert('金币不足', 'NSFW 模式每条消息需要 2 金币，请先充值。');
-        setTyping(false);
-        return;
-      }
-      
-      const response = await chatService.sendMessage({ 
-        sessionId, 
+      // Spicy mode: 不再消耗金币，直接发送
+
+      const response = await chatService.sendMessage({
+        sessionId,
         message: text,
         spicyMode: isSpicyMode,
         intimacyLevel: relationshipLevel || 1,
       });
-      
+
       addMessage({
         messageId: response.messageId,
         role: 'assistant',
@@ -432,11 +437,11 @@ export default function ChatScreen() {
         createdAt: response.createdAt,
         extraData: response.extraData,
       });
-      
+
       // Update debug info for DebugPanel
       if (response.extraData) {
         setLastExtraData(response.extraData);
-        
+
         // Update date info if present
         if (response.extraData.date) {
           // Check if date just completed
@@ -459,25 +464,23 @@ export default function ChatScreen() {
       if (response.tokensUsed) {
         setLastTokensUsed(response.tokensUsed);
       }
-      
+
       // Update session's lastMessageAt for accurate time display in chat list
       updateSession(sessionId, { lastMessageAt: new Date().toISOString() });
-      
-      if (response.creditsDeducted) {
-        deductCredits(response.creditsDeducted);
-      }
-      
+
+      // Credits deduction disabled - spicy mode is free now
+
       // Update intimacy after chat (XP earned from message)
       try {
         const updatedIntimacy = await intimacyService.getStatus(params.characterId);
         const oldLevel = previousLevelRef.current;
-        
+
         // Check for level up
         if (oldLevel !== null && updatedIntimacy.currentLevel > oldLevel) {
           setNewLevel(updatedIntimacy.currentLevel);
           setShowLevelUpModal(true);
         }
-        
+
         previousLevelRef.current = updatedIntimacy.currentLevel;
         setRelationshipLevel(updatedIntimacy.currentLevel);
         // Calculate and validate
@@ -500,7 +503,7 @@ export default function ChatScreen() {
       } catch (e) {
         // Silently fail if intimacy update fails
       }
-      
+
       // Update emotion after chat
       try {
         const updatedEmotion = await emotionService.getStatus(params.characterId);
@@ -511,7 +514,7 @@ export default function ChatScreen() {
       } catch (e) {
         // Silently fail if emotion update fails
       }
-      
+
       // Inverted list: new messages appear at top automatically
     } catch (error: any) {
       console.error('Send message error:', error);
@@ -524,11 +527,11 @@ export default function ChatScreen() {
 
   const handleAskForPhoto = async () => {
     if (!sessionId) return;
-    
+
     // Use a special message to request a photo
     const photoRequest = "Send me a photo of yourself 📸";
     setInputText('');
-    
+
     const userMessage: Message = {
       messageId: `user-${Date.now()}`,
       role: 'user',
@@ -536,19 +539,19 @@ export default function ChatScreen() {
       createdAt: new Date().toISOString(),
     };
     addMessage(userMessage);
-    
+
     // inverted list: 新消息在顶部，不需要滚动
     setTyping(true, params.characterId);
-    
+
     try {
-      const response = await chatService.sendMessage({ 
-        sessionId, 
+      const response = await chatService.sendMessage({
+        sessionId,
         message: photoRequest,
         requestType: 'photo',  // Tell backend this is a photo request
         spicyMode: isSpicyMode,
         intimacyLevel: relationshipLevel || 1,
       });
-      
+
       addMessage({
         messageId: response.messageId,
         role: 'assistant',
@@ -558,13 +561,11 @@ export default function ChatScreen() {
         imageUrl: response.imageUrl,
         createdAt: response.createdAt,
       });
-      
+
       // Update session's lastMessageAt for accurate time display in chat list
       updateSession(sessionId, { lastMessageAt: new Date().toISOString() });
-      
-      if (response.creditsDeducted) {
-        deductCredits(response.creditsDeducted);
-      }
+
+      // Credits deduction disabled
       
       // Update intimacy
       try {
@@ -584,7 +585,7 @@ export default function ChatScreen() {
           xpForCurrentLevel: updatedIntimacy.xpForCurrentLevel,
         });
       } catch (e) {}
-      
+
       // Inverted list: new messages appear at top automatically
     } catch (error: any) {
       console.error('Photo request error:', error);
@@ -597,41 +598,41 @@ export default function ChatScreen() {
   // 📸 拍照状态
   const [newPhotoUri, setNewPhotoUri] = useState<string | null>(null);
   const [showPhotoPreview, setShowPhotoPreview] = useState(false);
-  
+
   // Mock照片资源（后续替换为AI生成）
   const MOCK_PHOTOS: Record<string, any> = {
     'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e': require('../../assets/characters/sakura/photos/photo_bedroom_01.jpg'),
   };
-  
+
   // 📸 新拍照功能 (消费月石)
   const handleTakePhoto = async () => {
     if (photoLoading) return;
-    
+
     // 检查等级
     if ((relationshipLevel || 1) < 3) {
       Alert.alert('等级不足', '需要 Lv.3 解锁拍照功能');
       return;
     }
-    
+
     // 检查月石余额（30月石/张）
     const PHOTO_COST = 30;
     if ((wallet?.totalCredits || 0) < PHOTO_COST) {
       Alert.alert('月石不足', `拍照需要 ${PHOTO_COST} 月石，请先充值`);
       return;
     }
-    
+
     setPhotoLoading(true);
     try {
       // 获取最近几条对话作为上下文
       const recentMessages = messages.slice(-5).map(m => m.content).join('\n');
-      
+
       const result = await interactionsService.takePhoto(params.characterId, recentMessages);
-      
+
       // 余额已在后端扣除，更新本地状态
       if (result.new_balance !== undefined) {
         updateWallet({ totalCredits: result.new_balance });
       }
-      
+
       // 使用Mock照片（后续替换为AI生成的URL）
       const mockPhoto = MOCK_PHOTOS[params.characterId];
       if (mockPhoto) {
@@ -651,7 +652,7 @@ export default function ChatScreen() {
       setPhotoLoading(false);
     }
   };
-  
+
   // 设置照片为聊天背景
   const handleSetPhotoAsBackground = () => {
     if (newPhotoUri) {
@@ -673,13 +674,13 @@ export default function ChatScreen() {
 
   // Toast state for copy feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  
+
   // Show toast helper
   const showToast = useCallback((message: string) => {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 2000);
   }, []);
-  
+
   // Handle emoji reaction - awards XP bonus
   const handleReaction = useCallback(async (reactionName: string, xpBonus: number, messageId?: string) => {
     // Get emoji from reaction name
@@ -692,25 +693,25 @@ export default function ChatScreen() {
       fire: '🔥',
     };
     const emoji = reactionEmojis[reactionName] || '❤️';
-    
+
     // Update message in chat history with reaction
     if (messageId) {
       updateMessage(messageId, { reaction: emoji });
     }
-    
+
     // Award XP for reaction (支持一次升多级)
     let currentXp = relationshipXp + xpBonus;
     let currentMax = relationshipMaxXp;
     let currentLevel = relationshipLevel || 1;
     let levelsGained = 0;
-    
+
     while (currentXp >= currentMax) {
       currentXp -= currentMax;
       currentLevel += 1;
       levelsGained += 1;
       currentMax = Math.round(currentMax * 1.15);
     }
-    
+
     if (levelsGained > 0) {
       setRelationshipLevel(currentLevel);
       setRelationshipXp(currentXp);
@@ -720,7 +721,7 @@ export default function ChatScreen() {
     } else {
       setRelationshipXp(currentXp);
     }
-    
+
     // Update cache
     setIntimacy(params.characterId, {
       currentLevel: currentLevel,
@@ -728,10 +729,10 @@ export default function ChatScreen() {
       xpForNextLevel: currentMax,
       xpForCurrentLevel: 0,
     });
-    
+
     showToast(`+${xpBonus} 亲密度 💕`);
   }, [relationshipXp, relationshipMaxXp, relationshipLevel, params.characterId, setIntimacy, showToast, updateMessage]);
-  
+
   // Handle reply to message
   const handleReply = useCallback((content: string) => {
     // Set input with quoted content
@@ -744,12 +745,12 @@ export default function ChatScreen() {
     const isSystem = item.role === 'system';
     const isGift = item.type === 'gift';
     const isLocked = item.isLocked && !isSubscribed;
-    
+
     // Handle unlock tap - show subscription modal
     const handleUnlock = () => {
       setShowSubscriptionModal(true);
     };
-    
+
     // 📖 检测事件剧情消息 (旧版 event_story 格式)
     if (isSystem) {
       const eventPlaceholder = eventService.parseEventStoryPlaceholder(item.content);
@@ -767,7 +768,7 @@ export default function ChatScreen() {
         );
       }
     }
-    
+
     // 🆕 检测新版通用事件消息 (JSON格式，type: "event")
     if (isSystem) {
       try {
@@ -790,14 +791,14 @@ export default function ChatScreen() {
         // 不是 JSON 格式，继续其他检测
       }
     }
-    
+
     // 💕 约会事件消息 - 旧格式兼容 (居中的小卡片)
     if (isSystem && item.content.startsWith('[date]')) {
       // 格式: "[date] 场景名｜结局描述"
       const dateMatch = item.content.match(/\[date\]\s*(.+)｜(.+)/);
       const sceneName = dateMatch ? dateMatch[1] : '约会';
       const endingText = dateMatch ? dateMatch[2] : '完成了约会';
-      
+
       return (
         <View style={styles.giftEventRow}>
           <View style={[styles.giftEventBubble, { backgroundColor: 'rgba(236, 72, 153, 0.15)', borderColor: 'rgba(236, 72, 153, 0.3)' }]}>
@@ -809,13 +810,13 @@ export default function ChatScreen() {
         </View>
       );
     }
-    
+
     // 🎁 礼物事件消息 - 旧格式兼容 (居中的小灰条)
     if (isGift || (isSystem && item.content.includes('[送出礼物]'))) {
       // 解析礼物名称 (格式: "[送出礼物] 🌹 玫瑰")
       const giftMatch = item.content.match(/\[送出礼物\]\s*(.+)/);
       const giftText = giftMatch ? giftMatch[1] : item.content;
-      
+
       return (
         <View style={styles.giftEventRow}>
           <View style={styles.giftEventBubble}>
@@ -825,12 +826,12 @@ export default function ChatScreen() {
         </View>
       );
     }
-    
+
     // 其他系统消息不显示
     if (isSystem) {
       return null;
     }
-    
+
     // 🎬 视频消息
     if (item.type === 'video') {
       return (
@@ -852,7 +853,7 @@ export default function ChatScreen() {
         </View>
       );
     }
-    
+
     return (
       <View style={[styles.messageRow, isUser ? styles.messageRowUser : styles.messageRowAI]}>
         {/* AI Avatar - clickable to open profile */}
@@ -864,7 +865,7 @@ export default function ChatScreen() {
             <Image source={getCharacterAvatar(params.characterId, characterAvatar)} style={styles.avatar} />
           </TouchableOpacity>
         )}
-        
+
         {/* Interactive Message Bubble */}
         <MessageBubble
           content={item.content}
@@ -919,15 +920,15 @@ export default function ChatScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="chevron-back" size={28} color="#fff" />
           </TouchableOpacity>
-          
+
           <View style={styles.headerCenter}>
             <MockModeBanner compact />
           </View>
-          
+
           <View style={styles.headerRight}>
             {/* 小气泡 Level + 瓶颈锁图标 */}
             <TouchableOpacity style={styles.levelBubble} onPress={() => setShowLevelInfoModal(true)}>
-              <Text style={styles.levelBubbleText}>Lv.{relationshipLevel ?? '–'}</Text>
+              <Text style={styles.levelBubbleText}>Lv.{relationshipLevel ?? '-'}</Text>
             </TouchableOpacity>
             {bottleneckLocked && (
               <TouchableOpacity
@@ -952,7 +953,7 @@ export default function ChatScreen() {
                 <Text style={styles.lockBubbleText}>🔒</Text>
               </TouchableOpacity>
             )}
-            
+
             {/* 头像按钮替代三个点 */}
             <TouchableOpacity style={styles.avatarButton} onPress={() => setShowCharacterInfo(true)}>
               <Image source={getCharacterAvatar(params.characterId, characterAvatar)} style={styles.headerAvatar} />
@@ -987,7 +988,7 @@ export default function ChatScreen() {
               </View>
             ) : !hasNextPage && messages.length > 0 ? (
               <View style={{ padding: 15, alignItems: 'center' }}>
-                <Text style={{ color: '#666' }}>— 已加载全部消息 —</Text>
+                <Text style={{ color: '#666' }}>- 已加载全部消息 -</Text>
               </View>
             ) : null
           }
@@ -995,8 +996,8 @@ export default function ChatScreen() {
         />
 
         {/* Action Buttons - Horizontal Scroll */}
-        <ScrollView 
-          horizontal 
+        <ScrollView
+          horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.actionButtonsScroll}
           contentContainerStyle={styles.actionButtonsRow}
@@ -1006,47 +1007,14 @@ export default function ChatScreen() {
             <Text style={styles.actionButtonEmoji}>🎁</Text>
             <Text style={styles.actionButtonText}>送礼物</Text>
           </TouchableOpacity>
-          
-          {/* 拍照 - Lv3 解锁 */}
-          {(relationshipLevel || 1) >= 3 ? (
-            <TouchableOpacity 
-              style={[styles.actionButton, photoLoading && styles.actionButtonDisabled]} 
-              onPress={handleTakePhoto}
-              disabled={photoLoading}
-            >
-              <Text style={styles.actionButtonEmoji}>📸</Text>
-              <Text style={styles.actionButtonText}>{photoLoading ? '...' : '拍照'}</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.actionButtonLocked]}
-              onPress={() => Alert.alert('🔒 未解锁', '拍照功能需要 Lv.3 解锁')}
-            >
-              <Text style={styles.actionButtonEmoji}>📸</Text>
-              <Text style={styles.actionButtonTextLocked}>Lv3</Text>
-            </TouchableOpacity>
-          )}
-          
-          {/* 换装 - Lv6 解锁 */}
-          {(relationshipLevel || 1) >= 6 ? (
-            <TouchableOpacity style={styles.actionButton} onPress={handleDressup}>
-              <Text style={styles.actionButtonEmoji}>👗</Text>
-              <Text style={styles.actionButtonText}>换装</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.actionButtonLocked]}
-              onPress={() => Alert.alert('🔒 未解锁', '换装功能需要 Lv.6 解锁')}
-            >
-              <Text style={styles.actionButtonEmoji}>👗</Text>
-              <Text style={styles.actionButtonTextLocked}>Lv6</Text>
-            </TouchableOpacity>
-          )}
-          
+
+          {/* 拍照 - 隐藏（MVP精简，后续OTA开放） */}
+          {/* 换装 - 隐藏（MVP精简，后续OTA开放） */}
+
           {/* 约会 - Lv10 解锁 */}
           {(relationshipLevel || 1) >= 10 ? (
-            <TouchableOpacity 
-              style={styles.actionButton} 
+            <TouchableOpacity
+              style={styles.actionButton}
               onPress={async () => {
                 try {
                   // 先检查约会状态（情绪、冷却等）
@@ -1056,7 +1024,7 @@ export default function ChatScreen() {
                     message?: string;
                     cooldown_remaining_minutes?: number;
                   }>(`/dates/status/${params.characterId}`);
-                  
+
                   if (!status.can_date) {
                     if (status.reason === 'emotion_too_low') {
                       Alert.alert('😔 约会失败', status.message || '她不是很想约会呢，提升下好感再来吧～');
@@ -1064,16 +1032,16 @@ export default function ChatScreen() {
                     }
                     if (status.reason === 'cooldown') {
                       const mins = status.cooldown_remaining_minutes || 0;
-                      const timeText = mins >= 60 
+                      const timeText = mins >= 60
                         ? `${Math.floor(mins / 60)} 小时 ${mins % 60} 分钟`
                         : `${mins} 分钟`;
                       Alert.alert(
-                        '⏰ 约会冷却中', 
+                        '⏰ 约会冷却中',
                         `还需等待 ${timeText}`,
                         [
                           { text: '好的', style: 'cancel' },
-                          { 
-                            text: '💎 50月石重置', 
+                          {
+                            text: '💎 50月石重置',
                             onPress: async () => {
                               // 检查余额
                               if ((wallet?.totalCredits || 0) < 50) {
@@ -1104,7 +1072,7 @@ export default function ChatScreen() {
                       return;
                     }
                   }
-                  
+
                   // 加载场景数据后打开互动约会
                   const { scenarios } = await api.get<{ scenarios: Array<{id: string; name: string; icon: string; description?: string; required_level?: number; is_locked?: boolean}> }>(`/dates/scenarios?character_id=${params.characterId}`);
                   setDateScenarios(scenarios || []);
@@ -1120,7 +1088,7 @@ export default function ChatScreen() {
               <Text style={styles.actionButtonText}>约会</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.actionButton, styles.actionButtonLocked]}
               onPress={() => Alert.alert('🔒 未解锁', '约会功能需要 Lv.10 解锁')}
             >
@@ -1148,31 +1116,15 @@ export default function ChatScreen() {
                 maxLength={2000}
               />
             </View>
-            
+
             {/* Send Button - 动态主题色 */}
-            {/* 长按发送测试视频（仅Sakura，开发测试用） */}
-            <TouchableOpacity 
-              style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]} 
+            <TouchableOpacity
+              style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
               onPress={handleSend}
-              onLongPress={() => {
-                if (params.characterId === 'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e' && sessionId) {
-                  const videoMessage: Message = {
-                    messageId: `video-${Date.now()}`,
-                    role: 'assistant',
-                    type: 'video',
-                    content: '看看这个～ 只给你看哦 💕',
-                    videoUrl: 'sakura_beach_reward',
-                    createdAt: new Date().toISOString(),
-                    tokensUsed: 0,
-                  };
-                  addMessage(videoMessage);
-                }
-              }}
-              delayLongPress={800}
             >
               <LinearGradient
-                colors={inputText.trim() 
-                  ? [emotionTheme.colors.primary.main, emotionTheme.colors.accent.purple] as [string, string] 
+                colors={inputText.trim()
+                  ? [emotionTheme.colors.primary.main, emotionTheme.colors.accent.purple] as [string, string]
                   : ['#555', '#444'] as [string, string]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
@@ -1183,7 +1135,7 @@ export default function ChatScreen() {
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
-        
+
         {/* Debug Panel Button - only in development */}
         {__DEV__ && (
           <DebugButton
@@ -1253,7 +1205,7 @@ export default function ChatScreen() {
               {newLevel >= 11 && newLevel < 26 && '🔓 解锁：语音消息'}
               {newLevel >= 26 && '🔓 解锁：私密内容'}
             </Text>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.levelUpButton}
               onPress={() => setShowLevelUpModal(false)}
             >
@@ -1283,14 +1235,14 @@ export default function ChatScreen() {
                 <Ionicons name="close" size={24} color="#fff" />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.levelInfoScroll} showsVerticalScrollIndicator={false}>
               <IntimacyInfoPanel
                 characterId={params.characterId}
                 currentLevel={relationshipLevel || 1}
                 currentXp={cachedIntimacy?.totalXp || 0}
-                xpProgress={cachedIntimacy ? 
-                  Math.min(100, (cachedIntimacy.xpProgressInLevel / Math.max(1, cachedIntimacy.xpForNextLevel - cachedIntimacy.xpForCurrentLevel)) * 100) 
+                xpProgress={cachedIntimacy ?
+                  Math.min(100, (cachedIntimacy.xpProgressInLevel / Math.max(1, cachedIntimacy.xpForNextLevel - cachedIntimacy.xpForCurrentLevel)) * 100)
                   : 0
                 }
               />
@@ -1319,23 +1271,23 @@ export default function ChatScreen() {
               gift.price,
               gift.xp_reward
             );
-            
+
             if (!giftResult.success) {
-              const errorMessage = giftResult.error === 'insufficient_credits' 
-                ? '金币不足' 
+              const errorMessage = giftResult.error === 'insufficient_credits'
+                ? '金币不足'
                 : '系统异常，请稍后再试';
               Alert.alert('送礼失败', errorMessage);
               return;
             }
-            
+
             // 更新本地钱包状态
             if (giftResult.new_balance !== undefined) {
               updateWallet({ totalCredits: giftResult.new_balance });
             }
-          
+
             // 2. 触发礼物特效
             setTimeout(() => triggerGiftEffect(gift.gift_type as GiftType), 300);
-          
+
             // 3. AI 回复
             const giftIcon = gift.icon || '🎁';
             const giftReactions: Record<string, string[]> = {
@@ -1356,10 +1308,10 @@ export default function ChatScreen() {
                 `是钻戒诶！${giftIcon} 我从来没收到过这么贵重的礼物！💍❤️`,
               ],
             };
-            
+
             const reactions = giftReactions[gift.gift_type] || giftReactions.rose;
             const reactionMessage = giftResult.ai_response || reactions[Math.floor(Math.random() * reactions.length)];
-            
+
             // 添加送礼消息到聊天 (保持对话完整性)
             if (sessionId) {
               // 先添加送礼事件 (显示为 system 消息)
@@ -1371,7 +1323,7 @@ export default function ChatScreen() {
                 createdAt: new Date().toISOString(),
               };
               addMessage(giftEventMessage);
-              
+
               // 再添加 AI 回复
               if (reactionMessage) {
                 const aiMessage: Message = {
@@ -1382,17 +1334,17 @@ export default function ChatScreen() {
                 };
                 addMessage(aiMessage);
               }
-              
+
               // inverted list: 新消息在顶部，不需要滚动
             }
-            
+
             // 4. 更新亲密度 (支持一次升多级)
             const xpAwarded = giftResult.xp_awarded || gift.xp_reward;
             let currentXp = relationshipXp + xpAwarded;
             let currentMax = relationshipMaxXp;
             let currentLevel = relationshipLevel || 1;
             let levelsGained = 0;
-            
+
             // 循环升级直到经验不足
             while (currentXp >= currentMax) {
               currentXp -= currentMax;
@@ -1400,14 +1352,14 @@ export default function ChatScreen() {
               levelsGained += 1;
               currentMax = Math.round(currentMax * 1.2);
             }
-            
+
             if (levelsGained > 0) {
               setRelationshipLevel(currentLevel);
               setRelationshipXp(currentXp);
               setRelationshipMaxXp(currentMax);
               setNewLevel(currentLevel);
               setTimeout(() => setShowLevelUpModal(true), 3000);
-              
+
               // Update cache
               setIntimacy(params.characterId, {
                 currentLevel: currentLevel,
@@ -1418,7 +1370,7 @@ export default function ChatScreen() {
             } else {
               setRelationshipXp(currentXp);
             }
-            
+
             // 5. 刷新情绪状态（礼物会影响情绪）
             try {
               const updatedEmotion = await emotionService.getStatus(params.characterId);
@@ -1429,7 +1381,7 @@ export default function ChatScreen() {
             } catch (e) {
               console.warn('Failed to refresh emotion after gift:', e);
             }
-            
+
             // 6. 检查瓶颈突破
             if (giftResult.bottleneck_unlocked) {
               setBottleneckLocked(false);
@@ -1443,7 +1395,7 @@ export default function ChatScreen() {
                 );
               }, 2000);
             }
-            
+
             // 7. 刷新亲密度状态（获取最新lock状态）
             try {
               const updatedIntimacy = await intimacyService.getStatus(params.characterId);
@@ -1453,7 +1405,7 @@ export default function ChatScreen() {
             } catch (e) {
               console.warn('Failed to refresh intimacy after gift:', e);
             }
-            
+
           } catch (error: any) {
             Alert.alert('送礼失败', error.message || '请稍后重试');
           }
@@ -1484,7 +1436,7 @@ export default function ChatScreen() {
           setTimeout(() => setShowMemoriesModal(true), 300);
         }}
       />
-      
+
       {/* 📖 剧情阅读弹窗 */}
       <EventStoryModal
         visible={showEventStoryModal}
@@ -1511,7 +1463,7 @@ export default function ChatScreen() {
           console.log('Story generated:', storyId);
         }}
       />
-      
+
       {/* 📖 回忆录弹窗 */}
       <MemoriesModal
         visible={showMemoriesModal}
@@ -1534,7 +1486,7 @@ export default function ChatScreen() {
           }, 300);
         }}
       />
-      
+
       {/* 👗 换装模态框 */}
       <DressupModal
         visible={showDressupModal}
@@ -1550,7 +1502,7 @@ export default function ChatScreen() {
           );
         }}
       />
-      
+
       {/* 💕 约会模态框 (简单模式) */}
       <DateModal
         visible={showDateModal}
@@ -1573,7 +1525,7 @@ export default function ChatScreen() {
           }
         }}
       />
-      
+
       {/* 💕 互动式约会 (沉浸模式) */}
       <DateSceneModal
         visible={showDateSceneModal}
@@ -1595,7 +1547,7 @@ export default function ChatScreen() {
           } catch (e) {
             console.warn('Failed to refresh after date:', e);
           }
-          
+
           // 🎉 显示第一次约会庆祝弹窗
           if (result?.ending || result?.rewards) {
             setFirstDateResult({
@@ -1608,7 +1560,7 @@ export default function ChatScreen() {
           }
         }}
       />
-      
+
       {/* 🎉 第一次约会庆祝弹窗 */}
       <Modal
         visible={showFirstDateCelebration}
@@ -1634,7 +1586,7 @@ export default function ChatScreen() {
             <Text style={styles.levelUpDesc}>
               获得 {firstDateResult?.xp || 0} XP
             </Text>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.levelUpButton}
               onPress={() => setShowFirstDateCelebration(false)}
             >
@@ -1643,7 +1595,7 @@ export default function ChatScreen() {
                 style={styles.levelUpButtonGradient}
               >
                 <Text style={styles.levelUpButtonText}>
-                  {firstDateResult?.ending === 'perfect' || firstDateResult?.ending === 'good' 
+                  {firstDateResult?.ending === 'perfect' || firstDateResult?.ending === 'good'
                     ? '太开心了！' : '下次加油！'}
                 </Text>
               </LinearGradient>
@@ -1651,7 +1603,7 @@ export default function ChatScreen() {
           </View>
         </View>
       </Modal>
-      
+
       {/* 💕 进行中的约会提醒弹窗 */}
       <Modal
         visible={showActiveDateAlert}
@@ -1710,7 +1662,7 @@ export default function ChatScreen() {
           </View>
         </View>
       </Modal>
-      
+
       {/* 📸 照片预览Modal */}
       <Modal
         visible={showPhotoPreview}
@@ -1721,13 +1673,13 @@ export default function ChatScreen() {
         <View style={styles.photoPreviewOverlay}>
           <View style={styles.photoPreviewContainer}>
             {/* 关闭按钮 */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.photoPreviewClose}
               onPress={() => setShowPhotoPreview(false)}
             >
               <Ionicons name="close" size={28} color="#fff" />
             </TouchableOpacity>
-            
+
             {/* 照片 */}
             {newPhotoUri && (
               <Image
@@ -1736,11 +1688,11 @@ export default function ChatScreen() {
                 resizeMode="contain"
               />
             )}
-            
+
             {/* 标题 */}
             <Text style={styles.photoPreviewTitle}>📸 新照片！</Text>
             <Text style={styles.photoPreviewSubtitle}>已保存到相册</Text>
-            
+
             {/* 操作按钮 */}
             <View style={styles.photoPreviewButtons}>
               <TouchableOpacity
@@ -1759,7 +1711,7 @@ export default function ChatScreen() {
           </View>
         </View>
       </Modal>
-      
+
       {/* Toast Notification */}
       {toastMessage && (
         <View style={styles.toastContainer}>
@@ -2628,7 +2580,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  
+
   // Toast styles
   toastContainer: {
     position: 'absolute',

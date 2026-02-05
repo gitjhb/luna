@@ -261,9 +261,17 @@ export default function CharacterProfileScreen() {
             
             {/* Intimacy Level Badge */}
             <View style={styles.levelBadge}>
-              <Ionicons name="heart" size={16} color="#EC4899" />
+              <Ionicons 
+                name={character.characterType === 'buddy' ? 'paw' : 'heart'} 
+                size={16} 
+                color={character.characterType === 'buddy' ? '#63C7FF' : '#EC4899'} 
+              />
               <Text style={styles.levelText}>Lv.{currentLevel}</Text>
-              <Text style={styles.stageText}>{getStageName(currentLevel)}</Text>
+              <Text style={styles.stageText}>
+                {character.characterType === 'buddy' 
+                  ? (currentLevel <= 3 ? '🐾 路人' : currentLevel <= 10 ? '😼 认识' : currentLevel <= 25 ? '🤝 搭子' : currentLevel <= 40 ? '💪 铁哥们' : '🫂 过命交情')
+                  : getStageName(currentLevel)}
+              </Text>
             </View>
             
             {/* Personality Tags */}

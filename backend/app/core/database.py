@@ -105,7 +105,7 @@ async def init_db():
         from app.models.database.chat_models import Base as ChatBase
         from app.models.database.billing_models import Base as BillingBase
         # Import models to register them with Base.metadata
-        from app.models.database import intimacy_models, gift_models, payment_models, emotion_models, stats_models, user_settings_models, referral_models, date_models, image_models
+        from app.models.database import intimacy_models, gift_models, payment_models, emotion_models, stats_models, user_settings_models, referral_models, date_models, image_models, interest_models
         # Import memory v2 models to create tables
         from app.models.database import memory_v2_models
         # Import stamina models for 体力系统

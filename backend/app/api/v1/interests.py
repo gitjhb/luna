@@ -132,6 +132,14 @@ async def update_user_interests(request: Request, body: UpdateUserInterestsReque
     user = getattr(request.state, "user", None)
     user_id = str(user.user_id) if user else "demo-user-123"
     
+    # Max 5 interests
+    MAX_INTERESTS = 5
+    if len(body.interest_ids) > MAX_INTERESTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_INTERESTS} interests allowed, got {len(body.interest_ids)}"
+        )
+    
     # Validate interest IDs
     valid_ids = {i["id"] for i in PREDEFINED_INTERESTS}
     invalid_ids = set(body.interest_ids) - valid_ids

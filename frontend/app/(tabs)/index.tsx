@@ -156,11 +156,12 @@ export default function CompanionsScreen() {
               <View style={styles.cardContent}>
                 <View style={styles.cardHeader}>
                   <Text style={styles.characterName}>{character.name}</Text>
-                  {character.isSpicy && (
-                    <View style={styles.spicyBadge}>
-                      <Ionicons name="flame" size={14} color="#FF6B6B" />
+                  {character.characterType === 'buddy' ? (
+                    <View style={styles.buddyBadge}>
+                      <Text style={styles.buddyBadgeText}>搭子</Text>
                     </View>
-                  )}
+                  ) : null}
+                  {/* Spicy badge hidden for App Store compliance */}
                 </View>
                 <Text style={styles.characterDesc} numberOfLines={2}>
                   {character.description}
@@ -306,6 +307,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 107, 107, 0.2)',
     padding: 6,
     borderRadius: 12,
+  },
+  buddyBadge: {
+    backgroundColor: 'rgba(99, 199, 255, 0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  buddyBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#63C7FF',
   },
   characterDesc: {
     fontSize: 14,

@@ -146,8 +146,9 @@ class BillingMiddleware(BaseHTTPMiddleware):
             cost_type = None
             
             if endpoint_type == "chat" and billing.is_spicy_mode:
-                actual_cost = CREDIT_COSTS.get("chat_spicy", 2.0)
-                cost_type = "spicy"
+                # Spicy mode 不再消耗金币
+                actual_cost = 0.0
+                cost_type = None
             elif endpoint_type == "voice_tts":
                 actual_cost = CREDIT_COSTS.get("voice_tts", 2.0)
                 cost_type = "voice_tts"

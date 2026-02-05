@@ -123,32 +123,63 @@ class ChatPipelineV4:
             # 5. 获取对话上下文
             context_messages = await self._get_context_messages(request.session_id)
             
+            # 5.5 先存用户消息（确保 DB 立即可查，避免前端 refetch 时消息消失）
+            await chat_repo.add_message(
+                session_id=request.session_id,
+                role="user",
+                content=request.message,
+                tokens_used=0
+            )
+            
+            # 5.6 获取用户兴趣
+            user_interests = await self._load_user_interests(request.user_id)
+            
+            # 5.7 获取记忆上下文
+            memory_context_str = await self._load_memory_context(
+                request.user_id, request.character_id,
+                request.message, context_messages,
+                getattr(user_state, 'intimacy_level', 1)
+            )
+            
             # 6. 构建System Prompt
             system_prompt = prompt_builder_v4.build_system_prompt(
                 user_state=user_state,
                 character_id=request.character_id,
                 precompute_result=precompute_result,
-                context_messages=context_messages
+                context_messages=context_messages,
+                memory_context=memory_context_str,
+                user_interests=user_interests
             )
             
-            # 7. 单次LLM调用
-            llm_response = await self._call_llm(system_prompt, request.message)
+            # 6.5 日志：打印完整 System Prompt（方便调试）
+            logger.info(f"📝 === FULL SYSTEM PROMPT ({len(system_prompt)} chars) ===\n{system_prompt}\n=== END SYSTEM PROMPT ===")
+            
+            # 7. 单次LLM调用（包含对话历史）
+            llm_response = await self._call_llm(system_prompt, request.message, context_messages)
+            
+            # 7.5 日志：LLM 原始返回
+            logger.info(f"🤖 LLM raw response: {llm_response['content'][:500]}")
             
             # 8. JSON解析
             parsed_response = json_parser.parse_llm_response(llm_response["content"])
             
-            # 9. 存储消息
-            message_id = await self._store_messages(
-                request.session_id,
-                request.user_id,
-                request.message,
-                parsed_response.reply,
-                llm_response["tokens_used"]
+            # 9. 存储助手回复（用户消息已在步骤5.5存储）
+            assistant_msg = await chat_repo.add_message(
+                session_id=request.session_id,
+                role="assistant",
+                content=parsed_response.reply,
+                tokens_used=llm_response["tokens_used"]
             )
+            message_id = assistant_msg["message_id"]
             
-            # 10. 异步后置更新
+            # 10. 异步后置更新（包括记忆提取）
             asyncio.create_task(
-                self._async_post_update(user_state, precompute_result, parsed_response)
+                self._async_post_update(
+                    user_state, precompute_result, parsed_response,
+                    user_message=request.message,
+                    assistant_reply=parsed_response.reply,
+                    context_messages=context_messages,
+                )
             )
             
             # 11. 构建响应
@@ -238,6 +269,74 @@ class ChatPipelineV4:
             logger.warning(f"Failed to load user state: {e}")
             return UserStateV4(user_id=user_id, character_id=character_id)
     
+    async def _load_user_interests(self, user_id: str) -> List[str]:
+        """加载用户兴趣标签（display_name列表，最多5个）"""
+        try:
+            from app.core.database import get_db
+            from sqlalchemy import select
+            from app.models.database.interest_models import user_interests as ui_table
+            from app.api.v1.interests import PREDEFINED_INTERESTS
+            
+            async with get_db() as db:
+                result = await db.execute(
+                    select(ui_table.c.interest_id).where(
+                        ui_table.c.user_id == user_id
+                    )
+                )
+                interest_ids = [row[0] for row in result.fetchall()]
+            
+            if not interest_ids:
+                return []
+            
+            # Map IDs to display names (strip emoji prefix for cleaner prompt)
+            id_to_name = {i["id"]: i["display_name"] for i in PREDEFINED_INTERESTS}
+            names = [id_to_name[iid] for iid in interest_ids[:5] if iid in id_to_name]
+            
+            if names:
+                logger.info(f"📌 User interests loaded: {names}")
+            
+            return names
+            
+        except Exception as e:
+            logger.warning(f"Failed to load user interests: {e}")
+            return []
+    
+    async def _load_memory_context(
+        self, user_id: str, character_id: str,
+        current_message: str, context_messages: List[Dict[str, str]],
+        intimacy_level: int
+    ) -> str:
+        """加载记忆上下文并生成 prompt 文本"""
+        try:
+            from app.services.memory_integration_service import (
+                get_memory_context_for_chat,
+                generate_memory_prompt,
+            )
+            
+            memory_ctx = await get_memory_context_for_chat(
+                user_id=user_id,
+                character_id=character_id,
+                current_message=current_message,
+                working_memory=context_messages or [],
+            )
+            
+            if memory_ctx:
+                memory_text = generate_memory_prompt(
+                    memory_context=memory_ctx,
+                    intimacy_level=intimacy_level,
+                    current_query=current_message,
+                )
+                if memory_text and memory_text.strip():
+                    logger.info(f"🧠 Memory context loaded ({len(memory_text)} chars)")
+                    return memory_text
+            
+            logger.info("🧠 No memory context available")
+            return ""
+            
+        except Exception as e:
+            logger.warning(f"Failed to load memory context: {e}")
+            return ""
+    
     async def _get_context_messages(self, session_id: str) -> List[Dict[str, str]]:
         """获取对话上下文"""
         
@@ -261,13 +360,29 @@ class ChatPipelineV4:
             logger.warning(f"Failed to load context: {e}")
             return []
     
-    async def _call_llm(self, system_prompt: str, user_message: str) -> Dict[str, Any]:
-        """调用LLM"""
+    async def _call_llm(
+        self, system_prompt: str, user_message: str,
+        context_messages: List[Dict[str, str]] = None
+    ) -> Dict[str, Any]:
+        """调用LLM（包含对话历史）"""
         
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
         ]
+        
+        # 注入对话历史（最近10轮）
+        if context_messages:
+            for msg in context_messages:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role in ("user", "assistant") and content:
+                    messages.append({"role": role, "content": content})
+        
+        # 当前用户消息
+        messages.append({"role": "user", "content": user_message})
+        
+        logger.info(f"📨 LLM call: {len(messages)} messages "
+                    f"(1 system + {len(messages)-2} history + 1 current)")
         
         try:
             response = await self.grok_service.chat_completion(
@@ -294,7 +409,7 @@ class ChatPipelineV4:
         assistant_reply: str,
         tokens_used: int
     ) -> str:
-        """存储对话消息"""
+        """存储对话消息 (legacy, 现在主流程在 process_message 中分步存储)"""
         
         # 存储用户消息
         await chat_repo.add_message(
@@ -318,17 +433,40 @@ class ChatPipelineV4:
         self,
         user_state: UserStateV4,
         precompute_result: PrecomputeResult,
-        parsed_response: ParsedResponse
+        parsed_response: ParsedResponse,
+        user_message: str = "",
+        assistant_reply: str = "",
+        context_messages: List[Dict[str, str]] = None,
     ) -> None:
-        """异步后置更新（情绪、XP、事件）"""
+        """异步后置更新（情绪、XP、事件、记忆提取）"""
         
         try:
-            # 1. 更新情绪
+            # 1. 更新情绪（带阶段瓶颈锁）
             if parsed_response.emotion_delta != 0:
+                delta = parsed_response.emotion_delta
+                
+                # 阶段瓶颈锁：硬性上限（后端兜底，防止 AI 无视 prompt 指令）
+                if delta > 0:
+                    from app.services.intimacy_constants import get_stage, RelationshipStage
+                    intimacy = int(getattr(user_state, 'intimacy_x', 0))
+                    stage = get_stage(intimacy)
+                    
+                    stage_caps = {
+                        RelationshipStage.S0_STRANGER: 8,
+                        RelationshipStage.S1_FRIEND: 8,
+                        RelationshipStage.S2_CRUSH: 10,
+                        # S3/S4 无上限
+                    }
+                    cap = stage_caps.get(stage)
+                    if cap and delta > cap:
+                        logger.info(f"🔒 Stage cap applied: {stage.name} caps delta "
+                                   f"from {delta:+d} to +{cap}")
+                        delta = cap
+                
                 await self._update_emotion(
                     user_state.user_id,
                     user_state.character_id,
-                    parsed_response.emotion_delta
+                    delta
                 )
             
             # 2. 奖励XP
@@ -345,10 +483,42 @@ class ChatPipelineV4:
                 parsed_response
             )
             
+            # 4. 记忆提取（从对话中提取用户信息和重要事件）
+            if user_message:
+                await self._extract_memory(
+                    user_state.user_id,
+                    user_state.character_id,
+                    user_message,
+                    assistant_reply,
+                    context_messages or [],
+                )
+            
             logger.info(f"✅ Post-update completed for user {user_state.user_id}")
             
         except Exception as e:
             logger.error(f"❌ Post-update failed: {e}", exc_info=True)
+    
+    async def _extract_memory(
+        self, user_id: str, character_id: str,
+        user_message: str, assistant_reply: str,
+        context_messages: List[Dict[str, str]]
+    ) -> None:
+        """从对话中提取记忆（语义+情节）"""
+        try:
+            from app.services.memory_integration_service import process_conversation_for_memory
+            
+            result = await process_conversation_for_memory(
+                user_id=user_id,
+                character_id=character_id,
+                user_message=user_message,
+                assistant_response=assistant_reply,
+                context=context_messages,
+            )
+            
+            if result.get("semantic_updated") or result.get("episodic_created"):
+                logger.info(f"🧠 Memory extracted: {result.get('updates', {})}")
+        except Exception as e:
+            logger.warning(f"Memory extraction failed: {e}")
     
     # 近期 emotion delta 历史（用于递减防刷）
     _recent_deltas: dict = {}  # key -> list of (timestamp, delta)

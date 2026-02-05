@@ -15,6 +15,8 @@ export interface Character {
   personalityTraits: string[];
   tierRequired: 'free' | 'premium' | 'vip';
   isSpicy: boolean;
+  isRomanceable?: boolean;  // 是否可攻略（搭子型为 false）
+  characterType?: 'romantic' | 'buddy';  // 角色类型
   tags: string[];
   greeting?: string;  // 角色开场白
   createdAt?: string;

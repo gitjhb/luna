@@ -24,6 +24,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 // 视频资源映射
 const VIDEO_ASSETS: Record<string, any> = {
   'sakura_beach_reward': require('../assets/characters/sakura/videos/beach_reward.mp4'),
+  'vera_intro': require('../assets/characters/vera/videos/intro.mp4'),
   // 后续添加更多视频
 };
 
