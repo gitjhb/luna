@@ -8,6 +8,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { theme, ThemeProvider, useTheme } from '../theme/config';
+import { LocaleProvider } from '../i18n';
 import { useChatStore } from '../store/chatStore';
 import { useUserStore } from '../store/userStore';
 import { useGiftStore } from '../store/giftStore';
@@ -92,9 +93,11 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <HydrationGate>
-          <ThemedLayout />
-        </HydrationGate>
+        <LocaleProvider>
+          <HydrationGate>
+            <ThemedLayout />
+          </HydrationGate>
+        </LocaleProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

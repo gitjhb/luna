@@ -25,6 +25,7 @@ import { Character } from '../../types';
 import { characterService } from '../../services/characterService';
 import SettingsDrawer from '../../components/SettingsDrawer';
 import MockModeBanner from '../../components/MockModeBanner';
+import { useLocale, tt } from '../../i18n';
 import { getCharacterAvatar, getCharacterBackground } from '../../assets/characters';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -33,6 +34,7 @@ const CARD_WIDTH = SCREEN_WIDTH - 48;
 export default function CompanionsScreen() {
   const router = useRouter();
   const { theme } = useTheme();
+  const { t } = useLocale();
   const { user, wallet } = useUserStore();
   
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -101,8 +103,8 @@ export default function CompanionsScreen() {
           </TouchableOpacity>
           
           <View style={styles.headerCenter}>
-            <Text style={styles.greeting}>Hi, {user?.displayName || 'there'} 👋</Text>
-            <Text style={styles.subtitle}>选择你的伴侣</Text>
+            <Text style={styles.greeting}>{tt(t.discover.greeting, { name: user?.displayName || 'there' })}</Text>
+            <Text style={styles.subtitle}>{t.discover.subtitle}</Text>
           </View>
           
           <TouchableOpacity style={styles.creditsBadge} onPress={() => router.push('/(tabs)/profile')}>
@@ -116,7 +118,7 @@ export default function CompanionsScreen() {
           <Ionicons name="search" size={18} color={theme.colors.text.tertiary} />
           <TextInput
             style={styles.searchInput}
-            placeholder="搜索..."
+            placeholder={t.discover.searchPlaceholder}
             placeholderTextColor={theme.colors.text.tertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -158,7 +160,7 @@ export default function CompanionsScreen() {
                   <Text style={styles.characterName}>{character.name}</Text>
                   {character.characterType === 'buddy' ? (
                     <View style={styles.buddyBadge}>
-                      <Text style={styles.buddyBadgeText}>搭子</Text>
+                      <Text style={styles.buddyBadgeText}>{t.discover.buddy}</Text>
                     </View>
                   ) : null}
                   {/* Spicy badge hidden for App Store compliance */}

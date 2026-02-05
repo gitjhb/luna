@@ -12,11 +12,13 @@ import { useUserStore } from '../../store/userStore';
 import { walletService } from '../../services/walletService';
 import { paymentService } from '../../services/paymentService';
 import { colors, spacing, radius, typography } from '../../theme/designSystem';
+import { useLocale } from '../../i18n';
 
 export default function TabsLayout() {
   const router = useRouter();
   const segments = useSegments();
   const { theme } = useTheme();
+  const { t } = useLocale();
   const { sessions, messagesBySession } = useChatStore();
   const { updateWallet } = useUserStore();
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -125,7 +127,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="chats"
         options={{
-          title: '消息',
+          title: t.tabs.messages,
           tabBarIcon: ({ color, focused }) => (
             <TabIcon 
               name={focused ? 'chatbubbles' : 'chatbubbles-outline'} 
@@ -140,7 +142,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: '发现',
+          title: t.tabs.discover,
           tabBarIcon: ({ color, focused }) => (
             <TabIcon 
               name={focused ? 'search' : 'search-outline'} 
@@ -154,7 +156,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: '我',
+          title: t.tabs.me,
           tabBarIcon: ({ color, focused }) => (
             <TabIcon 
               name={focused ? 'person' : 'person-outline'} 

@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, themeList } from '../theme/config';
+import { useLocale, Locale } from '../i18n';
 import { useUserStore } from '../store/userStore';
 import { useChatStore } from '../store/chatStore';
 
@@ -68,6 +69,7 @@ export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps
   const fadeAnim = useRef(new Animated.Value(0)).current;
   
   const { user, logout, isSubscribed } = useUserStore();
+  const { t, locale, setLocale } = useLocale();
   // chatStore import kept for potential future use
 
   useEffect(() => {
@@ -108,10 +110,10 @@ export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps
   }, [visible]);
 
   const handleLogout = () => {
-    Alert.alert('Log Out', 'Are you sure you want to log out?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t.settings.logOut, t.settings.logOutConfirm, [
+      { text: t.settings.cancel, style: 'cancel' },
       {
-        text: 'Log Out',
+        text: t.settings.logOut,
         style: 'destructive',
         onPress: () => {
           onClose();
@@ -119,6 +121,20 @@ export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps
           router.replace('/auth/login');
         },
       },
+    ]);
+  };
+
+  const handleLanguagePress = () => {
+    Alert.alert(t.settings.language, '', [
+      {
+        text: '简体中文',
+        onPress: () => setLocale('zh'),
+      },
+      {
+        text: 'English',
+        onPress: () => setLocale('en'),
+      },
+      { text: t.settings.cancel, style: 'cancel' },
     ]);
   };
 
@@ -150,7 +166,7 @@ export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>设置</Text>
+          <Text style={styles.headerTitle}>{t.settings.title}</Text>
           <TouchableOpacity style={styles.closeButton} onPress={onClose}>
             <Ionicons name="close" size={24} color="#fff" />
           </TouchableOpacity>
@@ -176,32 +192,32 @@ export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps
 
           {/* Preferences */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Preferences</Text>
+            <Text style={styles.sectionTitle}>{t.settings.preferences}</Text>
             <View style={styles.sectionContent}>
               <SettingItem
                 icon="notifications-outline"
-                title="Notifications"
+                title={t.settings.notifications}
                 onPress={() => {}}
               />
               <SettingItem
                 icon="language-outline"
-                title="Language"
-                subtitle="简体中文"
-                onPress={() => {}}
+                title={t.settings.language}
+                subtitle={locale === 'zh' ? t.settings.languageZh : t.settings.languageEn}
+                onPress={handleLanguagePress}
               />
             </View>
           </View>
 
           {/* Theme Selection */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>主题风格</Text>
+            <Text style={styles.sectionTitle}>{t.settings.themeStyle}</Text>
             <View style={[styles.sectionContent, { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingVertical: 8 }]}>
-              {themeList.map((t) => {
-                const isActive = themeId === t.id;
-                const isCyberpunk = t.id === 'cyberpunk-2077';
+              {themeList.map((themeItem) => {
+                const isActive = themeId === themeItem.id;
+                const isCyberpunk = themeItem.id === 'cyberpunk-2077';
                 return (
                   <TouchableOpacity
-                    key={t.id}
+                    key={themeItem.id}
                     style={[
                       styles.themeCard,
                       isActive && { borderColor: theme.colors.primary.main, borderWidth: 2 },
@@ -213,13 +229,13 @@ export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps
                         shadowRadius: 8,
                       }
                     ]}
-                    onPress={() => setTheme(t.id)}
+                    onPress={() => setTheme(themeItem.id)}
                   >
-                    <Text style={styles.themeIcon}>{t.icon}</Text>
+                    <Text style={styles.themeIcon}>{themeItem.icon}</Text>
                     <Text style={[
                       styles.themeName,
                       isActive && isCyberpunk && { color: '#00F0FF' }
-                    ]}>{t.nameCn}</Text>
+                    ]}>{locale === 'en' ? themeItem.name : themeItem.nameCn}</Text>
                     {isActive && (
                       <Ionicons name="checkmark-circle" size={16} color={theme.colors.primary.main} style={{ position: 'absolute', top: 4, right: 4 }} />
                     )}
@@ -231,21 +247,21 @@ export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps
 
           {/* Support */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Support</Text>
+            <Text style={styles.sectionTitle}>{t.settings.support}</Text>
             <View style={styles.sectionContent}>
               <SettingItem
                 icon="help-circle-outline"
-                title="Help Center"
+                title={t.settings.helpCenter}
                 onPress={() => {}}
               />
               <SettingItem
                 icon="star-outline"
-                title="Rate App"
+                title={t.settings.rateApp}
                 onPress={() => {}}
               />
               <SettingItem
                 icon="document-text-outline"
-                title="Terms & Privacy"
+                title={t.settings.termsPrivacy}
                 onPress={() => {}}
               />
             </View>
@@ -256,7 +272,7 @@ export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps
             <View style={styles.sectionContent}>
               <SettingItem
                 icon="log-out-outline"
-                title="Log Out"
+                title={t.settings.logOut}
                 onPress={handleLogout}
                 danger
               />
