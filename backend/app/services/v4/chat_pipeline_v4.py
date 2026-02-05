@@ -586,21 +586,39 @@ class ChatPipelineV4:
         return adjusted
     
     async def _update_emotion(self, user_id: str, character_id: str, delta: int) -> None:
-        """更新情绪分数（带递减防刷）"""
+        """更新情绪分数（带递减防刷 + 边界软着陆）"""
         
         try:
-            # 应用递减效应
+            from app.services.emotion_engine_v2 import emotion_engine
+            
+            # 获取当前分数，做边界软着陆
+            current = await emotion_engine.get_score(user_id, character_id)
+            original_delta = delta
+            
+            # 边界软着陆：越接近 ±100，delta 越小
+            if delta > 0 and current > 80:
+                # 剩余空间比例：current=80 → 100%, current=100 → 0%
+                remaining_ratio = max(0.05, (100 - current) / 20)
+                delta = max(1, int(delta * remaining_ratio))
+            elif delta < 0 and current < -80:
+                remaining_ratio = max(0.05, (current + 100) / 20)
+                delta = min(-1, int(delta * remaining_ratio))
+            
+            if delta != original_delta:
+                logger.info(f"📊 Boundary softening: score={current}, "
+                           f"delta {original_delta:+d} → {delta:+d}")
+            
+            # 应用连续递减效应
             adjusted_delta = self._apply_diminishing_returns(user_id, character_id, delta)
             
-            from app.services.emotion_engine_v2 import emotion_engine
             await emotion_engine.update_score(
                 user_id, character_id, adjusted_delta, 
                 reason="v4_pipeline_update"
             )
-            if adjusted_delta != delta:
-                logger.info(f"📊 Emotion updated: {adjusted_delta:+d} (AI wanted {delta:+d})")
+            if adjusted_delta != original_delta:
+                logger.info(f"📊 Emotion updated: {adjusted_delta:+d} (AI wanted {original_delta:+d}, score was {current})")
             else:
-                logger.info(f"📊 Emotion updated: {delta:+d}")
+                logger.info(f"📊 Emotion updated: {delta:+d} (score: {current} → ~{current+delta})")
         except Exception as e:
             logger.warning(f"Emotion update failed: {e}")
     

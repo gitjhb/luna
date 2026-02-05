@@ -339,7 +339,8 @@ You MUST respond with ONLY a valid JSON object in this exact format:
 - 等级: {getattr(user_state, 'intimacy_level', 1)}{personality_desc}
 
 ⚠️ 重要：这些数值仅供你内部参考，绝不要在回复中说出具体数字！
-⚠️ 你的 emotion_delta 应符合你的性格特征（敏感角色波动大，淡定角色波动小）"""
+⚠️ 你的 emotion_delta 应符合你的性格特征（敏感角色波动大，淡定角色波动小）
+⚠️ 情绪值范围是 -100 到 100。如果已经接近上限(>80)，正向delta应减小(+1~+3)；接近下限(<-80)，负向delta也应减小。不要在已经极端的情况下继续大幅波动。"""
     
     def _level_to_intimacy(self, level: int) -> int:
         """将等级映射到intimacy值"""
