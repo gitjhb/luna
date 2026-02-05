@@ -200,11 +200,13 @@ class IntimacyService:
     # Bottleneck Lock Configuration (瓶颈锁)
     # =========================================================================
     # 在特定等级设置瓶颈锁，XP到达上限后不再增长，必须送特定tier礼物突破
+    # 瓶颈锁在阶段边界 (intimacy 百分制: 19/39/59/79)
+    # 对应 level: intimacy / 2.5 + 1 → Lv.8/16/24/32
     BOTTLENECK_LEVELS = {
-        19: {"required_gift_tier": 2, "meaning": "从朋友到暧昧", "tier_name": "Tier 2+ (状态触发器)"},
-        39: {"required_gift_tier": 3, "meaning": "从暧昧到恋人", "tier_name": "Tier 3+ (关系加速器)"},
-        59: {"required_gift_tier": 3, "meaning": "深入恋人关系", "tier_name": "Tier 3+ (关系加速器)"},
-        79: {"required_gift_tier": 4, "meaning": "进入挚爱阶段", "tier_name": "Tier 4 (榜一大哥尊享)"},
+        8:  {"required_gift_tier": 2, "meaning": "从陌生人到朋友", "tier_name": "Tier 2+ (状态触发器)", "intimacy_threshold": 19},
+        16: {"required_gift_tier": 2, "meaning": "从朋友到暧昧", "tier_name": "Tier 2+ (状态触发器)", "intimacy_threshold": 39},
+        24: {"required_gift_tier": 3, "meaning": "从暧昧到恋人", "tier_name": "Tier 3+ (关系加速器)", "intimacy_threshold": 59},
+        32: {"required_gift_tier": 4, "meaning": "进入挚爱阶段", "tier_name": "Tier 4 (榜一大哥尊享)", "intimacy_threshold": 79},
     }
 
     @classmethod
