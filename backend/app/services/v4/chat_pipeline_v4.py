@@ -441,10 +441,13 @@ class ChatPipelineV4:
         """异步后置更新（情绪、XP、事件、记忆提取）"""
         
         try:
+            # 0. 回复-情绪一致性校验：AI 的 reply 和 delta 必须匹配
+            delta = parsed_response.emotion_delta
+            reply = parsed_response.reply or ""
+            delta = self._enforce_reply_emotion_consistency(reply, delta)
+            
             # 1. 更新情绪（带阶段瓶颈锁）
-            if parsed_response.emotion_delta != 0:
-                delta = parsed_response.emotion_delta
-                
+            if delta != 0:
                 # 阶段瓶颈 × 角色性格系数（后端兜底，防止 AI 无视 prompt 指令）
                 if delta > 0:
                     from app.services.intimacy_constants import get_stage, RelationshipStage
@@ -512,6 +515,54 @@ class ChatPipelineV4:
             
         except Exception as e:
             logger.error(f"❌ Post-update failed: {e}", exc_info=True)
+    
+    # 回复情绪关键词（越靠前权重越高）
+    _DISTRESS_KEYWORDS = ["哭", "泪", "呜", "呜呜", "哽咽", "啜泣", "抽泣", "眼泪", "泪水",
+                          "崩溃", "心碎", "心痛", "绝望", "伤心", "难过", "痛苦", "委屈"]
+    _ANGER_KEYWORDS = ["怒", "愤怒", "生气", "暴怒", "摔", "甩", "滚", "冷笑", "冷脸", "咬牙"]
+    _JOY_KEYWORDS = ["开心", "好开心", "幸福", "超级开心", "高兴", "甜蜜", "心花怒放", "蹦蹦跳跳"]
+    
+    def _enforce_reply_emotion_consistency(self, reply: str, delta: int) -> int:
+        """
+        回复-情绪一致性校验
+        
+        如果 AI 的回复文本明显表达强烈情绪，但 delta 不够匹配，
+        则强制调整 delta 到合理范围。
+        
+        规则：
+        - 哭/崩溃/心碎 → delta 至少 -25
+        - 生气/愤怒 → delta 至少 -20
+        - 超级开心/蹦跳 → delta 至少 +10
+        """
+        original = delta
+        
+        # 统计 distress 关键词命中数
+        distress_hits = sum(1 for kw in self._DISTRESS_KEYWORDS if kw in reply)
+        anger_hits = sum(1 for kw in self._ANGER_KEYWORDS if kw in reply)
+        joy_hits = sum(1 for kw in self._JOY_KEYWORDS if kw in reply)
+        
+        # 哭泣/崩溃：命中>=2个关键词，delta 至少 -25；命中>=1，至少 -15
+        if distress_hits >= 2 and delta > -25:
+            delta = min(delta, -25)
+        elif distress_hits >= 1 and delta > -15:
+            delta = min(delta, -15)
+        
+        # 愤怒：命中>=2，至少 -20；命中>=1，至少 -12
+        if anger_hits >= 2 and delta > -20:
+            delta = min(delta, -20)
+        elif anger_hits >= 1 and delta > -12:
+            delta = min(delta, -12)
+        
+        # 开心：命中>=2，至少 +10（防止嘴上开心但 delta 为负）
+        if joy_hits >= 2 and delta < 10:
+            delta = max(delta, 10)
+        
+        if delta != original:
+            logger.info(f"🎭 Reply-emotion consistency fix: "
+                       f"delta {original:+d} → {delta:+d} "
+                       f"(distress={distress_hits}, anger={anger_hits}, joy={joy_hits})")
+        
+        return delta
     
     async def _extract_memory(
         self, user_id: str, character_id: str,
