@@ -379,6 +379,21 @@ class GiftService:
                     db.add(transaction_obj)
                     await db.commit()
             
+            # Step 6.5: Check and unlock bottleneck lock if applicable
+            bottleneck_unlocked = False
+            bottleneck_unlock_result = None
+            
+            # Check if user is currently bottleneck-locked
+            lock_status = await intimacy_service.get_bottleneck_lock_status(user_id, character_id)
+            if lock_status.get("is_locked"):
+                # Try to unlock with this gift's tier
+                bottleneck_unlock_result = await intimacy_service.unlock_bottleneck(
+                    user_id, character_id, tier
+                )
+                if bottleneck_unlock_result.get("unlocked"):
+                    bottleneck_unlocked = True
+                    logger.info(f"🔓 Bottleneck unlocked at Lv.{lock_status.get('lock_level')} with Tier {tier} gift")
+            
             # Step 7: Award XP
             xp_result = await intimacy_service.award_xp(
                 user_id, 
@@ -388,13 +403,15 @@ class GiftService:
             )
             actual_xp = xp_result.get("xp_awarded", 0)
             
-            # Add gift-specific bonus XP
+            # Add gift-specific bonus XP (skip if bottleneck locked and XP was 0)
             bonus_xp = max(0, xp_reward - actual_xp)
             if bonus_xp > 0:
-                intimacy = await intimacy_service.get_or_create_intimacy(user_id, character_id)
-                intimacy["total_xp"] += bonus_xp
-                intimacy["daily_xp_earned"] += bonus_xp
-                actual_xp += bonus_xp
+                # Check if still locked (award_xp might have returned 0 due to lock)
+                if not xp_result.get("bottleneck_locked"):
+                    intimacy = await intimacy_service.get_or_create_intimacy(user_id, character_id)
+                    intimacy["total_xp"] += bonus_xp
+                    intimacy["daily_xp_earned"] += bonus_xp
+                    actual_xp += bonus_xp
             
             logger.info(f"XP awarded: {actual_xp}")
             
@@ -483,6 +500,8 @@ class GiftService:
                 "new_level": xp_result.get("new_level"),
                 "new_stage": xp_result.get("new_stage"),
                 "status_effect_applied": status_effect_applied,
+                "bottleneck_unlocked": bottleneck_unlocked,
+                "bottleneck_unlock_message": bottleneck_unlock_result.get("message") if bottleneck_unlock_result else None,
             }
             await self.store_idempotency_key(idempotency_key, user_id, gift_id, result)
             
@@ -524,6 +543,8 @@ class GiftService:
                 **result,
                 "cold_war_unlocked": cold_war_unlocked,
                 "emotion_boosted": emotion_boosted,
+                "bottleneck_unlocked": bottleneck_unlocked,
+                "bottleneck_unlock_message": bottleneck_unlock_result.get("message") if bottleneck_unlock_result else None,
                 "ai_response": ai_response,  # AI生成的礼物反应
                 "system_message": self._build_gift_system_message(
                     gift, 

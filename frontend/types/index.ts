@@ -244,6 +244,10 @@ export interface IntimacyStatus {
   dailyXpRemaining: number;
   availableActions: ActionAvailability[];
   unlockedFeatures: string[];
+  // 瓶颈锁
+  bottleneckLocked: boolean;
+  bottleneckLockLevel: number | null;
+  bottleneckRequiredGiftTier: number | null;
   // 统计数据
   totalMessages: number;
   giftsCount: number;

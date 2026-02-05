@@ -64,6 +64,7 @@ import { interactionsService } from '../../services/interactionsService';
 import DressupModal from '../../components/DressupModal';
 import DateModal from '../../components/DateModal';
 import DateSceneModal from '../../components/DateSceneModal';
+import AiDisclaimerBanner from '../../components/AiDisclaimerBanner';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -131,6 +132,11 @@ export default function ChatScreen() {
   const [emotionState, setEmotionState] = useState('neutral');
   const [lastExtraData, setLastExtraData] = useState<ExtraData | null>(null);  // Debug info
   const [lastTokensUsed, setLastTokensUsed] = useState<number>(0);
+  
+  // 🔒 瓶颈锁状态
+  const [bottleneckLocked, setBottleneckLocked] = useState(false);
+  const [bottleneckLockLevel, setBottleneckLockLevel] = useState<number | null>(null);
+  const [bottleneckRequiredTier, setBottleneckRequiredTier] = useState<number | null>(null);
   
   // 📖 剧情系统状态
   const [showEventStoryModal, setShowEventStoryModal] = useState(false);
@@ -255,6 +261,10 @@ export default function ChatScreen() {
           xpForNextLevel: intimacyStatus.xpForNextLevel,
           xpForCurrentLevel: intimacyStatus.xpForCurrentLevel,
         });
+        // Update bottleneck lock status
+        setBottleneckLocked(intimacyStatus.bottleneckLocked || false);
+        setBottleneckLockLevel(intimacyStatus.bottleneckLockLevel || null);
+        setBottleneckRequiredTier(intimacyStatus.bottleneckRequiredGiftTier || null);
       } catch (e) {
         console.log('Intimacy status not available:', e);
         // Only set default if no cached data (default level is 1)
@@ -483,6 +493,10 @@ export default function ChatScreen() {
           xpForNextLevel: updatedIntimacy.xpForNextLevel,
           xpForCurrentLevel: updatedIntimacy.xpForCurrentLevel,
         });
+        // Update bottleneck lock status
+        setBottleneckLocked(updatedIntimacy.bottleneckLocked || false);
+        setBottleneckLockLevel(updatedIntimacy.bottleneckLockLevel || null);
+        setBottleneckRequiredTier(updatedIntimacy.bottleneckRequiredGiftTier || null);
       } catch (e) {
         // Silently fail if intimacy update fails
       }
@@ -897,6 +911,9 @@ export default function ChatScreen() {
       />
 
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        {/* AI Disclaimer Banner - shown once */}
+        <AiDisclaimerBanner />
+
         {/* Header - 简洁版 */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -908,10 +925,33 @@ export default function ChatScreen() {
           </View>
           
           <View style={styles.headerRight}>
-            {/* 小气泡 Level */}
+            {/* 小气泡 Level + 瓶颈锁图标 */}
             <TouchableOpacity style={styles.levelBubble} onPress={() => setShowLevelInfoModal(true)}>
               <Text style={styles.levelBubbleText}>Lv.{relationshipLevel ?? '–'}</Text>
             </TouchableOpacity>
+            {bottleneckLocked && (
+              <TouchableOpacity
+                style={styles.lockBubble}
+                onPress={() => {
+                  const tierNames: Record<number, string> = {
+                    2: 'Tier 2 (状态触发器)',
+                    3: 'Tier 3 (关系加速器)',
+                    4: 'Tier 4 (尊享)',
+                  };
+                  const tierName = bottleneckRequiredTier ? tierNames[bottleneckRequiredTier] || `Tier ${bottleneckRequiredTier}` : '特定';
+                  Alert.alert(
+                    '🔒 亲密度锁定',
+                    `亲密度已到达 Lv.${bottleneckLockLevel} 瓶颈上限\n\n需要送出 ${tierName} 级别礼物才能突破！\n\n点击下方"送礼物"按钮选择合适的礼物`,
+                    [
+                      { text: '知道了', style: 'cancel' },
+                      { text: '🎁 去送礼', onPress: () => setShowGiftModal(true) },
+                    ]
+                  );
+                }}
+              >
+                <Text style={styles.lockBubbleText}>🔒</Text>
+              </TouchableOpacity>
+            )}
             
             {/* 头像按钮替代三个点 */}
             <TouchableOpacity style={styles.avatarButton} onPress={() => setShowCharacterInfo(true)}>
@@ -1267,6 +1307,9 @@ export default function ChatScreen() {
         userCredits={wallet?.totalCredits ?? 0}
         isSubscribed={isSubscribed}
         onRecharge={() => { setShowGiftModal(false); setTimeout(() => setShowRechargeModal(true), 300); }}
+        bottleneckLocked={bottleneckLocked}
+        bottleneckRequiredTier={bottleneckRequiredTier}
+        bottleneckLockLevel={bottleneckLockLevel}
         onSelectGift={async (gift) => {
           try {
             // 1. 调用后端 API
@@ -1385,6 +1428,30 @@ export default function ChatScreen() {
               }
             } catch (e) {
               console.warn('Failed to refresh emotion after gift:', e);
+            }
+            
+            // 6. 检查瓶颈突破
+            if (giftResult.bottleneck_unlocked) {
+              setBottleneckLocked(false);
+              setBottleneckLockLevel(null);
+              setBottleneckRequiredTier(null);
+              // 显示突破庆祝
+              setTimeout(() => {
+                Alert.alert(
+                  '🎉 瓶颈突破！',
+                  giftResult.bottleneck_unlock_message || '亲密度锁定已解除，继续升级吧！',
+                );
+              }, 2000);
+            }
+            
+            // 7. 刷新亲密度状态（获取最新lock状态）
+            try {
+              const updatedIntimacy = await intimacyService.getStatus(params.characterId);
+              setBottleneckLocked(updatedIntimacy.bottleneckLocked || false);
+              setBottleneckLockLevel(updatedIntimacy.bottleneckLockLevel || null);
+              setBottleneckRequiredTier(updatedIntimacy.bottleneckRequiredGiftTier || null);
+            } catch (e) {
+              console.warn('Failed to refresh intimacy after gift:', e);
             }
             
           } catch (error: any) {
@@ -1756,6 +1823,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#fff',
+  },
+  lockBubble: {
+    backgroundColor: 'rgba(239, 68, 68, 0.7)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginLeft: -4,
+  },
+  lockBubbleText: {
+    fontSize: 10,
   },
   avatarButton: {
     width: 44,

@@ -61,6 +61,8 @@ class SendGiftResponse(BaseModel):
     new_level: Optional[int] = None
     status_effect_applied: Optional[StatusEffectInfo] = None
     cold_war_unlocked: bool = False
+    bottleneck_unlocked: bool = False
+    bottleneck_unlock_message: Optional[str] = None
     ai_response: Optional[str] = None
     error: Optional[str] = None
     message: Optional[str] = None
@@ -231,6 +233,8 @@ async def send_gift(request: SendGiftRequest, req: Request):
         new_level=result.get("new_level"),
         status_effect_applied=status_effect_info,
         cold_war_unlocked=result.get("cold_war_unlocked", False),
+        bottleneck_unlocked=result.get("bottleneck_unlocked", False),
+        bottleneck_unlock_message=result.get("bottleneck_unlock_message"),
     )
     
     # Record gift in stats (if not duplicate)

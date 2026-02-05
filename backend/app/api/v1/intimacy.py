@@ -22,6 +22,7 @@ from app.models.schemas.intimacy_schemas import (
     AllStagesResponse,
     FeatureUnlock,
     AllFeaturesResponse,
+    BottleneckLockStatus,
 )
 
 router = APIRouter(prefix="/intimacy")
@@ -65,6 +66,9 @@ async def get_intimacy_status(character_id: UUID, request: Request):
         daily_xp_remaining=status["daily_xp_remaining"],
         available_actions=[ActionAvailability(**a) for a in status["available_actions"]],
         unlocked_features=status["unlocked_features"],
+        bottleneck_locked=status.get("bottleneck_locked", False),
+        bottleneck_lock_level=status.get("bottleneck_lock_level"),
+        bottleneck_required_gift_tier=status.get("bottleneck_required_gift_tier"),
     )
 
 
@@ -305,6 +309,32 @@ async def award_xp_manually(character_id: UUID, action_type: str, request: Reque
         streak_days=result["streak_days"],
         celebration_message=result.get("celebration_message"),
         unlocked_features=result.get("unlocked_features", []),
+    )
+
+
+@router.get("/{character_id}/lock_status", response_model=BottleneckLockStatus)
+async def get_bottleneck_lock_status(character_id: UUID, request: Request):
+    """
+    Get bottleneck lock status for a character.
+
+    Returns whether the intimacy is locked, at which level,
+    what gift tier is needed to unlock, and progress toward the next bottleneck.
+    """
+    user = getattr(request.state, "user", None)
+    if not user:
+        user_id = "demo-user-123"
+    else:
+        user_id = str(user.user_id)
+
+    status = await intimacy_service.get_bottleneck_lock_status(user_id, str(character_id))
+
+    return BottleneckLockStatus(
+        is_locked=status["is_locked"],
+        lock_level=status["lock_level"],
+        required_gift_tier=status["required_gift_tier"],
+        progress_to_lock=status["progress_to_lock"],
+        next_bottleneck_level=status["next_bottleneck_level"],
+        tier_name=status["tier_name"],
     )
 
 

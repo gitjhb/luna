@@ -54,6 +54,11 @@ class IntimacyStatus(BaseModel):
     # Unlocked features at current level
     unlocked_features: List[str] = []
 
+    # Bottleneck lock
+    bottleneck_locked: bool = False
+    bottleneck_lock_level: Optional[int] = None
+    bottleneck_required_gift_tier: Optional[int] = None
+
     # Statistics
     total_messages: int = 0
     gifts_count: int = 0
@@ -87,6 +92,11 @@ class XPAwardResponse(BaseModel):
     # Optional celebration message on level up
     celebration_message: Optional[str] = None
     unlocked_features: List[str] = []
+
+    # Bottleneck lock
+    bottleneck_locked: bool = False
+    bottleneck_lock_level: Optional[int] = None
+    bottleneck_required_gift_tier: Optional[int] = None
 
 
 class LevelUpEvent(BaseModel):
@@ -168,3 +178,13 @@ class AllFeaturesResponse(BaseModel):
     current_level: int
     total_unlocked: int
     total_features: int
+
+
+class BottleneckLockStatus(BaseModel):
+    """Bottleneck lock status for a character"""
+    is_locked: bool = False
+    lock_level: Optional[int] = None
+    required_gift_tier: Optional[int] = None
+    progress_to_lock: float = 0.0  # 0-100%, progress toward the next bottleneck
+    next_bottleneck_level: Optional[int] = None  # next bottleneck level ahead
+    tier_name: Optional[str] = None  # human-readable tier requirement

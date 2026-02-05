@@ -48,6 +48,10 @@ const transformIntimacyStatus = (data: any): IntimacyStatus => ({
     cooldownSeconds: a.cooldown_seconds,
   })),
   unlockedFeatures: data.unlocked_features || [],
+  // 瓶颈锁
+  bottleneckLocked: data.bottleneck_locked || false,
+  bottleneckLockLevel: data.bottleneck_lock_level || null,
+  bottleneckRequiredGiftTier: data.bottleneck_required_gift_tier || null,
   // 统计数据
   totalMessages: data.total_messages || 0,
   giftsCount: data.gifts_count || 0,
@@ -130,6 +134,25 @@ const transformFeaturesResponse = (data: any): AllFeaturesResponse => ({
   totalFeatures: data.total_features,
 });
 
+// Bottleneck lock status type
+export interface BottleneckLockStatus {
+  isLocked: boolean;
+  lockLevel: number | null;
+  requiredGiftTier: number | null;
+  progressToLock: number;
+  nextBottleneckLevel: number | null;
+  tierName: string | null;
+}
+
+const transformLockStatus = (data: any): BottleneckLockStatus => ({
+  isLocked: data.is_locked,
+  lockLevel: data.lock_level,
+  requiredGiftTier: data.required_gift_tier,
+  progressToLock: data.progress_to_lock,
+  nextBottleneckLevel: data.next_bottleneck_level,
+  tierName: data.tier_name,
+});
+
 export const intimacyService = {
   /**
    * Get current intimacy status with a character
@@ -199,6 +222,14 @@ export const intimacyService = {
   awardXP: async (characterId: string, actionType: ActionType): Promise<XPAwardResponse> => {
     const data = await api.post(`/intimacy/${characterId}/award/${actionType}`);
     return transformXPAwardResponse(data);
+  },
+
+  /**
+   * Get bottleneck lock status for a character
+   */
+  getLockStatus: async (characterId: string): Promise<BottleneckLockStatus> => {
+    const data = await api.get(`/intimacy/${characterId}/lock_status`);
+    return transformLockStatus(data);
   },
 };
 

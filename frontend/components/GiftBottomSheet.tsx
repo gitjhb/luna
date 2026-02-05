@@ -73,6 +73,10 @@ interface GiftBottomSheetProps {
   loading?: boolean;
   inColdWar?: boolean;
   onRecharge?: () => void;
+  // 瓶颈锁
+  bottleneckLocked?: boolean;
+  bottleneckRequiredTier?: number | null;
+  bottleneckLockLevel?: number | null;
 }
 
 export default function GiftBottomSheet({
@@ -85,6 +89,9 @@ export default function GiftBottomSheet({
   loading = false,
   inColdWar = false,
   onRecharge,
+  bottleneckLocked = false,
+  bottleneckRequiredTier = null,
+  bottleneckLockLevel = null,
 }: GiftBottomSheetProps) {
   const [selectedTier, setSelectedTier] = useState(1);
   const [selectedGift, setSelectedGift] = useState<GiftItem | null>(null);
@@ -98,6 +105,10 @@ export default function GiftBottomSheet({
       // 如果在冷战中，默认选择 Tier 2 (有悔过书)
       if (inColdWar) {
         setSelectedTier(2);
+      }
+      // 如果瓶颈锁激活，默认选择对应 tier
+      if (bottleneckLocked && bottleneckRequiredTier) {
+        setSelectedTier(bottleneckRequiredTier);
       }
       
       Animated.parallel([
@@ -190,6 +201,7 @@ export default function GiftBottomSheet({
     const isSelected = selectedGift?.gift_type === gift.gift_type;
     const hasEffect = !!gift.status_effect;
     const isApology = gift.clears_cold_war;
+    const canBreakthrough = bottleneckLocked && bottleneckRequiredTier != null && gift.tier >= bottleneckRequiredTier;
     
     return (
       <TouchableOpacity
@@ -197,11 +209,19 @@ export default function GiftBottomSheet({
         style={[
           styles.giftItem,
           isSelected && styles.giftItemSelected,
+          canBreakthrough && styles.giftItemBreakthrough,
           (!affordable || locked) && styles.giftItemDisabled,
         ]}
         onPress={() => handleSelectGift(gift)}
         activeOpacity={0.7}
       >
+        {/* 可突破标签 */}
+        {canBreakthrough && (
+          <View style={styles.breakthroughBadge}>
+            <Text style={styles.breakthroughBadgeText}>可突破</Text>
+          </View>
+        )}
+        
         {/* 礼物图标 */}
         <View style={styles.giftIconContainer}>
           <Text style={styles.giftIcon}>{gift.icon}</Text>
@@ -402,6 +422,16 @@ export default function GiftBottomSheet({
             {GIFT_TIERS.map(renderTierTab)}
           </View>
 
+          {/* 瓶颈锁提示条 */}
+          {bottleneckLocked && (
+            <View style={styles.bottleneckBanner}>
+              <Ionicons name="lock-closed" size={14} color="#F59E0B" />
+              <Text style={styles.bottleneckBannerText}>
+                🔒 亲密度已锁定在 Lv.{bottleneckLockLevel}，送出{getTierNameForBottleneck(bottleneckRequiredTier)}礼物突破
+              </Text>
+            </View>
+          )}
+
           {/* Tier 描述 */}
           <View style={styles.tierDescContainer}>
             <Text style={styles.tierDesc}>
@@ -441,6 +471,17 @@ export default function GiftBottomSheet({
       </Animated.View>
     </Modal>
   );
+}
+
+// 获取瓶颈所需 Tier 名称
+function getTierNameForBottleneck(tier: number | null | undefined): string {
+  if (!tier) return '特定';
+  const names: Record<number, string> = {
+    2: 'Tier 2+ (状态)',
+    3: 'Tier 3+ (加速)',
+    4: 'Tier 4 (尊享)',
+  };
+  return names[tier] || `Tier ${tier}+`;
 }
 
 // 获取效果描述
@@ -583,6 +624,26 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
   },
+  bottleneckBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginHorizontal: 16,
+    marginTop: 10,
+    gap: 8,
+  },
+  bottleneckBannerText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#F59E0B',
+    lineHeight: 16,
+  },
   tierDescContainer: {
     paddingHorizontal: 20,
     paddingVertical: 12,
@@ -621,8 +682,27 @@ const styles = StyleSheet.create({
     borderColor: '#EC4899',
     backgroundColor: 'rgba(236, 72, 153, 0.15)',
   },
+  giftItemBreakthrough: {
+    borderColor: 'rgba(245, 158, 11, 0.6)',
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+  },
   giftItemDisabled: {
     opacity: 0.5,
+  },
+  breakthroughBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -4,
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 6,
+    zIndex: 10,
+  },
+  breakthroughBadgeText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#fff',
   },
   giftIconContainer: {
     position: 'relative',

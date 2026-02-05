@@ -88,6 +88,8 @@ export interface SendGiftResponse {
     duration: number;
   };
   cold_war_unlocked?: boolean;
+  bottleneck_unlocked?: boolean;
+  bottleneck_unlock_message?: string;
   ai_response?: string;
   error?: string;
   message?: string;

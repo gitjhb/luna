@@ -350,16 +350,72 @@ class ChatPipelineV4:
         except Exception as e:
             logger.error(f"❌ Post-update failed: {e}", exc_info=True)
     
+    # 近期 emotion delta 历史（用于递减防刷）
+    _recent_deltas: dict = {}  # key -> list of (timestamp, delta)
+    
+    def _apply_diminishing_returns(self, user_id: str, character_id: str, delta: int) -> int:
+        """
+        递减效应：连续同方向情绪变化会衰减
+        - 连续正向：第1次100%, 第2次70%, 第3次40%, 第4次+20%
+        - 连续负向：不衰减（惩罚不打折）
+        - 5分钟内的变化算"连续"
+        """
+        import time
+        key = f"{user_id}:{character_id}"
+        now = time.time()
+        
+        # 初始化或清理过期记录
+        if key not in self._recent_deltas:
+            self._recent_deltas[key] = []
+        
+        # 只保留5分钟内的记录
+        self._recent_deltas[key] = [
+            (ts, d) for ts, d in self._recent_deltas[key] 
+            if now - ts < 300
+        ]
+        
+        # 负向不衰减
+        if delta <= 0:
+            self._recent_deltas[key].append((now, delta))
+            return delta
+        
+        # 计算连续正向次数
+        consecutive_positive = 0
+        for _, d in reversed(self._recent_deltas[key]):
+            if d > 0:
+                consecutive_positive += 1
+            else:
+                break
+        
+        # 递减系数
+        decay_factors = [1.0, 0.7, 0.4, 0.2, 0.1]
+        factor = decay_factors[min(consecutive_positive, len(decay_factors) - 1)]
+        
+        adjusted = max(1, int(delta * factor))  # 至少+1
+        
+        if factor < 1.0:
+            logger.info(f"📉 Diminishing returns: {delta:+d} × {factor} = {adjusted:+d} "
+                       f"(consecutive positive: {consecutive_positive})")
+        
+        self._recent_deltas[key].append((now, adjusted))
+        return adjusted
+    
     async def _update_emotion(self, user_id: str, character_id: str, delta: int) -> None:
-        """更新情绪分数"""
+        """更新情绪分数（带递减防刷）"""
         
         try:
+            # 应用递减效应
+            adjusted_delta = self._apply_diminishing_returns(user_id, character_id, delta)
+            
             from app.services.emotion_engine_v2 import emotion_engine
             await emotion_engine.update_score(
-                user_id, character_id, delta, 
+                user_id, character_id, adjusted_delta, 
                 reason="v4_pipeline_update"
             )
-            logger.info(f"📊 Emotion updated: {delta:+d}")
+            if adjusted_delta != delta:
+                logger.info(f"📊 Emotion updated: {adjusted_delta:+d} (AI wanted {delta:+d})")
+            else:
+                logger.info(f"📊 Emotion updated: {delta:+d}")
         except Exception as e:
             logger.warning(f"Emotion update failed: {e}")
     

@@ -75,6 +75,14 @@ function ThemedLayout() {
           name="chat/[characterId]" 
           options={{ animation: 'slide_from_bottom' }}
         />
+        <Stack.Screen 
+          name="legal/terms" 
+          options={{ animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen 
+          name="legal/privacy" 
+          options={{ animation: 'slide_from_bottom' }}
+        />
       </Stack>
     </View>
   );

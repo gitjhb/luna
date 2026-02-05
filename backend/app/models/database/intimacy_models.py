@@ -49,6 +49,11 @@ class UserIntimacy(Base):
     # Event Locks (游戏事件锁)
     # 存储已解锁的里程碑事件: ["first_chat", "first_date", "first_confession"]
     events = Column(JSON, default=list, nullable=False)
+    
+    # Bottleneck Lock (瓶颈锁)
+    # 当等级到达瓶颈等级(19,39,59,79)且XP满时锁定，需送特定tier礼物解锁
+    bottleneck_locked = Column(Integer, default=0, nullable=False)  # SQLite boolean: 0=unlocked, 1=locked
+    bottleneck_level = Column(Integer, nullable=True)  # 当前锁定的瓶颈等级
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

@@ -12,6 +12,7 @@ import {
   ImageBackground,
   Dimensions,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,6 +23,7 @@ import { theme } from '../../theme/config';
 import { useUserStore } from '../../store/userStore';
 import { authService } from '../../services/authService';
 import { ReferralCodeModal } from '../../components/ReferralCodeModal';
+import AgeVerificationModal from '../../components/AgeVerificationModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -36,6 +38,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [showReferralModal, setShowReferralModal] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState(false);
+  const [ageVerified, setAgeVerified] = useState(false);
 
   const handleLogin = async (provider: 'apple' | 'google' | 'guest') => {
     setLoading(true);
@@ -183,10 +186,25 @@ export default function LoginScreen() {
 
           {/* Terms */}
           <Text style={styles.termsText}>
-            继续即表示同意 <Text style={styles.termsLink}>服务条款</Text> 和 <Text style={styles.termsLink}>隐私政策</Text>
+            注册即表示同意{' '}
+            <Text style={styles.termsLink} onPress={() => router.push('/legal/terms')}>
+              《服务条款》
+            </Text>
+            {' '}和{' '}
+            <Text style={styles.termsLink} onPress={() => router.push('/legal/privacy')}>
+              《隐私政策》
+            </Text>
           </Text>
         </View>
       </SafeAreaView>
+
+      {/* Age Verification - first-time gate */}
+      {!ageVerified && (
+        <AgeVerificationModal
+          onConfirm={() => setAgeVerified(true)}
+          onDecline={() => BackHandler.exitApp()}
+        />
+      )}
 
       {/* Referral Code Modal */}
       <ReferralCodeModal

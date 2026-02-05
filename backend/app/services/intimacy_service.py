@@ -196,6 +196,35 @@ class IntimacyService:
     STREAK_REWARD_XP = 100  # 奖励100 XP
     STREAK_REWARD_DESC = "神秘礼物"
 
+    # =========================================================================
+    # Bottleneck Lock Configuration (瓶颈锁)
+    # =========================================================================
+    # 在特定等级设置瓶颈锁，XP到达上限后不再增长，必须送特定tier礼物突破
+    BOTTLENECK_LEVELS = {
+        19: {"required_gift_tier": 2, "meaning": "从朋友到暧昧", "tier_name": "Tier 2+ (状态触发器)"},
+        39: {"required_gift_tier": 3, "meaning": "从暧昧到恋人", "tier_name": "Tier 3+ (关系加速器)"},
+        59: {"required_gift_tier": 3, "meaning": "深入恋人关系", "tier_name": "Tier 3+ (关系加速器)"},
+        79: {"required_gift_tier": 4, "meaning": "进入挚爱阶段", "tier_name": "Tier 4 (榜一大哥尊享)"},
+    }
+
+    @classmethod
+    def get_bottleneck_info(cls, level: int) -> Optional[Dict]:
+        """Get bottleneck info for a given level, or None if not a bottleneck level."""
+        return cls.BOTTLENECK_LEVELS.get(level)
+
+    @classmethod
+    def get_next_bottleneck(cls, level: int) -> Optional[int]:
+        """Get the next bottleneck level at or above the current level."""
+        for bl in sorted(cls.BOTTLENECK_LEVELS.keys()):
+            if bl >= level:
+                return bl
+        return None
+
+    @classmethod
+    def is_bottleneck_level(cls, level: int) -> bool:
+        """Check if a level is a bottleneck level."""
+        return level in cls.BOTTLENECK_LEVELS
+
     # Emotional words for bonus XP detection
     EMOTIONAL_WORDS_CN = [
         "喜欢", "爱", "开心", "快乐", "幸福", "想你", "想念", "感谢", "谢谢",
@@ -454,10 +483,17 @@ class IntimacyService:
                     "total_messages": 0,
                     "gifts_count": 0,
                     "special_events": 0,
+                    "bottleneck_locked": False,
+                    "bottleneck_level": None,
                     "created_at": datetime.utcnow(),
                     "updated_at": datetime.utcnow(),
                 }
-            return _MOCK_INTIMACY_STORAGE[key]
+            # Ensure existing mock records have bottleneck fields
+            record = _MOCK_INTIMACY_STORAGE[key]
+            if "bottleneck_locked" not in record:
+                record["bottleneck_locked"] = False
+                record["bottleneck_level"] = None
+            return record
         
         # Database mode
         from app.core.database import get_db
@@ -505,6 +541,8 @@ class IntimacyService:
                 "total_messages": getattr(intimacy, 'total_messages', 0) or 0,
                 "gifts_count": getattr(intimacy, 'gifts_count', 0) or 0,
                 "special_events": getattr(intimacy, 'special_events', 0) or 0,
+                "bottleneck_locked": bool(getattr(intimacy, 'bottleneck_locked', 0)),
+                "bottleneck_level": getattr(intimacy, 'bottleneck_level', None),
                 "created_at": intimacy.created_at,
                 "updated_at": intimacy.updated_at,
             }
@@ -629,6 +667,25 @@ class IntimacyService:
                 "message": f"Daily XP cap ({self.DAILY_XP_CAP}) reached."
             }
 
+        # =====================================================================
+        # Bottleneck Lock Check (瓶颈锁)
+        # =====================================================================
+        current_level = intimacy["current_level"]
+        
+        # Check if currently locked at a bottleneck
+        if intimacy.get("bottleneck_locked"):
+            lock_level = intimacy.get("bottleneck_level")
+            bottleneck_info = self.BOTTLENECK_LEVELS.get(lock_level, {})
+            return {
+                "success": False,
+                "action_type": action_type,
+                "xp_awarded": 0,
+                "message": f"亲密度已锁定在 Lv.{lock_level}，需要送出{bottleneck_info.get('tier_name', '特定')}礼物突破",
+                "bottleneck_locked": True,
+                "bottleneck_lock_level": lock_level,
+                "bottleneck_required_gift_tier": bottleneck_info.get("required_gift_tier"),
+            }
+
         # Apply cap if would exceed
         xp_to_award = min(xp_reward, self.DAILY_XP_CAP - intimacy["daily_xp_earned"])
 
@@ -636,6 +693,31 @@ class IntimacyService:
         xp_before = intimacy["total_xp"]
         level_before = intimacy["current_level"]
         stage_before = intimacy["intimacy_stage"]
+
+        # Pre-check: would this XP push us past a bottleneck level?
+        # If so, cap XP at the bottleneck level's max XP and lock
+        projected_xp = intimacy["total_xp"] + xp_to_award
+        projected_level = self.calculate_level(projected_xp)
+        
+        bottleneck_triggered = False
+        for bl in sorted(self.BOTTLENECK_LEVELS.keys()):
+            if current_level <= bl < projected_level:
+                # Would skip past bottleneck level bl — cap at bl's max XP
+                xp_cap = self.xp_for_level(bl + 1)  # XP threshold to pass bl
+                xp_to_award = max(0, xp_cap - intimacy["total_xp"] - 0.01)  # Stop just before passing
+                projected_xp = intimacy["total_xp"] + xp_to_award
+                projected_level = bl  # Stay at bottleneck level
+                bottleneck_triggered = True
+                break
+            elif current_level == bl:
+                # Already at bottleneck level — check if XP would push past it
+                xp_cap = self.xp_for_level(bl + 1)
+                if projected_xp >= xp_cap:
+                    xp_to_award = max(0, xp_cap - intimacy["total_xp"] - 0.01)
+                    projected_xp = intimacy["total_xp"] + xp_to_award
+                    projected_level = bl
+                    bottleneck_triggered = True
+                    break
 
         # Award XP
         intimacy["total_xp"] += xp_to_award
@@ -645,6 +727,14 @@ class IntimacyService:
         # Calculate new level
         new_level = self.calculate_level(intimacy["total_xp"])
         intimacy["current_level"] = new_level
+        
+        # If bottleneck triggered and we're at the bottleneck level with XP near max, lock it
+        if bottleneck_triggered and new_level in self.BOTTLENECK_LEVELS:
+            xp_for_next = self.xp_for_level(new_level + 1)
+            if intimacy["total_xp"] >= xp_for_next - 1:
+                intimacy["bottleneck_locked"] = True
+                intimacy["bottleneck_level"] = new_level
+                logger.info(f"Bottleneck lock activated for {user_id}/{character_id} at Lv.{new_level}")
 
         # Check stage change
         new_stage_info = self.get_stage(new_level)
@@ -707,6 +797,8 @@ class IntimacyService:
                     db_intimacy.last_daily_reset = intimacy["last_daily_reset"]
                     db_intimacy.streak_days = intimacy["streak_days"]
                     db_intimacy.last_interaction_date = intimacy["last_interaction_date"]
+                    db_intimacy.bottleneck_locked = 1 if intimacy.get("bottleneck_locked") else 0
+                    db_intimacy.bottleneck_level = intimacy.get("bottleneck_level")
                     db_intimacy.updated_at = datetime.utcnow()
                 
                 # Log the action
@@ -731,6 +823,11 @@ class IntimacyService:
         if level_up:
             celebration = self._generate_celebration_message(level_before, new_level, stage_changed, new_stage)
 
+        # Bottleneck lock info
+        is_locked = intimacy.get("bottleneck_locked", False)
+        lock_level = intimacy.get("bottleneck_level")
+        lock_info = self.BOTTLENECK_LEVELS.get(lock_level) if lock_level else None
+
         return {
             "success": True,
             "action_type": action_type,
@@ -750,7 +847,10 @@ class IntimacyService:
             "streak_reward_triggered": streak_reward_triggered,
             "streak_reward_desc": self.STREAK_REWARD_DESC if streak_reward_triggered else None,
             "celebration_message": celebration,
-            "unlocked_features": [f["name"] for f in newly_unlocked]
+            "unlocked_features": [f["name"] for f in newly_unlocked],
+            "bottleneck_locked": is_locked,
+            "bottleneck_lock_level": lock_level if is_locked else None,
+            "bottleneck_required_gift_tier": lock_info["required_gift_tier"] if lock_info and is_locked else None,
         }
 
     async def award_xp_direct(
@@ -844,6 +944,157 @@ class IntimacyService:
             "stage_changed": stage_changed,
         }
 
+    async def unlock_bottleneck(
+        self,
+        user_id: str,
+        character_id: str,
+        gift_tier: int,
+    ) -> Dict:
+        """
+        Attempt to unlock a bottleneck lock by sending a gift of sufficient tier.
+        
+        Args:
+            user_id: User ID
+            character_id: Character ID  
+            gift_tier: Tier of the gift being sent (1-4)
+            
+        Returns:
+            Dict with unlock result
+        """
+        intimacy = await self.get_or_create_intimacy(user_id, character_id)
+        
+        if not intimacy.get("bottleneck_locked"):
+            return {
+                "success": False,
+                "message": "亲密度未被锁定",
+                "was_locked": False,
+            }
+        
+        lock_level = intimacy.get("bottleneck_level")
+        bottleneck_info = self.BOTTLENECK_LEVELS.get(lock_level)
+        
+        if not bottleneck_info:
+            # Shouldn't happen, but handle gracefully
+            intimacy["bottleneck_locked"] = False
+            intimacy["bottleneck_level"] = None
+            return {
+                "success": True,
+                "message": "锁定状态异常，已自动解除",
+                "was_locked": True,
+                "unlocked": True,
+            }
+        
+        required_tier = bottleneck_info["required_gift_tier"]
+        
+        if gift_tier < required_tier:
+            return {
+                "success": False,
+                "message": f"需要 {bottleneck_info['tier_name']} 礼物才能突破 Lv.{lock_level} 瓶颈，当前礼物 Tier {gift_tier} 不够",
+                "was_locked": True,
+                "unlocked": False,
+                "required_tier": required_tier,
+                "provided_tier": gift_tier,
+            }
+        
+        # Unlock!
+        intimacy["bottleneck_locked"] = False
+        intimacy["bottleneck_level"] = None
+        intimacy["updated_at"] = datetime.utcnow()
+        
+        # Persist to database
+        if not self.mock_mode:
+            from app.core.database import get_db
+            from sqlalchemy import select
+            from app.models.database.intimacy_models import UserIntimacy
+            
+            async with get_db() as db:
+                result = await db.execute(
+                    select(UserIntimacy).where(
+                        UserIntimacy.user_id == user_id,
+                        UserIntimacy.character_id == character_id
+                    )
+                )
+                db_intimacy = result.scalar_one_or_none()
+                if db_intimacy:
+                    db_intimacy.bottleneck_locked = 0
+                    db_intimacy.bottleneck_level = None
+                    db_intimacy.updated_at = datetime.utcnow()
+                    await db.commit()
+        
+        logger.info(f"Bottleneck unlocked for {user_id}/{character_id} at Lv.{lock_level} with Tier {gift_tier} gift")
+        
+        return {
+            "success": True,
+            "message": f"🎉 成功突破 Lv.{lock_level} 瓶颈！{bottleneck_info['meaning']}",
+            "was_locked": True,
+            "unlocked": True,
+            "lock_level": lock_level,
+            "meaning": bottleneck_info["meaning"],
+        }
+
+    async def get_bottleneck_lock_status(
+        self,
+        user_id: str,
+        character_id: str,
+    ) -> Dict:
+        """
+        Get the current bottleneck lock status for a user-character pair.
+        
+        Returns:
+            Dict with is_locked, lock_level, required_gift_tier, progress_to_lock, etc.
+        """
+        intimacy = await self.get_or_create_intimacy(user_id, character_id)
+        current_level = intimacy["current_level"]
+        total_xp = intimacy["total_xp"]
+        is_locked = intimacy.get("bottleneck_locked", False)
+        lock_level = intimacy.get("bottleneck_level")
+        
+        if is_locked and lock_level:
+            bottleneck_info = self.BOTTLENECK_LEVELS.get(lock_level, {})
+            return {
+                "is_locked": True,
+                "lock_level": lock_level,
+                "required_gift_tier": bottleneck_info.get("required_gift_tier"),
+                "progress_to_lock": 100.0,
+                "next_bottleneck_level": lock_level,
+                "tier_name": bottleneck_info.get("tier_name"),
+                "meaning": bottleneck_info.get("meaning"),
+            }
+        
+        # Not locked — calculate progress toward next bottleneck
+        next_bl = self.get_next_bottleneck(current_level)
+        if next_bl is None:
+            return {
+                "is_locked": False,
+                "lock_level": None,
+                "required_gift_tier": None,
+                "progress_to_lock": 0.0,
+                "next_bottleneck_level": None,
+                "tier_name": None,
+                "meaning": None,
+            }
+        
+        # Calculate progress: how close are we to the bottleneck level?
+        xp_at_current = self.xp_for_level(current_level)
+        xp_at_bottleneck = self.xp_for_level(next_bl + 1)  # XP needed to pass bottleneck
+        
+        if xp_at_bottleneck > xp_at_current:
+            progress = ((total_xp - xp_at_current) / (xp_at_bottleneck - xp_at_current)) * 100
+            progress = max(0, min(100, progress))
+        else:
+            progress = 100.0
+        
+        bottleneck_info = self.BOTTLENECK_LEVELS.get(next_bl, {})
+        return {
+            "is_locked": False,
+            "lock_level": None,
+            "required_gift_tier": bottleneck_info.get("required_gift_tier"),
+            "progress_to_lock": progress,
+            "next_bottleneck_level": next_bl,
+            "tier_name": bottleneck_info.get("tier_name"),
+            "meaning": bottleneck_info.get("meaning"),
+        }
+
     async def get_intimacy_status(self, user_id: str, character_id: str) -> Dict:
         """Get current intimacy status for a user-character pair."""
         intimacy = await self.get_or_create_intimacy(user_id, character_id)
@@ -875,6 +1126,11 @@ class IntimacyService:
             if time_since.total_seconds() >= 86400:
                 daily_xp = 0.0
 
+        # Bottleneck lock info
+        is_locked = intimacy.get("bottleneck_locked", False)
+        lock_level = intimacy.get("bottleneck_level")
+        lock_info = self.BOTTLENECK_LEVELS.get(lock_level) if lock_level else None
+
         return {
             "character_id": character_id,
             "current_level": level,
@@ -896,6 +1152,10 @@ class IntimacyService:
             "total_messages": intimacy.get("total_messages", 0),
             "gifts_count": intimacy.get("gifts_count", 0),
             "special_events": intimacy.get("special_events", 0),
+            # 瓶颈锁
+            "bottleneck_locked": is_locked,
+            "bottleneck_lock_level": lock_level if is_locked else None,
+            "bottleneck_required_gift_tier": lock_info["required_gift_tier"] if lock_info and is_locked else None,
         }
 
     async def daily_checkin(self, user_id: str, character_id: str) -> Dict:
