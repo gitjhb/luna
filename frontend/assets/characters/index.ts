@@ -9,8 +9,8 @@ export const characterAvatars: Record<string, any> = {
   // 小美 - 温柔邻家女孩
   'c1a2b3c4-d5e6-4f7a-8b9c-0d1e2f3a4b5c': require('./小美.jpg'),
   
-  // Luna - 神秘夜之精灵
-  'd2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d': require('./luna.jpg'),
+  // Luna - 月亮/猫系角色，安静理智
+  'd2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d': require('./luna/avatar.jpg'),
   
   // Sakura - 元气少女
   'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e': require('./Sakura.jpeg'),
@@ -31,7 +31,7 @@ export const characterBackgrounds: Record<string, any> = {
   'c1a2b3c4-d5e6-4f7a-8b9c-0d1e2f3a4b5c': require('./小美.jpg'),
   
   // Luna
-  'd2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d': require('./luna.jpg'),
+  'd2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d': require('./luna/avatar.jpg'),
   
   // Sakura
   'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e': require('./Sakura.jpeg'),

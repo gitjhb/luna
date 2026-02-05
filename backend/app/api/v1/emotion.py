@@ -21,7 +21,8 @@ class EmotionStatusResponse(BaseModel):
     user_id: str
     character_id: str
     emotional_state: str
-    emotion_intensity: float
+    emotion_intensity: float  # 绝对值 (兼容旧版)
+    emotion_score: Optional[int] = None  # 带符号的原始分数 (-100~+100)
     emotion_reason: Optional[str]
     times_angered: int
     times_hurt: int
@@ -99,6 +100,7 @@ async def get_emotion_status(character_id: UUID, request: Request):
             character_id=char_id,
             emotional_state=emotional_state,
             emotion_intensity=abs(score),
+            emotion_score=score,  # 带符号原始分
             emotion_reason=None,
             times_angered=0,
             times_hurt=0,

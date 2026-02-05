@@ -22,7 +22,8 @@ export interface EmotionStatus {
   userId: string;
   characterId: string;
   emotionalState: EmotionalState;
-  emotionIntensity: number;  // 0-100
+  emotionIntensity: number;  // 0-100 (绝对值，兼容旧版)
+  emotionScore: number;      // -100~+100 (带符号原始分)
   emotionReason: string | null;
   timesAngered: number;
   timesHurt: number;
@@ -46,6 +47,7 @@ const transformEmotionStatus = (data: any): EmotionStatus => ({
   characterId: data.character_id,
   emotionalState: data.emotional_state,
   emotionIntensity: data.emotion_intensity,
+  emotionScore: data.emotion_score ?? (data.emotion_intensity || 0),  // fallback
   emotionReason: data.emotion_reason,
   timesAngered: data.times_angered,
   timesHurt: data.times_hurt,

@@ -72,6 +72,7 @@ interface GiftBottomSheetProps {
   isSubscribed: boolean;
   loading?: boolean;
   inColdWar?: boolean;
+  onRecharge?: () => void;
 }
 
 export default function GiftBottomSheet({
@@ -83,6 +84,7 @@ export default function GiftBottomSheet({
   isSubscribed,
   loading = false,
   inColdWar = false,
+  onRecharge,
 }: GiftBottomSheetProps) {
   const [selectedTier, setSelectedTier] = useState(1);
   const [selectedGift, setSelectedGift] = useState<GiftItem | null>(null);
@@ -387,11 +389,12 @@ export default function GiftBottomSheet({
                 </View>
               )}
             </View>
-            <View style={styles.creditsDisplay}>
+            <TouchableOpacity style={styles.creditsDisplay} onPress={onRecharge} activeOpacity={0.7}>
               <Text style={styles.moonStoneIcon}>💎</Text>
               <Text style={styles.creditsText}>{userCredits}</Text>
               <Text style={styles.creditsLabel}>月石</Text>
-            </View>
+              {onRecharge && <Ionicons name="add-circle" size={16} color="#FFD700" style={{ marginLeft: 4 }} />}
+            </TouchableOpacity>
           </View>
 
           {/* Tier 标签 */}

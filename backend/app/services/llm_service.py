@@ -58,7 +58,8 @@ class GrokService:
         top_p: float = 0.9,
         frequency_penalty: float = 0.0,
         presence_penalty: float = 0.0,
-        stream: bool = False
+        stream: bool = False,
+        response_format: Dict = None
     ) -> Dict:
         """Call Grok chat completion API."""
         headers = {
@@ -73,6 +74,9 @@ class GrokService:
             "max_tokens": max_tokens,
             "stream": stream
         }
+        
+        if response_format:
+            payload["response_format"] = response_format
         
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:

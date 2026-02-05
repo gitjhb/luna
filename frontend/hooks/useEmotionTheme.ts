@@ -235,16 +235,12 @@ export function useEmotionTheme(
   const primaryGradient = theme.colors.primary.gradient;
   const accentGradient = theme.colors.accent.gradient;
 
-  // 叠加层颜色（根据情绪调整透明度）
+  // 叠加层颜色（顶部全透明，底部 0.7）
   const overlayColors = useMemo((): readonly [string, string, string] => {
-    const baseOpacity = currentMode === 'angry' ? 0.85 : 
-                        currentMode === 'happy' ? 0.7 : 
-                        currentMode === 'spicy' ? 0.75 : 0.8;
-    const color = theme.colors.background.primary;
     return [
-      `rgba(26,16,37,0.3)`,
-      `rgba(26,16,37,${baseOpacity * 0.8})`,
-      `rgba(26,16,37,${baseOpacity})`,
+      `rgba(0,0,0,0)`,
+      `rgba(26,16,37,0.35)`,
+      `rgba(26,16,37,0.7)`,
     ] as const;
   }, [currentMode, theme]);
 

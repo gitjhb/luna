@@ -51,7 +51,7 @@ import MessageBubble from '../../components/MessageBubble';
 import VideoMessageBubble from '../../components/VideoMessageBubble';
 import { ToastProvider, useToast } from '../../components/Toast';
 import { useEmotionTheme } from '../../hooks/useEmotionTheme';
-import { EmotionEffectsLayer, EmotionIndicator } from '../../components/EmotionEffects';
+import { EmotionEffectsLayer } from '../../components/EmotionEffects';
 import { DebugButton } from '../../components/DebugPanel';
 import { ExtraData } from '../../store/chatStore';
 import EventStoryCard from '../../components/EventStoryCard';
@@ -270,11 +270,7 @@ export default function ChatScreen() {
       try {
         const emotionStatus = await emotionService.getStatus(params.characterId);
         if (emotionStatus) {
-          // Convert emotionIntensity (0-100) to score (-100 to 100)
-          // negative emotions have negative score
-          const negativeStates = ['annoyed', 'angry', 'hurt', 'cold', 'silent'];
-          const isNegative = negativeStates.includes(emotionStatus.emotionalState);
-          const score = isNegative ? -emotionStatus.emotionIntensity : emotionStatus.emotionIntensity;
+          const score = emotionStatus.emotionScore;
           setEmotionScore(score);
           setEmotionState(emotionStatus.emotionalState);
         }
@@ -495,10 +491,7 @@ export default function ChatScreen() {
       try {
         const updatedEmotion = await emotionService.getStatus(params.characterId);
         if (updatedEmotion) {
-          const negativeStates = ['annoyed', 'angry', 'hurt', 'cold', 'silent'];
-          const isNegative = negativeStates.includes(updatedEmotion.emotionalState);
-          const score = isNegative ? -updatedEmotion.emotionIntensity : updatedEmotion.emotionIntensity;
-          setEmotionScore(score);
+          setEmotionScore(updatedEmotion.emotionScore);
           setEmotionState(updatedEmotion.emotionalState);
         }
       } catch (e) {
@@ -888,18 +881,12 @@ export default function ChatScreen() {
 
   return (
     <GestureHandlerRootView style={styles.container}>
-      {/* Full screen background image */}
+      {/* Full screen background image - 无遮盖 */}
       <ImageBackground
         source={backgroundSource || { uri: backgroundImage }}
         style={styles.backgroundImage}
         resizeMode="cover"
-      >
-        {/* Gradient overlay for readability - 动态主题色 */}
-        <LinearGradient
-          colors={overlayColors as unknown as [string, string, string]}
-          style={styles.overlay}
-        />
-      </ImageBackground>
+      />
 
       {/* 🎆 情绪特效层 */}
       <EmotionEffectsLayer
@@ -910,84 +897,27 @@ export default function ChatScreen() {
       />
 
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        {/* Header */}
+        {/* Header - 简洁版 */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="close" size={28} color="#fff" />
+            <Ionicons name="chevron-back" size={28} color="#fff" />
           </TouchableOpacity>
           
           <View style={styles.headerCenter}>
-            {/* 情绪指示器 + 角色名 */}
-            {emotionMode !== 'neutral' && (
-              <EmotionIndicator
-                mode={emotionMode}
-                score={emotionScore}
-                style={{ marginBottom: 2 }}
-              />
-            )}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={styles.characterName}>{characterName}</Text>
-              <MockModeBanner compact />
-            </View>
+            <MockModeBanner compact />
           </View>
           
-          <TouchableOpacity style={styles.menuButton} onPress={() => setShowCharacterInfo(true)}>
-            <Ionicons name="ellipsis-horizontal" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Status Bar - Level, Credits, Upgrade */}
-        <View style={styles.statusBar}>
-          {/* Level Badge */}
-          <TouchableOpacity style={styles.levelContainer} onPress={() => setShowLevelInfoModal(true)}>
-            {relationshipLevel === null ? (
-              <Text style={styles.levelText}>加载中...</Text>
-            ) : (
-              <>
-                <View style={styles.levelRow}>
-                  <Ionicons name="information-circle-outline" size={14} color="rgba(255,255,255,0.7)" style={{ marginRight: 4 }} />
-                  <Text style={styles.levelText}>LV {relationshipLevel}</Text>
-                </View>
-                <View style={styles.xpBarContainer}>
-                  <Animated.View 
-                    style={[
-                      styles.xpBar, 
-                      { 
-                        width: xpProgressAnim.interpolate({
-                          inputRange: [0, 100],
-                          outputRange: ['0%', '100%'],
-                        })
-                      }
-                    ]} 
-                  />
-                </View>
-              </>
-            )}
-          </TouchableOpacity>
-          
-          {/* Credits */}
-          <TouchableOpacity style={styles.creditsContainer} onPress={() => setShowRechargeModal(true)}>
-            <Text style={styles.coinEmoji}>🪙</Text>
-            <Text style={styles.creditsText}>{wallet?.totalCredits ?? 0}</Text>
-            <View style={styles.addCreditsButton}>
-              <Ionicons name="add" size={14} color="#FFD700" />
-            </View>
-          </TouchableOpacity>
-          
-          {/* Upgrade Button */}
-          {!isSubscribed && (
-            <TouchableOpacity style={styles.upgradeButton} onPress={() => setShowSubscriptionModal(true)}>
-              <LinearGradient
-                colors={['#FF6B35', '#F7931E'] as [string, string]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.upgradeGradient}
-              >
-                <Text style={styles.upgradeIcon}>🔥</Text>
-                <Text style={styles.upgradeText}>UPGRADE</Text>
-              </LinearGradient>
+          <View style={styles.headerRight}>
+            {/* 小气泡 Level */}
+            <TouchableOpacity style={styles.levelBubble} onPress={() => setShowLevelInfoModal(true)}>
+              <Text style={styles.levelBubbleText}>Lv.{relationshipLevel ?? '–'}</Text>
             </TouchableOpacity>
-          )}
+            
+            {/* 头像按钮替代三个点 */}
+            <TouchableOpacity style={styles.avatarButton} onPress={() => setShowCharacterInfo(true)}>
+              <Image source={getCharacterAvatar(params.characterId, characterAvatar)} style={styles.headerAvatar} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Messages */}
@@ -1227,15 +1157,24 @@ export default function ChatScreen() {
             onStateChanged={() => {
               // 刷新亲密度和情绪状态
               intimacyService.getStatus(params.characterId).then(status => {
+                setRelationshipLevel(status.currentLevel);
+                const maxXp = status.xpForNextLevel - status.xpForCurrentLevel;
+                const validMax = maxXp > 0 ? maxXp : 6;
+                const validProgress = Math.max(0, Math.min(status.xpProgressInLevel, validMax));
+                setRelationshipXp(validProgress);
+                setRelationshipMaxXp(validMax);
                 setIntimacy(params.characterId, {
-                  level: status.current_level,
-                  progress: status.progress_percent,
-                  stage: status.intimacy_stage,
+                  currentLevel: status.currentLevel,
+                  xpProgressInLevel: validProgress,
+                  xpForNextLevel: status.xpForNextLevel,
+                  xpForCurrentLevel: status.xpForCurrentLevel,
                 });
               }).catch(() => {});
               emotionService.getStatus(params.characterId).then(status => {
-                setEmotionScore(status.score);
-                setEmotionState(status.mood_state);
+                if (status) {
+                  setEmotionScore(status.emotionScore);
+                  setEmotionState(status.emotionalState);
+                }
               }).catch(() => {});
             }}
           />
@@ -1327,6 +1266,7 @@ export default function ChatScreen() {
         gifts={giftCatalog}
         userCredits={wallet?.totalCredits ?? 0}
         isSubscribed={isSubscribed}
+        onRecharge={() => { setShowGiftModal(false); setTimeout(() => setShowRechargeModal(true), 300); }}
         onSelectGift={async (gift) => {
           try {
             // 1. 调用后端 API
@@ -1440,10 +1380,7 @@ export default function ChatScreen() {
             try {
               const updatedEmotion = await emotionService.getStatus(params.characterId);
               if (updatedEmotion) {
-                const negativeStates = ['angry', 'annoyed', 'cold', 'hurt', 'silent'];
-                const isNegative = negativeStates.includes(updatedEmotion.emotionalState);
-                const score = isNegative ? -updatedEmotion.emotionIntensity : updatedEmotion.emotionIntensity;
-                setEmotionScore(score);
+                setEmotionScore(updatedEmotion.emotionScore);
                 setEmotionState(updatedEmotion.emotionalState);
               }
             } catch (e) {
@@ -1561,7 +1498,7 @@ export default function ChatScreen() {
             setRelationshipLevel(updatedIntimacy.currentLevel);
             const updatedEmotion = await emotionService.getStatus(params.characterId);
             if (updatedEmotion) {
-              setEmotionScore(updatedEmotion.emotionIntensity ?? 0);
+              setEmotionScore(updatedEmotion.emotionScore);
               setEmotionState(updatedEmotion.emotionalState ?? 'neutral');
             }
           } catch (e) {
@@ -1585,7 +1522,7 @@ export default function ChatScreen() {
             setRelationshipLevel(updatedIntimacy.currentLevel);
             const updatedEmotion = await emotionService.getStatus(params.characterId);
             if (updatedEmotion) {
-              setEmotionScore(updatedEmotion.emotionIntensity ?? 0);
+              setEmotionScore(updatedEmotion.emotionScore);
               setEmotionState(updatedEmotion.emotionalState ?? 'neutral');
             }
           } catch (e) {
@@ -1804,92 +1741,34 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
-  characterName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  menuButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statusBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginBottom: 8,
-  },
-  levelContainer: {
+  headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  levelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  levelText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  xpBarContainer: {
-    width: 50,
-    height: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  xpBar: {
-    height: '100%',
-    backgroundColor: '#A855F7',
-    borderRadius: 3,
-  },
-  creditsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 215, 0, 0.15)',
+  levelBubble: {
+    backgroundColor: 'rgba(168, 85, 247, 0.6)',
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 16,
-    gap: 4,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  coinEmoji: {
-    fontSize: 14,
-  },
-  creditsText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFD700',
-  },
-  addCreditsButton: {
-    marginLeft: 2,
-  },
-  upgradeButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  upgradeGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    gap: 4,
-  },
-  upgradeIcon: {
-    fontSize: 12,
-  },
-  upgradeText: {
+  levelBubbleText: {
     fontSize: 12,
     fontWeight: '700',
     color: '#fff',
+  },
+  avatarButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  headerAvatar: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 22,
   },
   messagesList: {
     paddingHorizontal: 16,
@@ -1945,11 +1824,11 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   bubbleUser: {
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    backgroundColor: 'rgba(139, 92, 246, 0.85)',
     borderBottomRightRadius: 4,
   },
   bubbleAI: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(30, 20, 50, 0.85)',
     borderBottomLeftRadius: 4,
   },
   // Locked/blurred message styles
@@ -2023,13 +1902,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(139, 92, 246, 0.3)',
+    backgroundColor: 'rgba(139, 92, 246, 0.5)',
     paddingHorizontal: 16,
     paddingVertical: 0,
     height: 36,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.5)',
+    borderColor: 'rgba(139, 92, 246, 0.6)',
     gap: 6,
     minWidth: 80,
     flexShrink: 0,
@@ -2068,7 +1947,7 @@ const styles = StyleSheet.create({
   },
   inputWrapper: {
     flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(30, 20, 50, 0.8)',
     borderRadius: 24,
     paddingHorizontal: 18,
     paddingVertical: Platform.OS === 'ios' ? 12 : 8,

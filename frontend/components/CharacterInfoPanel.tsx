@@ -318,6 +318,9 @@ export default function CharacterInfoPanel({
     if (charId === 'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e') {
       return require('../assets/characters/sakura/videos/profile_bg.mp4');
     }
+    if (charId === 'd2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d') {
+      return require('../assets/characters/luna/videos/profile_bg.mp4');
+    }
     return null;
   };
 

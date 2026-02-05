@@ -13,4 +13,4 @@ logging.getLogger('httpx').setLevel(logging.WARNING)
 logging.getLogger('httpcore').setLevel(logging.WARNING)
 " 
 
-uvicorn app.main:app --host 0.0.0.0 --port 8000 2>&1 | tee -a server.log
+lsof -ti:8000 | xargs kill -9; uvicorn app.main:app --host 0.0.0.0 --reload

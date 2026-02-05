@@ -2,24 +2,20 @@
  * MessageBubble Component
  * 
  * Interactive chat bubble with:
- * - Long press to show context menu
- * - Copy text functionality
- * - Emoji reactions with animations
+ * - Long press → elegant inline popup with Copy & Share
+ * - Emoji reactions (persisted)
  * - Press feedback animation
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Modal,
   Pressable,
   Dimensions,
-  Platform,
   Share,
-  ActivityIndicator,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import Animated, {
@@ -30,25 +26,13 @@ import Animated, {
   withTiming,
   runOnJS,
   Easing,
-  interpolate,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useTheme } from '../theme/config';
-import { colors, radius, spacing, typography, shadows } from '../theme/designSystem';
+import { BlurView } from 'expo-blur';
+import { colors, radius, spacing, typography } from '../theme/designSystem';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-// Emoji reactions configuration
-const REACTIONS = [
-  { emoji: '❤️', name: 'love', xpBonus: 2 },
-  { emoji: '😂', name: 'haha', xpBonus: 1 },
-  { emoji: '😍', name: 'wow', xpBonus: 2 },
-  { emoji: '😢', name: 'sad', xpBonus: 1 },
-  { emoji: '👍', name: 'like', xpBonus: 1 },
-  { emoji: '🔥', name: 'fire', xpBonus: 3 },
-];
 
 interface MessageBubbleProps {
   content: string;
@@ -59,10 +43,8 @@ interface MessageBubbleProps {
   onReaction?: (reaction: string, xpBonus: number) => void;
   onReply?: (content: string) => void;
   showToast?: (message: string) => void;
-  messageReaction?: string | null; // Persisted reaction from chat history
+  messageReaction?: string | null;
 }
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export default function MessageBubble({
   content,
@@ -75,136 +57,79 @@ export default function MessageBubble({
   showToast,
   messageReaction,
 }: MessageBubbleProps) {
-  const { theme } = useTheme();
-  const isCyberpunk = theme.id === 'cyberpunk-2077';
-  const [showMenu, setShowMenu] = useState(false);
-  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const [showPopup, setShowPopup] = useState(false);
   const [selectedReaction, setSelectedReaction] = useState<string | null>(messageReaction || null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [pressedEmoji, setPressedEmoji] = useState<string | null>(null);
   
   // Animation values
   const scale = useSharedValue(1);
-  const reactionScale = useSharedValue(0);
-  const reactionOpacity = useSharedValue(0);
-  const menuOpacity = useSharedValue(0);
-  const menuScale = useSharedValue(0.9);
+  const popupScale = useSharedValue(0);
+  const popupOpacity = useSharedValue(0);
+  const reactionScale = useSharedValue(1);
   
-  // Bubble press animation style
+  // Bubble press animation
   const bubbleAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
   
-  // Floating reaction animation style
-  const floatingReactionStyle = useAnimatedStyle(() => ({
+  // Popup animation
+  const popupAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: popupScale.value }],
+    opacity: popupOpacity.value,
+  }));
+  
+  // Reaction badge animation
+  const reactionAnimStyle = useAnimatedStyle(() => ({
     transform: [{ scale: reactionScale.value }],
-    opacity: reactionOpacity.value,
   }));
   
-  // Menu animation style - elegant fade + subtle scale, no bouncing
-  const menuAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: menuScale.value }],
-    opacity: menuOpacity.value,
-  }));
+  const openPopup = useCallback(() => {
+    setShowPopup(true);
+    popupScale.value = withSpring(1, { damping: 18, stiffness: 300 });
+    popupOpacity.value = withTiming(1, { duration: 150 });
+  }, []);
   
-  // Open menu with elegant animation (no bouncing)
-  const openMenu = useCallback(() => {
-    setIsLoading(true);
-    setShowMenu(true);
-    menuScale.value = 0.9;
-    menuOpacity.value = 0;
-    
-    // Small delay for loading effect
-    setTimeout(() => {
-      setIsLoading(false);
-      menuScale.value = withTiming(1, { duration: 200, easing: Easing.out(Easing.cubic) });
-      menuOpacity.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
-    }, 150);
-  }, [menuScale, menuOpacity]);
-  
-  // Close menu with elegant fade out
-  const closeMenu = useCallback(() => {
-    menuOpacity.value = withTiming(0, { duration: 120, easing: Easing.in(Easing.cubic) });
-    menuScale.value = withTiming(0.95, { duration: 120, easing: Easing.in(Easing.cubic) }, () => {
-      runOnJS(setShowMenu)(false);
+  const closePopup = useCallback(() => {
+    popupOpacity.value = withTiming(0, { duration: 100, easing: Easing.in(Easing.cubic) });
+    popupScale.value = withTiming(0.8, { duration: 100 }, () => {
+      runOnJS(setShowPopup)(false);
     });
-  }, [menuScale, menuOpacity]);
+  }, []);
   
-  // Handle copy text
+  // Copy
   const handleCopy = useCallback(async () => {
     try {
       await Clipboard.setStringAsync(content);
-      showToast?.('已复制到剪贴板 ✓');
-      closeMenu();
-    } catch (error) {
-      console.error('Failed to copy:', error);
+      showToast?.('已复制 ✓');
+    } catch (e) {
+      console.error('Copy failed:', e);
     }
-  }, [content, showToast, closeMenu]);
+    closePopup();
+  }, [content, showToast, closePopup]);
   
-  // Handle reaction selection with visual feedback
-  const handleReaction = useCallback((reaction: typeof REACTIONS[0]) => {
-    // Visual feedback - mark as pressed
-    setPressedEmoji(reaction.emoji);
-    
-    // Short delay to show press state
-    setTimeout(() => {
-      setSelectedReaction(reaction.emoji);
-      closeMenu();
-      
-      // Animate floating reaction
-      reactionScale.value = 0;
-      reactionOpacity.value = 1;
-      reactionScale.value = withSequence(
-        withTiming(1.3, { duration: 150, easing: Easing.out(Easing.cubic) }),
-        withTiming(1, { duration: 100 })
-      );
-      
-      // Callback for XP bonus - this should update chat history
-      onReaction?.(reaction.name, reaction.xpBonus);
-      
-      setPressedEmoji(null);
-    }, 100);
-  }, [onReaction, reactionScale, reactionOpacity, closeMenu]);
-  
-  // Handle reply
-  const handleReply = useCallback(() => {
-    closeMenu();
-    onReply?.(content);
-  }, [content, onReply, closeMenu]);
-  
-  // Handle share to social media
+  // Share
   const handleShare = useCallback(async () => {
     try {
-      const result = await Share.share({
-        message: content,
-        // For X/Twitter sharing on iOS
-      });
-      
-      if (result.action === Share.sharedAction) {
-        showToast?.('已分享 ✓');
-      }
-      closeMenu();
-    } catch (error) {
-      console.error('Share failed:', error);
-      showToast?.('分享失败');
+      await Share.share({ message: content });
+    } catch (e) {
+      console.error('Share failed:', e);
     }
-  }, [content, showToast, closeMenu]);
+    closePopup();
+  }, [content, closePopup]);
   
-  // Long press gesture for menu
+  // Long press gesture
   const longPressGesture = Gesture.LongPress()
-    .minDuration(400)
+    .minDuration(350)
     .onStart(() => {
-      // Scale down slightly
       scale.value = withSpring(0.95, { damping: 15 });
     })
     .onEnd((_, success) => {
-      scale.value = withSpring(1, { damping: 10 });
+      scale.value = withSpring(1, { damping: 12 });
       if (success) {
-        runOnJS(openMenu)();
+        runOnJS(openPopup)();
       }
     });
   
-  // Tap gesture for press feedback
+  // Tap gesture
   const tapGesture = Gesture.Tap()
     .onBegin(() => {
       scale.value = withSpring(0.97, { damping: 15 });
@@ -213,10 +138,9 @@ export default function MessageBubble({
       scale.value = withSpring(1, { damping: 10 });
     });
   
-  // Combine gestures
   const composedGestures = Gesture.Simultaneous(longPressGesture, tapGesture);
   
-  // Locked content render
+  // Locked content
   if (isLocked) {
     return (
       <TouchableOpacity 
@@ -225,7 +149,7 @@ export default function MessageBubble({
         activeOpacity={0.9}
       >
         <View style={styles.blurredContent}>
-          <Text style={[styles.messageText, styles.messageTextAI, styles.blurredText]}>
+          <Text style={[styles.messageText, styles.messageTextAI, { opacity: 0.3 }]}>
             {content}
           </Text>
         </View>
@@ -240,242 +164,116 @@ export default function MessageBubble({
       </TouchableOpacity>
     );
   }
-  
-  // Dynamic bubble styles based on theme
-  const bubbleUserStyle = isCyberpunk ? {
-    backgroundColor: 'rgba(0, 240, 255, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 240, 255, 0.3)',
-    borderRadius: theme.borderRadius.md,
-    shadowColor: '#00F0FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-  } : {
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
-  };
-
-  const bubbleAIStyle = isCyberpunk ? {
-    backgroundColor: 'rgba(255, 42, 109, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 42, 109, 0.25)',
-    borderRadius: theme.borderRadius.md,
-    shadowColor: '#FF2A6D',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-  } : {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  };
-
-  const textUserStyle = isCyberpunk ? {
-    color: '#00F0FF',
-    textShadowColor: 'rgba(0, 240, 255, 0.5)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 4,
-  } : {
-    color: '#fff',
-  };
-
-  const textAIStyle = isCyberpunk ? {
-    color: 'rgba(255, 255, 255, 0.95)',
-  } : {
-    color: 'rgba(255, 255, 255, 0.92)',
-  };
 
   return (
-    <>
+    <View style={styles.wrapper}>
       <GestureDetector gesture={composedGestures}>
         <Animated.View style={[bubbleAnimatedStyle, styles.bubbleContainer]}>
           <View style={[
             styles.bubble, 
-            isUser ? [styles.bubbleUser, bubbleUserStyle] : [styles.bubbleAI, bubbleAIStyle]
+            isUser ? styles.bubbleUser : styles.bubbleAI,
           ]}>
             <Text style={[
               styles.messageText, 
-              isUser ? [styles.messageTextUser, textUserStyle] : [styles.messageTextAI, textAIStyle]
+              isUser ? styles.messageTextUser : styles.messageTextAI,
             ]}>
               {content}
             </Text>
             
-            {/* Persisted reaction indicator (shows permanently) */}
+            {/* Reaction badge */}
             {selectedReaction && (
-              <View style={[
-                styles.reactionBadge,
-                { borderColor: theme.colors.background.primary }
-              ]}>
-                <Animated.Text style={[styles.reactionBadgeText, floatingReactionStyle]}>
-                  {selectedReaction}
-                </Animated.Text>
-              </View>
+              <Animated.View style={[styles.reactionBadge, reactionAnimStyle]}>
+                <Text style={styles.reactionBadgeText}>{selectedReaction}</Text>
+              </Animated.View>
             )}
           </View>
         </Animated.View>
       </GestureDetector>
       
-      {/* Context Menu Modal */}
-      <Modal
-        visible={showMenu}
-        transparent
-        animationType="none"
-        onRequestClose={closeMenu}
-      >
-        <Pressable style={styles.menuOverlay} onPress={closeMenu}>
+      {/* Inline popup - 两个精致气泡 */}
+      {showPopup && (
+        <>
+          {/* 轻触关闭 */}
+          <Pressable style={styles.popupBackdrop} onPress={closePopup} />
+          
           <Animated.View style={[
-            styles.menuContainer, 
-            menuAnimatedStyle,
-            { 
-              backgroundColor: theme.colors.background.secondary,
-              borderRadius: theme.borderRadius.xl,
-              ...(isCyberpunk && {
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                shadowColor: theme.colors.glow,
-                shadowOpacity: 0.4,
-                shadowRadius: 15,
-              })
-            }
+            styles.popupContainer,
+            isUser ? styles.popupRight : styles.popupLeft,
+            popupAnimatedStyle,
           ]}>
-            {/* Loading indicator */}
-            {isLoading && (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={theme.colors.primary.main} />
-              </View>
-            )}
+            <View style={styles.popupPill}>
+              {/* 复制 */}
+              <TouchableOpacity 
+                style={styles.popupButton} 
+                onPress={handleCopy}
+                activeOpacity={0.7}
+              >
+                <View style={styles.popupIconCircle}>
+                  <Ionicons name="copy-outline" size={18} color="#fff" />
+                </View>
+                <Text style={styles.popupLabel}>复制</Text>
+              </TouchableOpacity>
+              
+              {/* 分隔线 */}
+              <View style={styles.popupDivider} />
+              
+              {/* 分享 */}
+              <TouchableOpacity 
+                style={styles.popupButton} 
+                onPress={handleShare}
+                activeOpacity={0.7}
+              >
+                <View style={styles.popupIconCircle}>
+                  <Ionicons name="share-outline" size={18} color="#fff" />
+                </View>
+                <Text style={styles.popupLabel}>分享</Text>
+              </TouchableOpacity>
+            </View>
             
-            {/* Reaction Bar */}
-            {!isLoading && (
-              <View style={[styles.reactionBar, { borderBottomColor: theme.colors.border }]}>
-                {REACTIONS.map((reaction) => (
-                  <TouchableOpacity
-                    key={reaction.name}
-                    style={[
-                      styles.reactionButton,
-                      isCyberpunk && {
-                        backgroundColor: 'rgba(0, 240, 255, 0.1)',
-                        borderWidth: 1,
-                        borderColor: 'rgba(0, 240, 255, 0.2)',
-                      },
-                      // Press feedback - scale and glow effect
-                      pressedEmoji === reaction.emoji && {
-                        transform: [{ scale: 1.2 }],
-                        backgroundColor: 'rgba(0, 240, 255, 0.25)',
-                        borderColor: theme.colors.primary.main,
-                      },
-                      // Currently selected reaction
-                      selectedReaction === reaction.emoji && {
-                        backgroundColor: 'rgba(255, 42, 109, 0.2)',
-                        borderColor: theme.colors.accent.pink,
-                      }
-                    ]}
-                    onPress={() => handleReaction(reaction)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[
-                      styles.reactionEmoji,
-                      pressedEmoji === reaction.emoji && { transform: [{ scale: 1.1 }] }
-                    ]}>{reaction.emoji}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-            
-            {/* Menu Actions */}
-            {!isLoading && (
-              <View style={styles.menuActions}>
-                <TouchableOpacity style={[
-                  styles.menuItem,
-                  isCyberpunk && { backgroundColor: 'rgba(0, 240, 255, 0.08)' }
-                ]} onPress={handleCopy}>
-                  <Ionicons name="copy-outline" size={20} color={isCyberpunk ? theme.colors.primary.main : '#fff'} />
-                  <Text style={[styles.menuItemText, isCyberpunk && { color: theme.colors.primary.main }]}>复制</Text>
-                </TouchableOpacity>
-                
-                {!isUser && onReply && (
-                  <TouchableOpacity style={[
-                    styles.menuItem,
-                    isCyberpunk && { backgroundColor: 'rgba(0, 240, 255, 0.08)' }
-                  ]} onPress={handleReply}>
-                    <Ionicons name="arrow-undo-outline" size={20} color={isCyberpunk ? theme.colors.primary.main : '#fff'} />
-                    <Text style={[styles.menuItemText, isCyberpunk && { color: theme.colors.primary.main }]}>回复</Text>
-                  </TouchableOpacity>
-                )}
-                
-                {/* Share button */}
-                <TouchableOpacity style={[
-                  styles.menuItem,
-                  isCyberpunk && { backgroundColor: 'rgba(0, 240, 255, 0.08)' }
-                ]} onPress={handleShare}>
-                  <Ionicons name="share-social-outline" size={20} color={isCyberpunk ? theme.colors.primary.main : '#fff'} />
-                  <Text style={[styles.menuItemText, isCyberpunk && { color: theme.colors.primary.main }]}>分享</Text>
-                </TouchableOpacity>
-                
-                {!isUser && (
-                  <TouchableOpacity 
-                    style={[
-                      styles.menuItem,
-                      isCyberpunk && { backgroundColor: 'rgba(255, 42, 109, 0.12)' }
-                    ]} 
-                    onPress={() => {
-                      handleReaction({ emoji: '❤️', name: 'love', xpBonus: 2 });
-                    }}
-                  >
-                    <Ionicons name="heart-outline" size={20} color={theme.colors.accent.pink} />
-                    <Text style={[styles.menuItemText, { color: theme.colors.accent.pink }]}>喜欢</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-            
-            {/* Preview of message */}
-            {!isLoading && (
-              <View style={[styles.previewContainer, { borderTopColor: theme.colors.border }]}>
-                <Text style={[styles.previewText, { color: theme.colors.text.tertiary }]} numberOfLines={2}>
-                  {content}
-                </Text>
-              </View>
-            )}
+            {/* 小三角箭头 */}
+            <View style={[
+              styles.popupArrow,
+              isUser ? styles.popupArrowRight : styles.popupArrowLeft,
+            ]} />
           </Animated.View>
-        </Pressable>
-      </Modal>
-    </>
+        </>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bubbleContainer: {
+  wrapper: {
+    position: 'relative',
     maxWidth: SCREEN_WIDTH * 0.72,
   },
+  bubbleContainer: {},
   bubble: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.xl,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
     position: 'relative',
   },
   bubbleUser: {
-    backgroundColor: 'rgba(0, 240, 255, 0.12)',
-    borderBottomRightRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 240, 255, 0.2)',
+    backgroundColor: 'rgba(139, 92, 246, 0.85)',
+    borderBottomRightRadius: 4,
   },
   bubbleAI: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderBottomLeftRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border.default,
+    backgroundColor: 'rgba(30, 20, 50, 0.85)',
+    borderBottomLeftRadius: 4,
   },
   messageText: {
-    fontSize: typography.size.base,
-    lineHeight: typography.size.base * typography.lineHeight.relaxed,
-    color: colors.text.primary,
+    fontSize: 15,
+    lineHeight: 21,
   },
   messageTextUser: {
-    color: colors.text.primary,
+    color: '#fff',
   },
   messageTextAI: {
     color: 'rgba(255, 255, 255, 0.92)',
   },
-  // Locked styles
+  
+  // Locked
   lockedBubble: {
     position: 'relative',
     overflow: 'hidden',
@@ -484,127 +282,133 @@ const styles = StyleSheet.create({
   blurredContent: {
     opacity: 0.3,
   },
-  blurredText: {},
   unlockOverlay: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: radius.xl,
+    borderRadius: 18,
   },
   unlockBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(139, 92, 246, 0.3)',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.secondary.glow,
-    gap: spacing.sm,
+    borderColor: 'rgba(139, 92, 246, 0.5)',
+    gap: 6,
   },
   unlockText: {
-    color: colors.text.primary,
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.semibold,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
+  
   // Reaction badge
   reactionBadge: {
     position: 'absolute',
     bottom: -8,
-    right: -8,
-    backgroundColor: colors.background.elevated,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.sm,
+    right: -4,
+    backgroundColor: 'rgba(30, 20, 50, 0.9)',
+    borderRadius: 12,
+    paddingHorizontal: 6,
     paddingVertical: 2,
-    borderWidth: 2,
-    borderColor: colors.border.accent,
+    borderWidth: 1.5,
+    borderColor: 'rgba(139, 92, 246, 0.4)',
   },
   reactionBadgeText: {
     fontSize: 14,
   },
-  // Menu overlay
-  menuOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  
+  // Popup backdrop (invisible, just for catching taps)
+  popupBackdrop: {
+    position: 'absolute',
+    top: -500,
+    left: -500,
+    right: -500,
+    bottom: -500,
+    zIndex: 98,
   },
-  // Loading container
-  loadingContainer: {
-    paddingVertical: spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
+  
+  // Popup container
+  popupContainer: {
+    position: 'absolute',
+    top: -60,
+    zIndex: 99,
   },
-  menuContainer: {
-    padding: spacing.lg,
-    width: SCREEN_WIDTH * 0.85,
-    maxWidth: 360,
-    backgroundColor: colors.background.elevated,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.border.default,
-    ...shadows.lg,
+  popupLeft: {
+    left: 0,
   },
-  // Reaction bar
-  reactionBar: {
+  popupRight: {
+    right: 0,
+  },
+  
+  // Pill shape
+  popupPill: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: spacing.md,
+    alignItems: 'center',
+    backgroundColor: 'rgba(60, 40, 80, 0.95)',
+    borderRadius: 28,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    gap: 0,
+    // Shadow
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+  },
+  
+  // Button inside pill
+  popupButton: {
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+    gap: 3,
+  },
+  popupIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(139, 92, 246, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  popupLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  
+  // Divider
+  popupDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  
+  // Arrow pointing down to bubble
+  popupArrow: {
+    width: 12,
+    height: 12,
+    backgroundColor: 'rgba(60, 40, 80, 0.95)',
+    transform: [{ rotate: '45deg' }],
+    marginTop: -6,
+    borderRightWidth: 1,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border.default,
-    marginBottom: spacing.md,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
   },
-  reactionButton: {
-    width: 46,
-    height: 46,
-    borderRadius: radius.lg,
-    backgroundColor: 'rgba(0, 240, 255, 0.08)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'transparent',
+  popupArrowLeft: {
+    marginLeft: 20,
   },
-  reactionEmoji: {
-    fontSize: 24,
-  },
-  // Menu actions
-  menuActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-  },
-  menuItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    backgroundColor: 'rgba(0, 240, 255, 0.06)',
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border.default,
-    gap: spacing.sm,
-  },
-  menuItemText: {
-    color: colors.text.secondary,
-    fontSize: typography.size.xs,
-    fontWeight: typography.weight.medium,
-  },
-  // Preview
-  previewContainer: {
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border.default,
-  },
-  previewText: {
-    fontSize: typography.size.sm,
-    fontStyle: 'italic',
-    color: colors.text.tertiary,
+  popupArrowRight: {
+    alignSelf: 'flex-end',
+    marginRight: 20,
   },
 });

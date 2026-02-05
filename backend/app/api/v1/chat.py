@@ -236,15 +236,80 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
     # Generate response
     logger.info(f"🔍 DEBUG: MOCK_MODE={MOCK_MODE}")
     
+    # V4.0 Pipeline flag - set to True to enable single-call architecture
+    USE_V4_PIPELINE = os.getenv("USE_V4_PIPELINE", "true").lower() == "true"
+    logger.info(f"🔍 DEBUG: USE_V4_PIPELINE={USE_V4_PIPELINE}")
+    
+    effects_status = None  # 初始化，避免分支遗漏
+    date_info = None
+    
     if MOCK_MODE:
         reply = _mock_reply(request.message)
         tokens = len(request.message) // 4 + len(reply) // 4
         game_result = None  # Mock mode doesn't use game engine
+    elif USE_V4_PIPELINE:
+        # =====================================================================
+        # V4.0 Single Call Pipeline: 前置计算 → Prompt注入 → 单次LLM → 后置更新
+        # =====================================================================
+        logger.info(f"🚀 V4.0 Single-call pipeline")
+        
+        from app.services.v4.chat_pipeline_v4 import chat_pipeline_v4, ChatRequestV4
+        
+        # 获取基础信息
+        character_name = session["character_name"]
+        character_id = session["character_id"]
+        user = getattr(req.state, "user", None)
+        user_id = str(user.user_id) if user else "demo-user-123"
+        intimacy_level = request.intimacy_level
+        
+        # 构建V4请求
+        v4_request = ChatRequestV4(
+            user_id=user_id,
+            character_id=character_id,
+            session_id=session_id,
+            message=request.message,
+            intimacy_level=intimacy_level
+        )
+        
+        # 处理请求
+        v4_response = await chat_pipeline_v4.process_message(v4_request)
+        
+        # 转换为旧格式响应
+        reply = v4_response.content
+        tokens = v4_response.tokens_used
+        
+        # 构建兼容的extra_data
+        user_state_data = v4_response.extra_data.get("user_state", {})
+        current_emotion = user_state_data.get("emotion", 0)
+        
+        game_result = type('MockGameResult', (), {
+            'check_passed': not v4_response.is_nsfw_blocked,
+            'refusal_reason': "NSFW_BLOCKED" if v4_response.is_nsfw_blocked else "",
+            'current_emotion': current_emotion,
+            'current_intimacy': user_state_data.get("intimacy", 0),
+            'current_level': user_state_data.get("intimacy_level", 1),
+            'emotion_before': current_emotion,  # V4 doesn't track before/after, use same value
+            'emotion_delta': v4_response.emotion_delta,
+            'emotion_state': "HAPPY" if current_emotion > 0 else "NEUTRAL" if current_emotion >= -20 else "ANGRY",
+            'emotion_locked': current_emotion <= -75,
+            'intent': v4_response.intent,
+            'is_nsfw': v4_response.intent == "REQUEST_NSFW",
+            'difficulty': v4_response.extra_data.get("precompute", {}).get("difficulty", 20),
+            'new_event': "",
+            'events': user_state_data.get("events", []),
+            'power': 0.0,  # V4 doesn't calculate power
+            'stage': "stranger",  # Simplified
+            'archetype': "normal",
+            'adjusted_difficulty': v4_response.extra_data.get("precompute", {}).get("difficulty", 20),
+            'difficulty_modifier': 1.0,
+            'power_breakdown': {'intimacy': 0, 'emotion': 0, 'chaos': 0, 'pure': 0, 'buff': 0, 'effect': 0},
+            'to_dict': lambda: v4_response.extra_data
+        })()
     else:
         # =====================================================================
-        # 三层架构: L1 感知层 → 中间件逻辑层 → L2 执行层
+        # 三层架构: L1 感知层 → 中间件逻辑层 → L2 执行层 (Legacy)
         # =====================================================================
-        logger.info(f"🎮 Three-layer mode: L1 Perception → Middleware → L2 Generation")
+        logger.info(f"🎮 Legacy Three-layer mode: L1 Perception → Middleware → L2 Generation")
         
         from app.services.llm_service import GrokService
         from app.services.perception_engine import perception_engine

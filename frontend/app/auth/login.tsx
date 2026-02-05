@@ -28,7 +28,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 // 背景配置：切换视频/图片
 const USE_VIDEO_BACKGROUND = true;
 const BG_IMAGE = 'https://i.pinimg.com/originals/8b/1c/a0/8b1ca08def61220dc83e5c3d91e55cde.jpg';
-const BG_VIDEO = require('../../assets/characters/sakura/videos/beach_reward.mp4');
+const BG_VIDEO = require('../../assets/characters/sakura/videos/profile_bg.mp4');
 
 export default function LoginScreen() {
   const router = useRouter();
