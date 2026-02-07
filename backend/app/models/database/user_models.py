@@ -7,7 +7,7 @@ SQLAlchemy models for user data persistence.
 
 from datetime import datetime
 from sqlalchemy import Column, String, Boolean, DateTime
-from app.models.database.base import Base
+from app.models.database.billing_models import Base
 
 
 class User(Base):
