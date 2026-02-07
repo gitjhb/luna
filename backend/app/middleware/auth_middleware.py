@@ -54,35 +54,42 @@ class AuthMiddleware(BaseHTTPMiddleware):
             token = auth_header[7:]
 
         # Create user context
-        if self.mock_mode:
-            # Mock mode: use X-User-ID header if provided, otherwise demo user
-            # This allows testing with different user IDs
-            header_user_id = request.headers.get("X-User-ID")
-            user_id = header_user_id if header_user_id else DEMO_USER_ID
-            
-            # Get actual subscription status from unified subscription service
-            from app.services.subscription_service import subscription_service
-            subscription_info = await subscription_service.get_subscription_info(user_id)
-            subscription_tier = subscription_info.get("effective_tier", "free")
-            is_subscribed = subscription_info.get("is_subscribed", False)
-            
-            request.state.user = UserContext(
-                user_id=user_id,
-                email=f"{user_id}@example.com" if header_user_id else "demo@example.com",
-                subscription_tier=subscription_tier,
-                is_subscribed=is_subscribed,
-            )
-        elif token:
-            # Production: validate token
+        # Priority: 1) Valid token  2) X-User-ID header (mock mode)  3) Demo user (mock mode)
+        if token:
+            # Try to validate token first
             user_context = await self._validate_token(token)
             if user_context:
                 request.state.user = user_context
+            elif self.mock_mode:
+                # Token invalid but mock mode - fallback to header or demo
+                request.state.user = await self._create_mock_user(request)
             else:
                 request.state.user = None
+        elif self.mock_mode:
+            # No token but mock mode - use header or demo user
+            request.state.user = await self._create_mock_user(request)
         else:
             request.state.user = None
 
         return await call_next(request)
+    
+    async def _create_mock_user(self, request: Request) -> UserContext:
+        """Create mock user context from X-User-ID header or demo user"""
+        from app.services.subscription_service import subscription_service
+        
+        header_user_id = request.headers.get("X-User-ID")
+        user_id = header_user_id if header_user_id else DEMO_USER_ID
+        
+        subscription_info = await subscription_service.get_subscription_info(user_id)
+        subscription_tier = subscription_info.get("effective_tier", "free")
+        is_subscribed = subscription_info.get("is_subscribed", False)
+        
+        return UserContext(
+            user_id=user_id,
+            email=f"{user_id}@example.com" if header_user_id else "demo@example.com",
+            subscription_tier=subscription_tier,
+            is_subscribed=is_subscribed,
+        )
 
     async def _validate_token(self, token: str) -> Optional[UserContext]:
         """
