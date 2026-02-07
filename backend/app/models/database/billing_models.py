@@ -2,7 +2,8 @@
 Database Models for Billing System
 ==================================
 
-SQLAlchemy models for User, UserWallet, and TransactionHistory.
+SQLAlchemy models for UserWallet and TransactionHistory.
+User model is imported from user_models.py (single source of truth).
 
 Author: Manus AI
 Date: January 28, 2026
@@ -11,18 +12,11 @@ Date: January 28, 2026
 from datetime import datetime
 from sqlalchemy import Column, String, Float, Boolean, DateTime, Integer, ForeignKey, JSON, Enum as SQLEnum
 from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
 import uuid
 import enum
 
-Base = declarative_base()
-
-
-class SubscriptionTier(str, enum.Enum):
-    """Subscription tier enumeration"""
-    FREE = "free"
-    PREMIUM = "premium"
-    VIP = "vip"
+# Import Base and User from user_models (single source of truth)
+from app.models.database.user_models import Base, User, SubscriptionTier
 
 
 class TransactionType(str, enum.Enum):
@@ -36,38 +30,8 @@ class TransactionType(str, enum.Enum):
     REFERRAL = "referral"  # 邀请好友奖励
 
 
-class User(Base):
-    """User model"""
-    __tablename__ = "users"
-    
-    user_id = Column(String(128), primary_key=True, default=lambda: str(uuid.uuid4()))
-    firebase_uid = Column(String(128), unique=True, nullable=False, index=True)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    display_name = Column(String(255))
-    avatar_url = Column(String(512))
-    
-    # Subscription info
-    is_subscribed = Column(Boolean, default=False, nullable=False)
-    subscription_tier = Column(
-        SQLEnum(SubscriptionTier),
-        default=SubscriptionTier.FREE,
-        nullable=False
-    )
-    subscription_start_date = Column(DateTime, nullable=True)
-    subscription_end_date = Column(DateTime, nullable=True)
-    
-    # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    last_login_at = Column(DateTime, nullable=True)
-    
-    # Relationships
-    wallet = relationship("UserWallet", back_populates="user", uselist=False, cascade="all, delete-orphan")
-    transactions = relationship("TransactionHistory", back_populates="user", cascade="all, delete-orphan")
-    chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
-    
-    def __repr__(self):
-        return f"<User(user_id={self.user_id}, email={self.email}, tier={self.subscription_tier})>"
+# Re-export for backward compatibility
+__all__ = ['Base', 'User', 'SubscriptionTier', 'TransactionType', 'UserWallet', 'TransactionHistory']
 
 
 class UserWallet(Base):
