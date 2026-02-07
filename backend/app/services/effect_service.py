@@ -370,6 +370,63 @@ class EffectService:
             return f"[系统提示：以下效果已结束 - {', '.join(expired_names)}，恢复正常状态]"
 
     # =========================================================================
+    # Stage Boost & XP Multiplier System
+    # =========================================================================
+    
+    # Effect type -> Stage boost (how many stages to temporarily boost)
+    EFFECT_STAGE_BOOSTS = {
+        "tipsy": 1,        # 微醺红酒: 临时升1阶
+        "maid_mode": 1,    # 女仆模式: 临时升1阶 (行为更顺从)
+    }
+    
+    # Effect type -> XP multiplier
+    EFFECT_XP_MULTIPLIERS = {
+        "xp_boost": 2.0,   # 双倍经验
+    }
+    
+    async def get_stage_boost(
+        self,
+        user_id: str,
+        character_id: str,
+    ) -> int:
+        """
+        Get the maximum stage boost from all active effects.
+        
+        Returns number of stages to temporarily boost (0 = no boost).
+        Effects like tipsy/maid_mode grant +1 stage.
+        """
+        effects = await self.get_active_effects(user_id, character_id)
+        
+        max_boost = 0
+        for effect in effects:
+            etype = effect["effect_type"]
+            boost = self.EFFECT_STAGE_BOOSTS.get(etype, 0)
+            max_boost = max(max_boost, boost)
+        
+        return max_boost
+    
+    async def get_xp_multiplier(
+        self,
+        user_id: str,
+        character_id: str,
+    ) -> float:
+        """
+        Get XP multiplier from active effects.
+        
+        Returns multiplier (1.0 = no boost, 2.0 = double XP).
+        Multiple XP effects do NOT stack (use max).
+        """
+        effects = await self.get_active_effects(user_id, character_id)
+        
+        max_mult = 1.0
+        for effect in effects:
+            etype = effect["effect_type"]
+            mult = self.EFFECT_XP_MULTIPLIERS.get(etype, 1.0)
+            max_mult = max(max_mult, mult)
+        
+        return max_mult
+    
+    # =========================================================================
     # Power Buff System
     # =========================================================================
     

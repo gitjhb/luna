@@ -16,6 +16,16 @@ from app.services.interactive_date_service import interactive_date_service
 router = APIRouter(prefix="/dates")
 
 
+def _is_buddy_character(character_id: str) -> bool:
+    """Check if character is BUDDY archetype (no dating allowed)."""
+    try:
+        from app.services.character_config import get_character_config, CharacterArchetype
+        config = get_character_config(character_id)
+        return config and config.archetype == CharacterArchetype.BUDDY
+    except Exception:
+        return False
+
+
 def _get_user_id(req: Request) -> str:
     """Extract user_id from request state (set by auth middleware)."""
     user = getattr(req.state, "user", None)
@@ -76,9 +86,20 @@ async def check_date_unlock_status(character_id: str, req: Request):
         current_level: 当前等级
         level_met: 等级是否达标
         gift_sent: 是否已送过礼物
+        hidden: 是否隐藏约会功能 (BUDDY角色)
     """
+    # BUDDY角色（煤球）不支持约会
+    if _is_buddy_character(character_id):
+        return {
+            "is_unlocked": False,
+            "hidden": True,
+            "reason": "这个角色不支持约会功能",
+        }
+    
     user_id = _get_user_id(req)
-    return await date_service.get_unlock_details(user_id, character_id)
+    result = await date_service.get_unlock_details(user_id, character_id)
+    result["hidden"] = False
+    return result
 
 
 @router.get("/scenarios")
@@ -87,8 +108,13 @@ async def list_date_scenarios(req: Request, character_id: Optional[str] = None):
     获取可用的约会场景列表
     
     如果提供 character_id，返回该角色的专属场景（带锁定状态）
+    BUDDY角色返回空列表
     """
     if character_id:
+        # BUDDY角色不支持约会，返回空
+        if _is_buddy_character(character_id):
+            return {"scenarios": [], "total": 0, "hidden": True}
+        
         user_id = _get_user_id(req)
         scenarios = await date_service.get_character_date_scenarios(user_id, character_id)
     else:
@@ -104,6 +130,15 @@ async def get_date_status(character_id: str, req: Request):
     """
     检查约会状态（冷却、进行中的约会）
     """
+    # BUDDY角色不支持约会
+    if _is_buddy_character(character_id):
+        return {
+            "is_unlocked": False,
+            "hidden": True,
+            "reason": "这个角色不支持约会功能",
+            "can_date": False,
+        }
+    
     user_id = _get_user_id(req)
     
     # 检查解锁
@@ -113,6 +148,7 @@ async def get_date_status(character_id: str, req: Request):
     date_status = await interactive_date_service.check_can_date(user_id, character_id)
     
     return {
+        "hidden": False,
         **unlock_info,
         **date_status,
     }
@@ -129,6 +165,10 @@ async def start_interactive_date(request: StartDateRequest, req: Request):
     
     返回第一个阶段的剧情和选项
     """
+    # BUDDY角色不能约会
+    if _is_buddy_character(request.character_id):
+        raise HTTPException(status_code=400, detail="这个角色不支持约会功能")
+    
     user_id = _get_user_id(req)
     
     if not request.scenario_id:

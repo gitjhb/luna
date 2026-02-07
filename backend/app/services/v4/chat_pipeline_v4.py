@@ -141,15 +141,87 @@ class ChatPipelineV4:
                 getattr(user_state, 'intimacy_level', 1)
             )
             
+            # 5.8 获取礼物记忆
+            gift_memory_str = await self._load_gift_memory(
+                request.user_id, request.character_id
+            )
+            if gift_memory_str:
+                if memory_context_str:
+                    memory_context_str = f"{memory_context_str}\n\n{gift_memory_str}"
+                else:
+                    memory_context_str = gift_memory_str
+            
             # 6. 构建System Prompt
+            
+            # 6.0 获取临时升阶
+            stage_boost = 0
+            stage_boost_info = None
+            try:
+                from app.services.effect_service import effect_service as _effect_svc
+                stage_boost = await _effect_svc.get_stage_boost(
+                    request.user_id, request.character_id
+                )
+                if stage_boost > 0:
+                    # 计算原始阶段和升阶后阶段用于UI展示
+                    from app.services.intimacy_constants import (
+                        get_stage, STAGE_ORDER, STAGE_NAMES_CN
+                    )
+                    intimacy = int(user_state.intimacy_x)
+                    original_stage = get_stage(intimacy)
+                    stage_index = STAGE_ORDER.index(original_stage) if original_stage in STAGE_ORDER else 0
+                    boosted_index = min(stage_index + stage_boost, len(STAGE_ORDER) - 1)
+                    boosted_stage = STAGE_ORDER[boosted_index]
+                    
+                    stage_boost_info = {
+                        "active": True,
+                        "boost_amount": stage_boost,
+                        "original_stage": original_stage.name,
+                        "original_stage_cn": STAGE_NAMES_CN.get(original_stage, "未知"),
+                        "boosted_stage": boosted_stage.name,
+                        "boosted_stage_cn": STAGE_NAMES_CN.get(boosted_stage, "未知"),
+                        "hint": f"🍷 临时升阶中：{STAGE_NAMES_CN.get(original_stage)} → {STAGE_NAMES_CN.get(boosted_stage)}"
+                    }
+                    logger.info(f"🎭 Stage boost active: {stage_boost_info['hint']}")
+            except Exception as e:
+                logger.warning(f"Failed to get stage boost: {e}")
+            
             system_prompt = prompt_builder_v4.build_system_prompt(
                 user_state=user_state,
                 character_id=request.character_id,
                 precompute_result=precompute_result,
                 context_messages=context_messages,
                 memory_context=memory_context_str,
-                user_interests=user_interests
+                user_interests=user_interests,
+                stage_boost=stage_boost,
             )
+            
+            # 6.1 注入状态效果 (Tier 2 礼物 prompt modifier)
+            effect_modifier = None
+            try:
+                from app.services.effect_service import effect_service
+                effect_modifier = await effect_service.get_combined_prompt_modifier(
+                    request.user_id, request.character_id
+                )
+                if effect_modifier:
+                    system_prompt = f"{system_prompt}\n\n{effect_modifier}"
+                    logger.info(f"🍷 Active effects injected into V4 prompt")
+            except Exception as e:
+                logger.warning(f"Failed to load effects for V4: {e}")
+            
+            # 6.2 注入约会状态
+            date_info = None
+            try:
+                from app.services.date_service import date_service
+                date_info = await date_service.get_active_date(
+                    request.user_id, request.character_id
+                )
+                if date_info:
+                    date_prompt = date_info.get("prompt_modifier") or \
+                        f"[约会模式] 你们正在 {date_info.get('scenario_name', '约会')} 中"
+                    system_prompt = f"{system_prompt}\n\n{date_prompt}"
+                    logger.info(f"💕 Date mode injected: {date_info.get('scenario_name')}")
+            except Exception as e:
+                logger.warning(f"Failed to load date status for V4: {e}")
             
             # 6.5 日志：打印完整 System Prompt（方便调试）
             logger.info(f"📝 === FULL SYSTEM PROMPT ({len(system_prompt)} chars) ===\n{system_prompt}\n=== END SYSTEM PROMPT ===")
@@ -172,7 +244,17 @@ class ChatPipelineV4:
             )
             message_id = assistant_msg["message_id"]
             
-            # 10. 异步后置更新（包括记忆提取）
+            # 9.5 获取瓶颈锁状态
+            bottleneck_info = None
+            try:
+                from app.services.intimacy_service import intimacy_service as _int_svc
+                bottleneck_info = await _int_svc.get_bottleneck_lock_status(
+                    request.user_id, request.character_id
+                )
+            except Exception as e:
+                logger.warning(f"Failed to get bottleneck status: {e}")
+            
+            # 10. 异步后置更新（包括记忆提取 + 状态效果递减）
             asyncio.create_task(
                 self._async_post_update(
                     user_state, precompute_result, parsed_response,
@@ -181,6 +263,18 @@ class ChatPipelineV4:
                     context_messages=context_messages,
                 )
             )
+            
+            # 10.5 递减状态效果计数
+            if effect_modifier:
+                try:
+                    expired = await effect_service.decrement_effects(
+                        request.user_id, request.character_id
+                    )
+                    if expired:
+                        for e in expired:
+                            logger.info(f"🍷 Effect expired: {e['effect_type']}")
+                except Exception as e:
+                    logger.warning(f"Failed to decrement effects: {e}")
             
             # 11. 构建响应
             elapsed = (datetime.now() - start_time).total_seconds()
@@ -214,7 +308,9 @@ class ChatPipelineV4:
                     "v4_metrics": {
                         "elapsed_seconds": round(elapsed, 2),
                         "parse_success": parsed_response.parse_success
-                    }
+                    },
+                    "bottleneck": bottleneck_info if bottleneck_info else {},
+                    "stage_boost": stage_boost_info if stage_boost_info else None,
                 }
             )
             
@@ -335,6 +431,37 @@ class ChatPipelineV4:
             
         except Exception as e:
             logger.warning(f"Failed to load memory context: {e}")
+            return ""
+    
+    async def _load_gift_memory(self, user_id: str, character_id: str) -> str:
+        """加载礼物记忆上下文"""
+        try:
+            from app.services.gift_service import gift_service
+            
+            gift_summary = await gift_service.get_gift_summary(user_id, character_id)
+            if gift_summary["total_gifts"] == 0:
+                return ""
+            
+            gift_lines = ["### 礼物记忆"]
+            gift_lines.append(
+                f"用户送过你 {gift_summary['total_gifts']} 次礼物，"
+                f"总价值 {gift_summary['total_spent']} 月石。"
+            )
+            
+            if gift_summary["top_gifts"]:
+                top = gift_summary["top_gifts"][:3]
+                gifts_str = "、".join([
+                    f"{g.get('icon', '🎁')} {g.get('name_cn') or g.get('name')}({g['count']}次)"
+                    for g in top
+                ])
+                gift_lines.append(f"常收到：{gifts_str}")
+            
+            result = "\n".join(gift_lines)
+            logger.info(f"🎁 Gift memory loaded: {gift_summary['total_gifts']} gifts")
+            return result
+            
+        except Exception as e:
+            logger.warning(f"Failed to load gift memory: {e}")
             return ""
     
     async def _get_context_messages(self, session_id: str) -> List[Dict[str, str]]:
@@ -627,10 +754,28 @@ class ChatPipelineV4:
         try:
             from app.services.intimacy_service import intimacy_service
             
+            # Check for XP multiplier from active effects
+            xp_multiplier = 1.0
+            try:
+                from app.services.effect_service import effect_service
+                xp_multiplier = await effect_service.get_xp_multiplier(user_id, character_id)
+            except Exception:
+                pass
+            
             # 基础消息XP
             result = await intimacy_service.award_xp(user_id, character_id, "message")
             if result.get("success"):
-                logger.info(f"📊 XP awarded: +{result.get('xp_awarded', 0)}")
+                base_xp = result.get('xp_awarded', 0)
+                # Apply multiplier for bonus XP (beyond base)
+                if xp_multiplier > 1.0 and base_xp > 0:
+                    bonus = int(base_xp * (xp_multiplier - 1))
+                    if bonus > 0:
+                        await intimacy_service.award_xp_direct(
+                            user_id, character_id, bonus, reason="xp_boost_effect"
+                        )
+                        logger.info(f"📊 XP boost: base={base_xp}, bonus={bonus} (×{xp_multiplier})")
+                else:
+                    logger.info(f"📊 XP awarded: +{base_xp}")
             
             # 特殊意图额外奖励
             bonus_intents = {

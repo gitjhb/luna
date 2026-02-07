@@ -2,7 +2,7 @@
  * Age Verification Modal
  * 
  * 18+ 年龄确认弹窗，首次使用时弹出。
- * 确认后写入 AsyncStorage，不再重复弹出。
+ * 用户需要选择生日日期来验证年龄。
  */
 
 import React, { useEffect, useState } from 'react';
@@ -14,12 +14,15 @@ import {
   StyleSheet,
   BackHandler,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 const STORAGE_KEY = '@luna_age_verified';
+const BIRTHDAY_KEY = '@luna_user_birthday';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface AgeVerificationModalProps {
@@ -32,6 +35,13 @@ interface AgeVerificationModalProps {
 export default function AgeVerificationModal({ onConfirm, onDecline }: AgeVerificationModalProps) {
   const [visible, setVisible] = useState(false);
   const [checking, setChecking] = useState(true);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Default to 18 years ago for picker initial value
+  const defaultDate = new Date();
+  defaultDate.setFullYear(defaultDate.getFullYear() - 18);
 
   useEffect(() => {
     checkVerification();
@@ -62,10 +72,51 @@ export default function AgeVerificationModal({ onConfirm, onDecline }: AgeVerifi
     }
   };
 
+  const calculateAge = (birthday: Date): number => {
+    const today = new Date();
+    let age = today.getFullYear() - birthday.getFullYear();
+    const monthDiff = today.getMonth() - birthday.getMonth();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthday.getDate())) {
+      age--;
+    }
+    
+    return age;
+  };
+
+  const handleDateChange = (event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    
+    if (event.type === 'set' && date) {
+      setSelectedDate(date);
+      setError(null);
+    }
+  };
+
   const handleConfirm = async () => {
+    if (!selectedDate) {
+      setError('请选择您的生日');
+      return;
+    }
+
+    const age = calculateAge(selectedDate);
+    
+    if (age < 18) {
+      setError('抱歉，本应用仅限18岁以上用户使用');
+      // Delay exit to show error
+      setTimeout(() => {
+        onDecline();
+      }, 2000);
+      return;
+    }
+
     try {
       await AsyncStorage.setItem(STORAGE_KEY, 'true');
+      await AsyncStorage.setItem(BIRTHDAY_KEY, selectedDate.toISOString());
     } catch {}
+    
     setVisible(false);
     onConfirm();
   };
@@ -73,6 +124,14 @@ export default function AgeVerificationModal({ onConfirm, onDecline }: AgeVerifi
   const handleDecline = () => {
     setVisible(false);
     onDecline();
+  };
+
+  const formatDate = (date: Date): string => {
+    return date.toLocaleDateString('zh-CN', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
   };
 
   if (checking || !visible) return null;
@@ -98,22 +157,73 @@ export default function AgeVerificationModal({ onConfirm, onDecline }: AgeVerifi
             </View>
           </LinearGradient>
 
-          <Text style={styles.title}>年龄确认</Text>
+          <Text style={styles.title}>年龄验证</Text>
 
           <Text style={styles.body}>
             本应用包含虚拟角色互动内容{'\n'}
             仅限<Text style={styles.highlight}> 18 岁以上</Text>用户使用
           </Text>
 
+          {/* Birthday picker */}
+          <Text style={styles.label}>请选择您的生日</Text>
+          
+          <TouchableOpacity 
+            style={styles.dateButton}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Ionicons name="calendar-outline" size={20} color="#8B5CF6" />
+            <Text style={styles.dateText}>
+              {selectedDate ? formatDate(selectedDate) : '点击选择日期'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Date Picker */}
+          {(showDatePicker || Platform.OS === 'ios') && (
+            <View style={styles.pickerContainer}>
+              <DateTimePicker
+                value={selectedDate || defaultDate}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={handleDateChange}
+                maximumDate={new Date()}
+                minimumDate={new Date(1920, 0, 1)}
+                textColor="#fff"
+                themeVariant="dark"
+                style={styles.picker}
+              />
+              {Platform.OS === 'ios' && (
+                <TouchableOpacity 
+                  style={styles.pickerDone}
+                  onPress={() => setShowDatePicker(false)}
+                >
+                  <Text style={styles.pickerDoneText}>完成</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* Error message */}
+          {error && (
+            <View style={styles.errorContainer}>
+              <Ionicons name="warning" size={16} color="#EF4444" />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
+
           {/* Confirm */}
-          <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm} activeOpacity={0.85}>
+          <TouchableOpacity 
+            style={[styles.confirmBtn, !selectedDate && styles.confirmBtnDisabled]} 
+            onPress={handleConfirm} 
+            activeOpacity={0.85}
+            disabled={!selectedDate}
+          >
             <LinearGradient
-              colors={['#8B5CF6', '#EC4899']}
+              colors={selectedDate ? ['#8B5CF6', '#EC4899'] : ['#4B5563', '#374151']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.confirmGradient}
             >
-              <Text style={styles.confirmText}>我已满 18 岁，继续</Text>
+              <Text style={styles.confirmText}>确认并继续</Text>
             </LinearGradient>
           </TouchableOpacity>
 
@@ -130,14 +240,14 @@ export default function AgeVerificationModal({ onConfirm, onDecline }: AgeVerifi
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(10, 6, 18, 0.92)',
+    backgroundColor: 'rgba(10, 6, 18, 0.95)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 32,
+    paddingHorizontal: 24,
   },
   card: {
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 360,
     backgroundColor: '#1a1025',
     borderRadius: 24,
     paddingHorizontal: 28,
@@ -180,17 +290,78 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
     textAlign: 'center',
     lineHeight: 24,
-    marginBottom: 28,
+    marginBottom: 24,
   },
   highlight: {
     color: '#EC4899',
     fontWeight: '600',
+  },
+  label: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+    marginBottom: 12,
+    alignSelf: 'flex-start',
+  },
+  dateButton: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+  },
+  dateText: {
+    fontSize: 16,
+    color: '#fff',
+  },
+  pickerContainer: {
+    width: '100%',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 12,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 150,
+  },
+  pickerDone: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+  },
+  pickerDoneText: {
+    color: '#8B5CF6',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 16,
+    gap: 8,
+  },
+  errorText: {
+    color: '#EF4444',
+    fontSize: 14,
   },
   confirmBtn: {
     width: '100%',
     borderRadius: 16,
     overflow: 'hidden',
     marginBottom: 12,
+  },
+  confirmBtnDisabled: {
+    opacity: 0.7,
   },
   confirmGradient: {
     paddingVertical: 15,

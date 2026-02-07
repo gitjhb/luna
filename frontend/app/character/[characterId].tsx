@@ -33,6 +33,7 @@ import { getCharacterAvatar, getCharacterBackground } from '../../assets/charact
 import { useUserStore } from '../../store/userStore';
 import { chatService } from '../../services/chatService';
 import { useChatStore } from '../../store/chatStore';
+import { useLocale, tpl } from '../../i18n';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -80,6 +81,7 @@ const ProfileSection = ({ title, children }: ProfileSectionProps) => (
 export default function CharacterProfileScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ characterId: string }>();
+  const { t } = useLocale();
   const isVip = useUserStore((s) => s.isVip);
   
   const [character, setCharacter] = useState<Character | null>(null);
@@ -189,12 +191,12 @@ export default function CharacterProfileScreen() {
         deleteSessionByCharacterId(params.characterId);
       }
       setDeleteModalVisible(false);
-      Alert.alert('已删除', `「${character?.name}」的所有数据已删除`, [
-        { text: '确定', onPress: () => router.back() }
+      Alert.alert(t.characterProfile.deleted, tpl(t.characterProfile.deletedMessage, { name: character?.name || '' }), [
+        { text: t.characterProfile.confirm, onPress: () => router.back() }
       ]);
     } catch (error) {
       console.error('Delete character data failed:', error);
-      Alert.alert('错误', '删除失败，请稍后重试');
+      Alert.alert(t.common.error, t.characterProfile.deleteFailed);
     } finally {
       setIsDeleting(false);
     }
@@ -241,7 +243,7 @@ export default function CharacterProfileScreen() {
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>角色资料</Text>
+          <Text style={styles.headerTitle}>{t.characterProfile.title}</Text>
           <View style={styles.headerRight} />
         </View>
 
@@ -285,37 +287,37 @@ export default function CharacterProfileScreen() {
           </View>
 
           {/* Description */}
-          <ProfileSection title="简介">
+          <ProfileSection title={t.characterProfile.bio}>
             <View style={styles.descriptionCard}>
               <Text style={styles.descriptionText}>{character.description}</Text>
             </View>
           </ProfileSection>
 
           {/* Basic Info */}
-          <ProfileSection title="基本信息">
+          <ProfileSection title={t.characterProfile.basicInfo}>
             {character.age && (
-              <ProfileItem icon="calendar-outline" title="年龄" value={`${character.age}岁`} />
+              <ProfileItem icon="calendar-outline" title={t.characterProfile.age} value={tpl(t.characterProfile.ageValue, { age: character.age })} />
             )}
             {character.birthday && (
-              <ProfileItem icon="gift-outline" title="生日" value={character.birthday} iconColor="#FF6B6B" />
+              <ProfileItem icon="gift-outline" title={t.characterProfile.birthday} value={character.birthday} iconColor="#FF6B6B" />
             )}
             {character.zodiac && (
-              <ProfileItem icon="star-outline" title="星座" value={character.zodiac} iconColor="#FFD700" />
+              <ProfileItem icon="star-outline" title={t.characterProfile.zodiac} value={character.zodiac} iconColor="#FFD700" />
             )}
             {character.height && (
-              <ProfileItem icon="resize-outline" title="身高" value={character.height} />
+              <ProfileItem icon="resize-outline" title={t.characterProfile.height} value={character.height} />
             )}
             {character.location && (
-              <ProfileItem icon="location-outline" title="所在地" value={character.location} iconColor="#4ECDC4" />
+              <ProfileItem icon="location-outline" title={t.characterProfile.location} value={character.location} iconColor="#4ECDC4" />
             )}
             {character.mbti && (
-              <ProfileItem icon="analytics-outline" title="MBTI" value={character.mbti} iconColor="#9B59B6" />
+              <ProfileItem icon="analytics-outline" title={t.characterProfile.mbti} value={character.mbti} iconColor="#9B59B6" />
             )}
           </ProfileSection>
 
           {/* Hobbies */}
           {character.hobbies && character.hobbies.length > 0 && (
-            <ProfileSection title="爱好">
+            <ProfileSection title={t.characterProfile.hobbies}>
               <View style={styles.hobbiesContainer}>
                 {character.hobbies.map((hobby, index) => (
                   <View key={index} style={styles.hobbyTag}>
@@ -327,37 +329,37 @@ export default function CharacterProfileScreen() {
           )}
 
           {/* Relationship Status */}
-          <ProfileSection title="关系状态">
+          <ProfileSection title={t.characterProfile.relationship}>
             <ProfileItem 
               icon="heart" 
-              title="亲密度" 
+              title={t.characterProfile.intimacy} 
               value={`Lv.${currentLevel}`}
               subtitle={intimacy?.stageNameCn || getStageName(currentLevel)}
               iconColor="#EC4899"
             />
             <ProfileItem 
               icon="flame" 
-              title="连续互动" 
-              value={`${stats.streakDays}天`}
+              title={t.characterProfile.streak} 
+              value={tpl(t.characterProfile.streakDays, { days: stats.streakDays })}
               iconColor="#FF6B35"
             />
             <ProfileItem 
               icon="chatbubbles" 
-              title="聊天消息" 
-              value={`${stats.totalMessages}条`}
+              title={t.characterProfile.chatMessages} 
+              value={tpl(t.characterProfile.messagesCount, { count: stats.totalMessages })}
               iconColor="#3498DB"
             />
             <ProfileItem 
               icon="gift" 
-              title="收到礼物" 
-              value={`${stats.totalGifts}个`}
+              title={t.characterProfile.giftsReceived} 
+              value={tpl(t.characterProfile.giftsCount, { count: stats.totalGifts })}
               iconColor="#9B59B6"
             />
             {stats.daysKnown > 0 && (
               <ProfileItem 
                 icon="time" 
-                title="认识天数" 
-                value={`${stats.daysKnown}天`}
+                title={t.characterProfile.daysKnown} 
+                value={tpl(t.characterProfile.streakDays, { days: stats.daysKnown })}
                 iconColor="#2ECC71"
               />
             )}
@@ -370,10 +372,10 @@ export default function CharacterProfileScreen() {
               onPress={handleDeletePress}
             >
               <Ionicons name="trash-outline" size={20} color="#ff4757" />
-              <Text style={styles.deleteButtonText}>删除角色数据</Text>
+              <Text style={styles.deleteButtonText}>{t.characterProfile.deleteCharacterData}</Text>
             </TouchableOpacity>
             <Text style={styles.deleteHint}>
-              删除后将清除与该角色的所有聊天记录、亲密度和记忆数据
+              {t.characterProfile.deleteHint}
             </Text>
           </View>
 
@@ -423,30 +425,30 @@ export default function CharacterProfileScreen() {
               <Ionicons name="warning" size={32} color="#ff4757" />
             </View>
             
-            <Text style={styles.deleteModalTitle}>删除角色数据</Text>
+            <Text style={styles.deleteModalTitle}>{t.characterProfile.deleteConfirmTitle}</Text>
             
             <Text style={styles.deleteModalMessage}>
-              你将永久删除与「{character?.name}」的所有数据：
+              {tpl(t.characterProfile.deleteConfirmMessage, { name: character?.name || '' })}
             </Text>
             
             <View style={styles.deleteModalList}>
-              <Text style={styles.deleteModalListItem}>• 所有聊天记录</Text>
-              <Text style={styles.deleteModalListItem}>• 亲密度进度</Text>
-              <Text style={styles.deleteModalListItem}>• 情感记忆</Text>
-              <Text style={styles.deleteModalListItem}>• 解锁的照片</Text>
+              <Text style={styles.deleteModalListItem}>{t.characterProfile.deleteList.chats}</Text>
+              <Text style={styles.deleteModalListItem}>{t.characterProfile.deleteList.intimacy}</Text>
+              <Text style={styles.deleteModalListItem}>{t.characterProfile.deleteList.emotion}</Text>
+              <Text style={styles.deleteModalListItem}>{t.characterProfile.deleteList.photos}</Text>
             </View>
             
-            <Text style={styles.deleteModalWarning}>此操作无法撤销！</Text>
+            <Text style={styles.deleteModalWarning}>{t.characterProfile.deleteWarning}</Text>
             
             <Text style={styles.deleteModalInputLabel}>
-              请输入 <Text style={styles.deleteModalInputHighlight}>delete</Text> 确认删除：
+              {t.characterProfile.deleteInputLabel}<Text style={styles.deleteModalInputHighlight}>{t.characterProfile.deleteInputHighlight}</Text>{t.characterProfile.deleteInputSuffix}
             </Text>
             
             <TextInput
               style={styles.deleteModalInput}
               value={deleteInput}
               onChangeText={setDeleteInput}
-              placeholder="输入 delete"
+              placeholder={t.characterProfile.deleteInputPlaceholder}
               placeholderTextColor="rgba(255,255,255,0.3)"
               autoCapitalize="none"
               autoCorrect={false}
@@ -457,7 +459,7 @@ export default function CharacterProfileScreen() {
                 style={styles.deleteModalCancelButton}
                 onPress={cancelDelete}
               >
-                <Text style={styles.deleteModalCancelText}>取消</Text>
+                <Text style={styles.deleteModalCancelText}>{t.common.cancel}</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
@@ -469,7 +471,7 @@ export default function CharacterProfileScreen() {
                 disabled={deleteInput.toLowerCase() !== 'delete' || isDeleting}
               >
                 <Text style={styles.deleteModalConfirmText}>
-                  {isDeleting ? '删除中...' : '确认删除'}
+                  {isDeleting ? t.characterProfile.deleting : t.characterProfile.confirmDelete}
                 </Text>
               </TouchableOpacity>
             </View>

@@ -391,6 +391,200 @@ async def create_stripe_portal(return_url: str, req: Request):
 
 
 # ============================================================================
+# Apple App Store Server Notifications (Webhooks)
+# ============================================================================
+
+class AppleNotificationPayload(BaseModel):
+    """Apple Server Notification V2 payload"""
+    signedPayload: str
+
+
+@router.post("/apple/webhook")
+async def apple_server_notification(request: Request):
+    """
+    Handle Apple App Store Server Notifications V2.
+    
+    Configure in App Store Connect:
+    App Store Connect → Your App → App Information → App Store Server Notifications
+    
+    Set URL to: https://your-domain.com/api/v1/payment/apple/webhook
+    
+    Events handled:
+    - SUBSCRIBED: New subscription
+    - DID_RENEW: Renewal success
+    - DID_CHANGE_RENEWAL_STATUS: User cancelled/reactivated auto-renew
+    - DID_FAIL_TO_RENEW: Billing issue
+    - EXPIRED: Subscription expired
+    - GRACE_PERIOD_EXPIRED: Grace period ended
+    - REFUND: User got refund
+    - REVOKE: Family sharing revoked
+    """
+    try:
+        # Parse request body
+        body = await request.json()
+        signed_payload = body.get("signedPayload")
+        
+        if not signed_payload:
+            logger.warning("Apple webhook: missing signedPayload")
+            raise HTTPException(status_code=400, detail="Missing signedPayload")
+        
+        # Process notification
+        result = await iap_service.handle_apple_notification(signed_payload)
+        
+        logger.info(f"Apple webhook processed: {result.get('notification_type')}")
+        return JSONResponse(content=result, status_code=200)
+        
+    except ValueError as e:
+        logger.error(f"Apple webhook validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Apple webhook error: {e}", exc_info=True)
+        # Return 200 to prevent Apple from retrying (we log the error)
+        # Apple will retry on 4xx/5xx which could cause duplicate processing
+        return JSONResponse(
+            content={"status": "error", "message": str(e)},
+            status_code=200
+        )
+
+
+@router.post("/apple/webhook/test")
+async def test_apple_webhook(request: Request):
+    """
+    Test endpoint for Apple webhook (development only).
+    Simulates various notification types.
+    """
+    if not MOCK_PAYMENT:
+        raise HTTPException(status_code=403, detail="Only available in mock mode")
+    
+    body = await request.json()
+    notification_type = body.get("notification_type", "DID_RENEW")
+    user_id = body.get("user_id", "test-user")
+    product_id = body.get("product_id", "luna_premium_monthly")
+    
+    logger.info(f"Test Apple webhook: {notification_type} for {user_id}")
+    
+    # Simulate notification processing
+    from app.services.payment_service import payment_service
+    
+    if notification_type == "DID_CHANGE_RENEWAL_STATUS":
+        subtype = body.get("subtype", "AUTO_RENEW_DISABLED")
+        auto_renew = subtype != "AUTO_RENEW_DISABLED"
+        result = await payment_service.update_subscription_auto_renew(user_id, auto_renew)
+    elif notification_type in ("EXPIRED", "GRACE_PERIOD_EXPIRED"):
+        result = await payment_service.expire_subscription(user_id)
+    elif notification_type == "DID_FAIL_TO_RENEW":
+        result = await payment_service.mark_billing_issue(user_id)
+    elif notification_type == "REFUND":
+        result = await payment_service.handle_refund(user_id, "test-txn-123")
+    else:
+        result = {"message": f"Unhandled type: {notification_type}"}
+    
+    return {"test": True, "notification_type": notification_type, "result": result}
+
+
+# ============================================================================
+# Google Play Real-time Developer Notifications (Webhooks)
+# ============================================================================
+
+class GooglePubSubMessage(BaseModel):
+    """Google Cloud Pub/Sub push message"""
+    message: dict
+    subscription: Optional[str] = None
+
+
+@router.post("/google/webhook")
+async def google_play_notification(request: Request):
+    """
+    Handle Google Play Real-time Developer Notifications.
+    
+    Configure in Google Play Console:
+    1. Go to Monetization Setup → Real-time developer notifications
+    2. Set Topic name (create a Pub/Sub topic)
+    3. Create a push subscription to: https://your-domain.com/api/v1/payment/google/webhook
+    
+    Events handled:
+    - SUBSCRIPTION_PURCHASED (4): New subscription
+    - SUBSCRIPTION_RENEWED (2): Renewal success
+    - SUBSCRIPTION_CANCELED (3): User cancelled
+    - SUBSCRIPTION_ON_HOLD (5): Payment on hold
+    - SUBSCRIPTION_IN_GRACE_PERIOD (6): Grace period
+    - SUBSCRIPTION_RECOVERED (1): Recovered from hold
+    - SUBSCRIPTION_RESTARTED (7): User resubscribed
+    - SUBSCRIPTION_REVOKED (12): Subscription revoked
+    - SUBSCRIPTION_EXPIRED (13): Subscription expired
+    """
+    try:
+        # Google Pub/Sub sends a specific format
+        body = await request.json()
+        
+        # Extract the base64-encoded message data
+        message = body.get("message", {})
+        message_data = message.get("data")
+        
+        if not message_data:
+            logger.warning("Google webhook: missing message data")
+            # Return 200 to acknowledge receipt (prevent retries)
+            return JSONResponse(content={"status": "no_data"}, status_code=200)
+        
+        # Process notification
+        result = await iap_service.handle_google_notification(message_data)
+        
+        logger.info(f"Google webhook processed: {result.get('type')}")
+        return JSONResponse(content=result, status_code=200)
+        
+    except ValueError as e:
+        logger.error(f"Google webhook validation error: {e}")
+        # Return 200 to prevent infinite retries
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=200)
+    except Exception as e:
+        logger.error(f"Google webhook error: {e}", exc_info=True)
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=200)
+
+
+@router.post("/google/webhook/test")
+async def test_google_webhook(request: Request):
+    """
+    Test endpoint for Google webhook (development only).
+    """
+    if not MOCK_PAYMENT:
+        raise HTTPException(status_code=403, detail="Only available in mock mode")
+    
+    body = await request.json()
+    notification_type = body.get("notification_type", 2)  # Default: RENEWED
+    user_id = body.get("user_id", "test-user")
+    
+    NOTIFICATION_NAMES = {
+        1: "SUBSCRIPTION_RECOVERED",
+        2: "SUBSCRIPTION_RENEWED",
+        3: "SUBSCRIPTION_CANCELED",
+        4: "SUBSCRIPTION_PURCHASED",
+        5: "SUBSCRIPTION_ON_HOLD",
+        6: "SUBSCRIPTION_IN_GRACE_PERIOD",
+        7: "SUBSCRIPTION_RESTARTED",
+        12: "SUBSCRIPTION_REVOKED",
+        13: "SUBSCRIPTION_EXPIRED",
+    }
+    
+    type_name = NOTIFICATION_NAMES.get(notification_type, f"UNKNOWN_{notification_type}")
+    logger.info(f"Test Google webhook: {type_name} for {user_id}")
+    
+    from app.services.payment_service import payment_service
+    
+    if notification_type == 3:  # CANCELED
+        result = await payment_service.update_subscription_auto_renew(user_id, False)
+    elif notification_type in (5, 6):  # ON_HOLD or GRACE_PERIOD
+        result = await payment_service.mark_billing_issue(user_id)
+    elif notification_type == 7:  # RESTARTED
+        result = await payment_service.update_subscription_auto_renew(user_id, True)
+    elif notification_type in (12, 13):  # REVOKED or EXPIRED
+        result = await payment_service.expire_subscription(user_id)
+    else:
+        result = {"message": f"Type {type_name} - no action in test mode"}
+    
+    return {"test": True, "notification_type": type_name, "result": result}
+
+
+# ============================================================================
 # In-App Purchase Endpoints (iOS/Android)
 # ============================================================================
 

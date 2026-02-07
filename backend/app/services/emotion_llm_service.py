@@ -69,7 +69,7 @@ EMOTION_ANALYSIS_PROMPT = """你是一个情绪分析助手。分析用户发给
   "suggested_mood": "loving" | "happy" | "neutral" | "shy" | "flirty" | "annoyed" | "angry" | "hurt" | "cold",
   "content_rating": "safe" | "flirty" | "spicy" | "explicit",
   "requires_subscription": true | false,
-  "reason": "简短解释为什么是这个delta(中文)"
+  "reason": "简短解释为什么是这个delta"
 }}
 
 只输出JSON，不要其他文字。

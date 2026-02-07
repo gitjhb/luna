@@ -187,8 +187,42 @@ DEFAULT_GIFT_CATALOG = [
         "restores_energy": 10,  # 回复 10 点体力
         "sort_order": 104,
     },
+    {
+        "gift_type": "stinky_tofu",
+        "name": "Stinky Tofu",
+        "name_cn": "臭豆腐",
+        "description": "An... acquired taste. She might not appreciate this.",
+        "description_cn": "emmm...你确定要送这个？后果自负哦",
+        "price": 5,
+        "xp_reward": 5,
+        "xp_multiplier": 1.0,
+        "icon": "🫠",
+        "tier": GiftTier.CONSUMABLE,
+        "category": GiftCategory.CONSUMABLE,
+        "emotion_boost": -30,  # 负面！彩蛋道具
+        "sort_order": 105,
+    },
     
     # ============ Tier 2: 状态触发器 (State Triggers) ⭐ MVP 重点 ============
+    {
+        "gift_type": "xp_potion",
+        "name": "Double XP Potion",
+        "name_cn": "双倍经验药水",
+        "description": "Doubles intimacy XP gain for the next 30 messages",
+        "description_cn": "接下来30条消息获得双倍亲密度经验",
+        "price": 150,
+        "xp_reward": 100,
+        "xp_multiplier": 2.0,
+        "icon": "✨",
+        "tier": GiftTier.STATE_TRIGGER,
+        "category": GiftCategory.STATE,
+        "status_effect": {
+            "type": "xp_boost",
+            "duration_messages": 30,
+            "prompt_modifier": "用户使用了双倍经验药水，你对他的好感度增长更快了。在对话中可以自然地提到'今天感觉和你特别有缘'之类的。",
+        },
+        "sort_order": 199,
+    },
     {
         "gift_type": "red_rose",
         "name": "Red Rose",
@@ -319,14 +353,14 @@ DEFAULT_GIFT_CATALOG = [
         "name": "Luxury Yacht",
         "name_cn": "豪华游艇",
         "description": "A private yacht for your special someone",
-        "description_cn": "私人游艇，全服广播",
+        "description_cn": "私人游艇，全服广播（即将推出）",
         "price": 4999,
         "xp_reward": 8000,
         "xp_multiplier": 1.6,
         "icon": "🛳️",
         "tier": GiftTier.SPEED_DATING,
         "category": GiftCategory.LUXURY,
-        "global_broadcast": True,  # 全服广播 (后期实现)
+        "global_broadcast": True,  # 全服广播 (即将推出)
         "sort_order": 303,
     },
     
@@ -336,15 +370,15 @@ DEFAULT_GIFT_CATALOG = [
         "name": "Cyber Heart",
         "name_cn": "赛博之心",
         "description": "The ultimate gift - unlocks exclusive content",
-        "description_cn": "终极礼物，解锁专属内容和完全服从模式",
+        "description_cn": "终极礼物，全服置顶公告（即将推出）",
         "price": 9999,
         "xp_reward": 20000,
         "xp_multiplier": 2.0,
         "icon": "💖",
         "tier": GiftTier.WHALE_BAIT,
         "category": GiftCategory.LUXURY,
-        "unlocks_full_obedience": True,  # 解锁完全服从模式
-        "global_announcement": True,  # 全服置顶公告
+        "unlocks_full_obedience": True,  # 解锁完全服从模式 (XP本身就够用了)
+        "global_announcement": True,  # 全服置顶公告 (即将推出)
         "sort_order": 401,
     },
 ]

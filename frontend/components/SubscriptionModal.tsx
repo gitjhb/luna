@@ -1,10 +1,10 @@
 /**
  * Subscription Modal - Premium/VIP subscription purchase
  * 
- * Shows available plans and handles subscription flow
+ * Uses react-native-iap for real App Store / Google Play subscriptions
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,20 +15,47 @@ import {
   Alert,
   Dimensions,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { pricingService, MembershipPlan } from '../services/pricingService';
+import { iapService, IAPProduct, IAPPurchaseResult, SUBSCRIPTION_SKUS } from '../services/iapService';
 import { paymentService } from '../services/paymentService';
 import { useUserStore } from '../store/userStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// Fallback display info when products aren't loaded from store yet
+const PLAN_DISPLAY_INFO: Record<string, { name: string; features: string[]; dailyCredits: number }> = {
+  'luna_premium_monthly': {
+    name: 'Premium',
+    dailyCredits: 100,
+    features: [
+      '每日 100 金币',
+      '更快的回复速度',
+      '高级角色解锁',
+      '优先客服支持',
+    ],
+  },
+  'luna_vip_monthly': {
+    name: 'VIP',
+    dailyCredits: 300,
+    features: [
+      '每日 300 金币',
+      '最快回复速度',
+      '全部角色解锁',
+      '专属 VIP 角色',
+      '成人内容解锁 🔞',
+      '优先新功能体验',
+    ],
+  },
+};
+
 interface SubscriptionModalProps {
   visible: boolean;
   onClose: () => void;
   onSubscribeSuccess?: (tier: string) => void;
-  highlightFeature?: string; // e.g., "spicy" to highlight that feature
+  highlightFeature?: string;
 }
 
 export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
@@ -38,72 +65,143 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   highlightFeature,
 }) => {
   const { user, updateUser, isSubscribed } = useUserStore();
-  const [plans, setPlans] = useState<MembershipPlan[]>([]);
+  const [products, setProducts] = useState<IAPProduct[]>([]);
   const [loading, setLoading] = useState(false);
-  const [subscribing, setSubscribing] = useState<string | null>(null);
+  const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(false);
 
-  // Load plans when modal opens
+  // Load products when modal opens
   useEffect(() => {
     if (visible) {
-      loadPlans();
+      loadProducts();
+      setupPurchaseCallbacks();
     }
   }, [visible]);
 
-  const loadPlans = async () => {
+  const loadProducts = async () => {
     try {
       setLoading(true);
-      const membershipPlans = await pricingService.getMembershipPlans();
-      // Filter out free plan, only show paid plans
-      setPlans(membershipPlans.filter(p => p.tier !== 'free'));
+      const iapProducts = await iapService.getProducts();
+      console.log('[SubscriptionModal] Loaded products:', iapProducts);
+      setProducts(iapProducts);
     } catch (error) {
-      console.error('Failed to load plans:', error);
+      console.error('[SubscriptionModal] Failed to load products:', error);
+      // Show fallback UI with mock data for testing
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSubscribe = (plan: MembershipPlan) => {
-    Alert.alert(
-      '确认订阅',
-      `订阅 ${plan.name} 会员\n$${plan.price.toFixed(2)}/月\n\n功能包括：\n${plan.features.join('\n')}`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '订阅',
-          onPress: async () => {
-            try {
-              setSubscribing(plan.id);
-              
-              const result = await paymentService.subscribe(
-                plan.id,
-                'monthly',
-                'mock'
-              );
-              
-              if (result.success) {
-                // Update user subscription status
-                updateUser({
-                  subscriptionTier: plan.tier as 'free' | 'premium' | 'vip',
-                  subscriptionExpiresAt: result.subscription.expires_at || undefined,
-                });
-                
-                onSubscribeSuccess?.(plan.tier);
-                onClose();
-                
-                Alert.alert(
-                  '🎉 订阅成功！',
-                  `欢迎成为 ${plan.name} 会员！\n现在可以享受所有高级功能了。`
-                );
-              }
-            } catch (error: any) {
-              Alert.alert('订阅失败', error.message || '请稍后重试');
-            } finally {
-              setSubscribing(null);
-            }
-          },
-        },
-      ]
+  const setupPurchaseCallbacks = useCallback(() => {
+    iapService.setCallbacks(
+      // On success
+      async (result: IAPPurchaseResult) => {
+        console.log('[SubscriptionModal] Purchase success:', result);
+        setPurchasing(null);
+
+        try {
+          // Verify receipt with backend
+          const verification = await paymentService.verifyReceipt(
+            result.receipt,
+            result.productId,
+            Platform.OS
+          );
+
+          if (verification.success) {
+            // Update local user state
+            updateUser({
+              subscriptionTier: result.tier,
+              subscriptionExpiresAt: verification.expiresAt,
+            });
+
+            onSubscribeSuccess?.(result.tier);
+            onClose();
+
+            Alert.alert(
+              '🎉 订阅成功！',
+              `欢迎成为 ${PLAN_DISPLAY_INFO[result.productId]?.name || result.tier.toUpperCase()} 会员！`
+            );
+          } else {
+            Alert.alert('验证失败', verification.message || '请联系客服');
+          }
+        } catch (err: any) {
+          console.error('[SubscriptionModal] Receipt verification failed:', err);
+          Alert.alert('验证失败', '订阅可能已成功，请重启 App 或联系客服');
+        }
+      },
+      // On error
+      (error) => {
+        console.warn('[SubscriptionModal] Purchase error:', error);
+        setPurchasing(null);
+
+        // User cancelled - don't show error
+        if (error.code === 'E_USER_CANCELLED') {
+          return;
+        }
+
+        Alert.alert(
+          '购买失败',
+          error.message || '请稍后重试'
+        );
+      }
     );
+  }, [onSubscribeSuccess, onClose, updateUser]);
+
+  const handlePurchase = async (productId: string) => {
+    setPurchasing(productId);
+
+    try {
+      await iapService.purchaseSubscription(productId);
+      // Result handled in callback
+    } catch (err: any) {
+      console.error('[SubscriptionModal] Purchase error:', err);
+      setPurchasing(null);
+      
+      if (err.code !== 'E_USER_CANCELLED') {
+        Alert.alert('购买失败', err.message || '请稍后重试');
+      }
+    }
+  };
+
+  const handleRestore = async () => {
+    setRestoring(true);
+
+    try {
+      const restored = await iapService.restorePurchases();
+      
+      if (restored.length > 0) {
+        // Find highest tier
+        const hasVip = restored.some(p => p.tier === 'vip');
+        const tier = hasVip ? 'vip' : 'premium';
+
+        // Verify with backend
+        const latest = restored[restored.length - 1];
+        const verification = await paymentService.verifyReceipt(
+          latest.receipt,
+          latest.productId,
+          Platform.OS
+        );
+
+        if (verification.success) {
+          updateUser({
+            subscriptionTier: tier,
+            subscriptionExpiresAt: verification.expiresAt,
+          });
+
+          Alert.alert('恢复成功', `已恢复 ${tier.toUpperCase()} 会员资格`);
+          onClose();
+        } else {
+          Alert.alert('恢复失败', '未找到有效订阅');
+        }
+      } else {
+        Alert.alert('未找到订阅', '没有可恢复的购买记录');
+      }
+    } catch (err: any) {
+      console.error('[SubscriptionModal] Restore error:', err);
+      Alert.alert('恢复失败', err.message || '请稍后重试');
+    } finally {
+      setRestoring(false);
+    }
   };
 
   const getGradientColors = (tier: string): [string, string] => {
@@ -117,35 +215,35 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     }
   };
 
-  const renderPlanCard = (plan: MembershipPlan) => {
-    const isCurrentPlan = user?.subscriptionTier === plan.tier;
-    const isPurchasing = subscribing === plan.id;
+  const renderProductCard = (product: IAPProduct) => {
+    const displayInfo = PLAN_DISPLAY_INFO[product.productId];
+    const isCurrentPlan = user?.subscriptionTier === product.tier;
+    const isPurchasing = purchasing === product.productId;
     
-    // Can upgrade: VIP is higher than Premium
     const tierRank: Record<string, number> = { free: 0, premium: 1, vip: 2 };
     const currentRank = tierRank[user?.subscriptionTier || 'free'] || 0;
-    const planRank = tierRank[plan.tier] || 0;
+    const planRank = tierRank[product.tier] || 0;
     const canUpgrade = planRank > currentRank;
     const isDowngrade = planRank < currentRank;
     
     return (
       <TouchableOpacity
-        key={plan.id}
+        key={product.productId}
         style={[styles.planCard, isCurrentPlan && styles.planCardCurrent]}
-        onPress={() => (canUpgrade || !isSubscribed) && handleSubscribe(plan)}
+        onPress={() => (canUpgrade || !isSubscribed) && handlePurchase(product.productId)}
         disabled={isCurrentPlan || isDowngrade || isPurchasing}
         activeOpacity={0.85}
       >
         <LinearGradient
-          colors={getGradientColors(plan.tier)}
+          colors={getGradientColors(product.tier)}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.planGradient}
         >
           {/* Header */}
           <View style={styles.planHeader}>
-            <Text style={styles.planName}>{plan.name}</Text>
-            {plan.highlighted && (
+            <Text style={styles.planName}>{displayInfo?.name || product.title}</Text>
+            {product.tier === 'vip' && (
               <View style={styles.popularBadge}>
                 <Text style={styles.popularBadgeText}>推荐</Text>
               </View>
@@ -157,21 +255,20 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
             )}
           </View>
 
-          {/* Price */}
+          {/* Price - from App Store */}
           <View style={styles.priceRow}>
-            <Text style={styles.priceAmount}>${plan.price.toFixed(2)}</Text>
+            <Text style={styles.priceAmount}>{product.price}</Text>
             <Text style={styles.pricePeriod}>/月</Text>
           </View>
 
           {/* Daily Credits */}
           <Text style={styles.dailyCredits}>
-            🪙 每日 +{plan.dailyCredits} 金币
+            🪙 每日 +{displayInfo?.dailyCredits || 100} 金币
           </Text>
 
           {/* Features */}
           <View style={styles.featuresContainer}>
-            {plan.features.map((feature, index) => {
-              // Highlight the feature if it matches
+            {(displayInfo?.features || []).map((feature, index) => {
               const isHighlighted = highlightFeature && 
                 feature.toLowerCase().includes(highlightFeature.toLowerCase());
               
@@ -193,31 +290,29 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
             })}
           </View>
 
-          {/* Subscribe/Upgrade Button */}
+          {/* Subscribe Button */}
           {!isCurrentPlan && !isDowngrade && (
             <TouchableOpacity
               style={styles.subscribeButton}
-              onPress={() => handleSubscribe(plan)}
+              onPress={() => handlePurchase(product.productId)}
               disabled={isPurchasing}
             >
               {isPurchasing ? (
                 <ActivityIndicator size="small" color="#8B5CF6" />
               ) : (
                 <Text style={styles.subscribeButtonText}>
-                  {canUpgrade ? '升级到 ' + plan.name : '立即订阅'}
+                  {canUpgrade ? '升级' : '立即订阅'}
                 </Text>
               )}
             </TouchableOpacity>
           )}
 
-          {/* Downgrade - disabled */}
           {isDowngrade && (
             <View style={[styles.subscribedBadge, { opacity: 0.5 }]}>
               <Text style={styles.subscribedText}>当前等级更高</Text>
             </View>
           )}
 
-          {/* Already subscribed */}
           {isCurrentPlan && (
             <View style={styles.subscribedBadge}>
               <Ionicons name="checkmark-circle" size={18} color="#fff" />
@@ -226,6 +321,22 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           )}
         </LinearGradient>
       </TouchableOpacity>
+    );
+  };
+
+  // Fallback UI when no products available from App Store
+  const renderFallbackProducts = () => {
+    return (
+      <View style={styles.fallbackContainer}>
+        <Ionicons name="alert-circle-outline" size={48} color="rgba(255,255,255,0.4)" />
+        <Text style={styles.fallbackTitle}>订阅产品加载中</Text>
+        <Text style={styles.fallbackText}>
+          请稍后重试，或检查 App Store Connect 配置
+        </Text>
+        <Text style={styles.fallbackSkus}>
+          需要配置: {SUBSCRIPTION_SKUS.join(', ')}
+        </Text>
+      </View>
     );
   };
 
@@ -241,12 +352,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           {/* Header */}
           <View style={styles.header}>
             <View>
-              <View style={styles.titleRow}>
-                <Text style={styles.title}>升级会员</Text>
-                <View style={styles.testBadge}>
-                  <Text style={styles.testBadgeText}>测试模式</Text>
-                </View>
-              </View>
+              <Text style={styles.title}>升级会员</Text>
               <Text style={styles.subtitle}>解锁全部高级功能</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -271,6 +377,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#EC4899" />
+              <Text style={styles.loadingText}>加载中...</Text>
             </View>
           ) : (
             <ScrollView 
@@ -278,12 +385,28 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.scrollContent}
             >
-              {plans.map(renderPlanCard)}
+              {products.length > 0 
+                ? products.map(renderProductCard)
+                : renderFallbackProducts()
+              }
+              
+              {/* Restore Purchases */}
+              <TouchableOpacity 
+                style={styles.restoreButton}
+                onPress={handleRestore}
+                disabled={restoring}
+              >
+                {restoring ? (
+                  <ActivityIndicator size="small" color="rgba(255,255,255,0.6)" />
+                ) : (
+                  <Text style={styles.restoreText}>恢复购买</Text>
+                )}
+              </TouchableOpacity>
               
               {/* Terms */}
               <Text style={styles.termsText}>
-                订阅将自动续费，可随时在设置中取消。{'\n'}
-                价格可能因地区而异。
+                订阅将通过您的 {Platform.OS === 'ios' ? 'Apple ID' : 'Google Play'} 账户自动续费。{'\n'}
+                可在设备设置中随时取消。
               </Text>
             </ScrollView>
           )}
@@ -314,26 +437,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   title: {
     fontSize: 22,
     fontWeight: '700',
     color: '#fff',
-  },
-  testBadge: {
-    backgroundColor: 'rgba(255, 165, 0, 0.2)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  testBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#FFA500',
   },
   subtitle: {
     fontSize: 14,
@@ -361,6 +468,11 @@ const styles = StyleSheet.create({
     height: 300,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.6)',
   },
   scroll: {
     maxHeight: 500,
@@ -473,6 +585,39 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  restoreButton: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  restoreText: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.6)',
+    textDecorationLine: 'underline',
+  },
+  fallbackContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  fallbackTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  fallbackText: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.5)',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  fallbackSkus: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.3)',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   termsText: {
     fontSize: 12,

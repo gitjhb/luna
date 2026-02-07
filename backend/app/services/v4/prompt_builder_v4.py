@@ -34,12 +34,16 @@ class PromptBuilderV4:
 You MUST respond with ONLY a valid JSON object in this exact format:
 
 {
-  "reply": "你的回复内容",
+  "reply": "Your response here",
   "emotion_delta": -3,
   "intent": "FLIRT",
   "is_nsfw_blocked": false,
-  "thought": "内心想法(中文)"
+  "thought": "Your inner thoughts here"
 }
+
+### Language Rule
+- Match the user's language. If they write in Chinese, reply in Chinese. If English, reply in English.
+- The thought field should also be in the user's language.
 
 ### emotion_delta 情绪波动指南 (-50 to +50)
 根据对话内容决定情绪变化，要符合角色性格和当前关系阶段：
@@ -76,8 +80,8 @@ You MUST respond with ONLY a valid JSON object in this exact format:
 - LOVE_CONFESSION = 表白（S2及以下时必须婉拒）
 - PROPOSAL = 求婚（仅S4阶段才可接受）
 - is_nsfw_blocked: true if you refuse NSFW request due to relationship boundaries
-- thought: 内心检查流程（必须包含）：先确认"用户是否在要求确立关系？我当前阶段是什么？我能答应吗？" 然后才写内心独白。
-- reply: your actual response (用圆括号描写动作神态)
+- thought: Internal thought process (required): First check "Is the user asking to establish a relationship? What's my current stage? Can I accept?" Then write your inner monologue.
+- reply: Your actual response. Use parentheses () for actions/expressions, e.g. (smiles) or （微笑）
 - NO extra text outside the JSON object
 - NO markdown formatting (no *asterisks*)
 """
@@ -89,7 +93,8 @@ You MUST respond with ONLY a valid JSON object in this exact format:
         precompute_result: Any = None,
         context_messages: List[Dict] = None,
         memory_context: str = "",
-        user_interests: List[str] = None
+        user_interests: List[str] = None,
+        stage_boost: int = 0,
     ) -> str:
         """
         构建完整的System Prompt用于单次调用
@@ -113,9 +118,9 @@ You MUST respond with ONLY a valid JSON object in this exact format:
         parts = [
             self._build_character_base(char_config, char_data),
             self._build_buddy_world_knowledge(char_config, user_state),
-            self._build_current_status(user_state, character_id),
+            self._build_current_status(user_state, character_id, stage_boost=stage_boost),
             self._build_user_interests(user_interests),
-            self._build_stage_rules(user_state),
+            self._build_stage_rules(user_state, stage_boost=stage_boost),
             self._build_memory_context(user_state.events, memory_context),
             self._build_emotional_guidance(user_state),
             self._build_safety_boundaries(char_config, user_state),
@@ -166,10 +171,10 @@ You MUST respond with ONLY a valid JSON object in this exact format:
         
         return f"""{base_prompt}
 
-### 输出格式规范
-- 动作、神态描写使用中文圆括号（）
-- 示例：（轻轻歪头）你怎么了呀？（眨眨眼睛）
-- 不要使用 *星号* 或其他格式
+### 输出格式规范 / Output Format
+- Use parentheses for actions: (tilts head) or （歪头）
+- Match the user's language in your reply
+- NO *asterisks* or markdown formatting
 
 ### 当前时间
 - 日期: {date_str} {weekday}
@@ -275,7 +280,7 @@ You MUST respond with ONLY a valid JSON object in this exact format:
 - 用户的兴趣爱好：{interests_str}
 - 可以在聊天中自然地聊到这些话题，但不要刻意或生硬地提起"""
     
-    def _build_current_status(self, user_state: Any, character_id: str) -> str:
+    def _build_current_status(self, user_state: Any, character_id: str, stage_boost: int = 0) -> str:
         """构建当前状态信息（内部参考，不输出）"""
         
         # 计算intimacy_x (对应旧系统的intimacy)
@@ -288,6 +293,14 @@ You MUST respond with ONLY a valid JSON object in this exact format:
         
         emotion = getattr(user_state, 'emotion', 0)
         stage = get_stage(intimacy)
+        
+        # Stage boost from active effects (临时升阶)
+        original_stage = stage
+        if stage_boost > 0:
+            from app.services.intimacy_constants import STAGE_ORDER
+            stage_index = STAGE_ORDER.index(stage) if stage in STAGE_ORDER else 0
+            boosted_index = min(stage_index + stage_boost, len(STAGE_ORDER) - 1)
+            stage = STAGE_ORDER[boosted_index]
         
         stage_cn = STAGE_NAMES_CN.get(stage, "未知")
         stage_en = STAGE_NAMES_EN.get(stage, "Unknown")
@@ -355,7 +368,7 @@ You MUST respond with ONLY a valid JSON object in this exact format:
         else:
             return min(100, int(80 + (level - 26) * 1.4))
     
-    def _build_stage_rules(self, user_state: Any) -> str:
+    def _build_stage_rules(self, user_state: Any, stage_boost: int = 0) -> str:
         """构建阶段行为规则"""
         
         if hasattr(user_state, 'intimacy_x'):
@@ -365,6 +378,14 @@ You MUST respond with ONLY a valid JSON object in this exact format:
             intimacy = self._level_to_intimacy(level)
         
         stage = get_stage(intimacy)
+        
+        # Stage boost from active effects (临时升阶)
+        original_stage = stage
+        if stage_boost > 0:
+            from app.services.intimacy_constants import STAGE_ORDER
+            stage_index = STAGE_ORDER.index(stage) if stage in STAGE_ORDER else 0
+            boosted_index = min(stage_index + stage_boost, len(STAGE_ORDER) - 1)
+            stage = STAGE_ORDER[boosted_index]
         
         stage_rules = {
             RelationshipStage.S0_STRANGER: """### 关系阶段：陌生人 (S0)
@@ -427,7 +448,12 @@ You MUST respond with ONLY a valid JSON object in this exact format:
 - 绝对不要说"我们才刚认识" - 你们在一起很久了！"""
         }
         
-        return stage_rules.get(stage, "### 关系阶段：未知\n保持自然友好的态度。")
+        result = stage_rules.get(stage, "### 关系阶段：未知\n保持自然友好的态度。")
+        
+        if stage_boost > 0 and stage != original_stage:
+            result += f"\n\n⚠️ 状态效果：当前临时进入 {STAGE_NAMES_CN.get(stage, '未知')} 阶段的行为模式（原始阶段：{STAGE_NAMES_CN.get(original_stage, '未知')}）。效果结束后回到原始阶段。"
+        
+        return result
     
     def _build_memory_context(self, events: List[str], memory_context: str = "") -> str:
         """构建记忆和事件上下文"""

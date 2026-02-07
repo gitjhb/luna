@@ -1,20 +1,84 @@
 /**
- * In-App Purchase Service
+ * IAP Service - In-App Purchases via react-native-iap
  * 
- * Handles iOS App Store and Google Play purchases using Expo IAP.
- * 
- * Setup requirements:
- * 1. Install: npx expo install expo-in-app-purchases
- * 2. Configure in app.json/app.config.js
- * 3. Create products in App Store Connect / Google Play Console
- * 
- * Product IDs must match those configured in:
- * - iOS: App Store Connect -> In-App Purchases
- * - Android: Google Play Console -> Products
+ * Handles StoreKit (iOS) and Play Billing (Android) subscriptions
  */
 
-import { Platform } from 'react-native';
-import { api } from './api';
+import { Platform, Alert } from 'react-native';
+import Constants from 'expo-constants';
+
+// 检测是否在 Expo Go 中运行
+const isExpoGo = Constants.appOwnership === 'expo';
+
+// 调试日志
+console.log('[IAP] === Debug Info ===');
+console.log('[IAP] appOwnership:', Constants.appOwnership);
+console.log('[IAP] isExpoGo:', isExpoGo);
+console.log('[IAP] executionEnvironment:', Constants.executionEnvironment);
+
+// 动态导入 IAP（只在 dev build 中可用）
+let iapModule: any = null;
+if (!isExpoGo) {
+  try {
+    iapModule = require('react-native-iap');
+    console.log('[IAP] react-native-iap loaded successfully');
+  } catch (e) {
+    console.warn('[IAP] react-native-iap not available:', e);
+  }
+} else {
+  console.log('[IAP] Skipping IAP module load (Expo Go detected)');
+}
+
+// 临时调试弹窗（上线前删除）
+setTimeout(() => {
+  Alert.alert(
+    '🔧 IAP Debug',
+    `appOwnership: ${Constants.appOwnership || 'null'}\n` +
+    `isExpoGo: ${isExpoGo}\n` +
+    `iapModule: ${iapModule ? '✅ loaded' : '❌ null'}\n` +
+    `Platform: ${Platform.OS}`
+  );
+}, 2000);
+
+// 解构（如果可用）
+const {
+  initConnection,
+  endConnection,
+  getSubscriptions,
+  requestSubscription,
+  purchaseUpdatedListener,
+  purchaseErrorListener,
+  finishTransaction,
+  getAvailablePurchases,
+  clearTransactionIOS,
+} = iapModule || {};
+
+// ============================================================================
+// Product IDs - Update these with your actual App Store Connect / Play Console IDs
+// ============================================================================
+
+export const SUBSCRIPTION_SKUS = Platform.select({
+  ios: [
+    'luna_premium_monthly',
+    'luna_vip_monthly',
+    // Add yearly if needed:
+    // 'luna_premium_yearly',
+    // 'luna_vip_yearly',
+  ],
+  android: [
+    'luna_premium_monthly',
+    'luna_vip_monthly',
+  ],
+  default: [],
+}) as string[];
+
+// Map product ID to tier
+export const SKU_TO_TIER: Record<string, 'premium' | 'vip'> = {
+  'luna_premium_monthly': 'premium',
+  'luna_premium_yearly': 'premium',
+  'luna_vip_monthly': 'vip',
+  'luna_vip_yearly': 'vip',
+};
 
 // ============================================================================
 // Types
@@ -25,430 +89,255 @@ export interface IAPProduct {
   title: string;
   description: string;
   price: string;
-  priceAmountMicros: number;
-  priceCurrencyCode: string;
-  type: 'consumable' | 'subscription';
-  // Mapped from backend
-  coins?: number;
-  bonus?: number;
-  tier?: string;
+  priceAmount: number;
+  currency: string;
+  tier: 'premium' | 'vip';
 }
 
-export interface IAPPurchase {
+export interface IAPPurchaseResult {
+  success: boolean;
   productId: string;
   transactionId: string;
-  transactionDate: number;
-  transactionReceipt: string;
-  purchaseToken?: string; // Android only
-}
-
-export interface VerifyResult {
-  success: boolean;
-  provider: 'apple' | 'google';
-  fulfillments: Array<{
-    type: 'credit_purchase' | 'subscription';
-    status: string;
-    credits_added?: number;
-    tier?: string;
-  }>;
+  receipt: string;
+  tier: 'premium' | 'vip';
 }
 
 // ============================================================================
-// Product Configuration
+// Service State
 // ============================================================================
 
-// iOS Product IDs (must match App Store Connect)
-const IOS_CREDIT_PRODUCTS = [
-  'com.luna.credits.60',
-  'com.luna.credits.300',
-  'com.luna.credits.980',
-  'com.luna.credits.1980',
-  'com.luna.credits.3280',
-  'com.luna.credits.6480',
-];
+let isInitialized = false;
+let purchaseUpdateSubscription: any = null;
+let purchaseErrorSubscription: any = null;
 
-const IOS_SUBSCRIPTION_PRODUCTS = [
-  'com.luna.premium.monthly',
-  'com.luna.premium.yearly',
-  'com.luna.vip.monthly',
-  'com.luna.vip.yearly',
-];
-
-// Android Product IDs (must match Google Play Console)
-const ANDROID_CREDIT_PRODUCTS = [
-  'credits_60',
-  'credits_300',
-  'credits_980',
-  'credits_1980',
-  'credits_3280',
-  'credits_6480',
-];
-
-const ANDROID_SUBSCRIPTION_PRODUCTS = [
-  'premium_monthly',
-  'premium_yearly',
-  'vip_monthly',
-  'vip_yearly',
-];
+// Callbacks for purchase events
+let onPurchaseSuccess: ((result: IAPPurchaseResult) => void) | null = null;
+let onPurchaseError: ((error: PurchaseError) => void) | null = null;
 
 // ============================================================================
-// IAP Service
+// Service
 // ============================================================================
 
-class IAPService {
-  private initialized = false;
-  private iapModule: any = null;
-  private purchaseUpdateSubscription: any = null;
-  private purchaseErrorSubscription: any = null;
-  
-  // Callback for purchase completion
-  private onPurchaseComplete?: (purchase: IAPPurchase) => void;
-  private onPurchaseError?: (error: Error) => void;
-  
+export const iapService = {
   /**
-   * Initialize IAP connection
+   * Initialize IAP connection - call once on app start
    */
-  async initialize(): Promise<boolean> {
-    if (this.initialized) return true;
-    
-    try {
-      // Dynamically import to avoid issues on web
-      const IAP = await import('expo-in-app-purchases');
-      this.iapModule = IAP;
-      
-      // Connect to store
-      await IAP.connectAsync();
-      
-      // Set up purchase listeners
-      IAP.setPurchaseListener(({ responseCode, results, errorCode }) => {
-        if (responseCode === IAP.IAPResponseCode.OK) {
-          // Purchase successful
-          results?.forEach((purchase: any) => {
-            this.handlePurchase(purchase);
-          });
-        } else if (responseCode === IAP.IAPResponseCode.USER_CANCELED) {
-          console.log('[IAP] User cancelled purchase');
-        } else {
-          console.error('[IAP] Purchase error:', errorCode);
-          this.onPurchaseError?.(new Error(`Purchase failed: ${errorCode}`));
-        }
-      });
-      
-      this.initialized = true;
-      console.log('[IAP] Initialized successfully');
-      return true;
-      
-    } catch (error) {
-      console.error('[IAP] Initialization failed:', error);
+  init: async (): Promise<boolean> => {
+    // Expo Go 中跳过 IAP
+    if (isExpoGo || !iapModule) {
+      console.log('[IAP] Skipping init (Expo Go or module unavailable)');
       return false;
     }
-  }
-  
-  /**
-   * Disconnect from store
-   */
-  async disconnect(): Promise<void> {
-    if (!this.iapModule || !this.initialized) return;
     
+    if (isInitialized) return true;
+
     try {
-      await this.iapModule.disconnectAsync();
-      this.initialized = false;
-      console.log('[IAP] Disconnected');
-    } catch (error) {
-      console.error('[IAP] Disconnect error:', error);
+      const result = await initConnection();
+      console.log('[IAP] Connection initialized:', result);
+
+      // iOS: Clear any pending transactions from previous sessions
+      if (Platform.OS === 'ios') {
+        await clearTransactionIOS();
+      }
+
+      // Set up purchase listeners
+      purchaseUpdateSubscription = purchaseUpdatedListener(
+        async (purchase: Purchase | SubscriptionPurchase) => {
+          console.log('[IAP] Purchase updated:', purchase.productId);
+
+          const receipt = Platform.OS === 'ios'
+            ? purchase.transactionReceipt
+            : (purchase as any).purchaseToken;
+
+          if (receipt) {
+            // Finish the transaction
+            try {
+              await finishTransaction({ purchase, isConsumable: false });
+              console.log('[IAP] Transaction finished');
+
+              // Call success callback
+              if (onPurchaseSuccess) {
+                onPurchaseSuccess({
+                  success: true,
+                  productId: purchase.productId,
+                  transactionId: purchase.transactionId || '',
+                  receipt: receipt,
+                  tier: SKU_TO_TIER[purchase.productId] || 'premium',
+                });
+              }
+            } catch (err) {
+              console.error('[IAP] Failed to finish transaction:', err);
+            }
+          }
+        }
+      );
+
+      purchaseErrorSubscription = purchaseErrorListener((error: PurchaseError) => {
+        console.warn('[IAP] Purchase error:', error);
+        if (onPurchaseError) {
+          onPurchaseError(error);
+        }
+      });
+
+      isInitialized = true;
+      return true;
+    } catch (err) {
+      console.error('[IAP] Failed to initialize:', err);
+      return false;
     }
-  }
-  
+  },
+
   /**
-   * Get available products from the store
+   * Clean up IAP connection - call on app unmount
    */
-  async getProducts(): Promise<IAPProduct[]> {
-    if (!await this.ensureInitialized()) return [];
+  cleanup: async (): Promise<void> => {
+    if (isExpoGo || !iapModule) return;
     
-    const productIds = Platform.OS === 'ios'
-      ? [...IOS_CREDIT_PRODUCTS, ...IOS_SUBSCRIPTION_PRODUCTS]
-      : [...ANDROID_CREDIT_PRODUCTS, ...ANDROID_SUBSCRIPTION_PRODUCTS];
-    
-    try {
-      const { results } = await this.iapModule.getProductsAsync(productIds);
-      
-      return results.map((product: any) => ({
-        productId: product.productId,
-        title: product.title,
-        description: product.description,
-        price: product.price,
-        priceAmountMicros: product.priceAmountMicros,
-        priceCurrencyCode: product.priceCurrencyCode,
-        type: this.isSubscription(product.productId) ? 'subscription' : 'consumable',
-      }));
-      
-    } catch (error) {
-      console.error('[IAP] Failed to get products:', error);
+    if (purchaseUpdateSubscription) {
+      purchaseUpdateSubscription.remove();
+      purchaseUpdateSubscription = null;
+    }
+    if (purchaseErrorSubscription) {
+      purchaseErrorSubscription.remove();
+      purchaseErrorSubscription = null;
+    }
+
+    await endConnection();
+    isInitialized = false;
+    console.log('[IAP] Connection ended');
+  },
+
+  /**
+   * Set purchase callbacks
+   */
+  setCallbacks: (
+    onSuccess: (result: IAPPurchaseResult) => void,
+    onError: (error: PurchaseError) => void
+  ) => {
+    onPurchaseSuccess = onSuccess;
+    onPurchaseError = onError;
+  },
+
+  /**
+   * Get available subscription products
+   */
+  getProducts: async (): Promise<IAPProduct[]> => {
+    if (isExpoGo || !iapModule) {
+      console.log('[IAP] Returning empty products (Expo Go)');
       return [];
     }
-  }
-  
-  /**
-   * Get credit packages (consumable products)
-   */
-  async getCreditPackages(): Promise<IAPProduct[]> {
-    const products = await this.getProducts();
-    return products.filter(p => p.type === 'consumable');
-  }
-  
-  /**
-   * Get subscription plans
-   */
-  async getSubscriptions(): Promise<IAPProduct[]> {
-    const products = await this.getProducts();
-    return products.filter(p => p.type === 'subscription');
-  }
-  
-  /**
-   * Purchase a product
-   */
-  async purchase(
-    productId: string,
-    onComplete?: (purchase: IAPPurchase) => void,
-    onError?: (error: Error) => void,
-  ): Promise<void> {
-    if (!await this.ensureInitialized()) {
-      onError?.(new Error('IAP not initialized'));
-      return;
-    }
     
-    this.onPurchaseComplete = onComplete;
-    this.onPurchaseError = onError;
+    if (!isInitialized) {
+      await iapService.init();
+    }
+
+    console.log('[IAP] Fetching subscriptions for SKUs:', SUBSCRIPTION_SKUS);
     
     try {
-      await this.iapModule.purchaseItemAsync(productId);
-      // Result will come through purchase listener
-    } catch (error) {
-      console.error('[IAP] Purchase initiation failed:', error);
-      onError?.(error as Error);
+      const subscriptions = await getSubscriptions({ skus: SUBSCRIPTION_SKUS });
+      console.log('[IAP] Fetched subscriptions:', subscriptions.length);
+      console.log('[IAP] Subscriptions data:', JSON.stringify(subscriptions, null, 2));
+
+      return subscriptions.map((sub: any) => ({
+        productId: sub.productId,
+        title: sub.title || sub.productId,
+        description: sub.description || '',
+        price: sub.localizedPrice || `$${sub.price}`,
+        priceAmount: parseFloat(sub.price || '0'),
+        currency: sub.currency || 'USD',
+        tier: SKU_TO_TIER[sub.productId] || 'premium',
+      }));
+    } catch (err) {
+      console.error('[IAP] Failed to get products:', err);
+      return [];
     }
-  }
-  
+  },
+
   /**
-   * Restore purchases (required for App Store)
+   * Purchase a subscription
    */
-  async restorePurchases(): Promise<IAPPurchase[]> {
-    if (!await this.ensureInitialized()) return [];
+  purchaseSubscription: async (productId: string): Promise<void> => {
+    if (isExpoGo || !iapModule) {
+      throw new Error('IAP 在 Expo Go 中不可用，请使用 dev build');
+    }
     
+    if (!isInitialized) {
+      await iapService.init();
+    }
+
+    console.log('[IAP] Requesting subscription:', productId);
+
     try {
-      const history = await this.iapModule.getPurchaseHistoryAsync();
-      
-      // Verify and restore each purchase with backend
-      const restored: IAPPurchase[] = [];
-      
-      for (const purchase of history.results || []) {
-        const iapPurchase = this.mapToPurchase(purchase);
+      if (Platform.OS === 'ios') {
+        await requestSubscription({ sku: productId });
+      } else {
+        // Android requires offer token for subscriptions
+        const subscriptions = await getSubscriptions({ skus: [productId] });
+        const sub = subscriptions[0];
         
-        try {
-          await this.verifyWithBackend(iapPurchase);
-          restored.push(iapPurchase);
-        } catch (error) {
-          console.warn('[IAP] Failed to restore purchase:', purchase.productId);
+        if (sub && (sub as any).subscriptionOfferDetails?.length > 0) {
+          const offerToken = (sub as any).subscriptionOfferDetails[0].offerToken;
+          await requestSubscription({
+            sku: productId,
+            subscriptionOffers: [{ sku: productId, offerToken }],
+          });
+        } else {
+          await requestSubscription({ sku: productId });
         }
       }
-      
-      return restored;
-      
-    } catch (error) {
-      console.error('[IAP] Restore failed:', error);
-      return [];
-    }
-  }
-  
-  /**
-   * Check if product is a subscription
-   */
-  private isSubscription(productId: string): boolean {
-    const subscriptionIds = Platform.OS === 'ios'
-      ? IOS_SUBSCRIPTION_PRODUCTS
-      : ANDROID_SUBSCRIPTION_PRODUCTS;
-    return subscriptionIds.includes(productId);
-  }
-  
-  /**
-   * Handle successful purchase
-   */
-  private async handlePurchase(purchase: any): Promise<void> {
-    const iapPurchase = this.mapToPurchase(purchase);
-    
-    try {
-      // Verify with backend and fulfill
-      const result = await this.verifyWithBackend(iapPurchase);
-      
-      // Acknowledge/finish the purchase
-      await this.finishPurchase(purchase);
-      
-      console.log('[IAP] Purchase completed:', iapPurchase.productId, result);
-      this.onPurchaseComplete?.(iapPurchase);
-      
-    } catch (error) {
-      console.error('[IAP] Purchase verification failed:', error);
-      this.onPurchaseError?.(error as Error);
-    }
-  }
-  
-  /**
-   * Map store purchase to our format
-   */
-  private mapToPurchase(purchase: any): IAPPurchase {
-    return {
-      productId: purchase.productId,
-      transactionId: purchase.orderId || purchase.transactionId,
-      transactionDate: purchase.purchaseTime || purchase.transactionDate,
-      transactionReceipt: purchase.purchaseToken || purchase.transactionReceipt,
-      purchaseToken: purchase.purchaseToken,
-    };
-  }
-  
-  /**
-   * Verify purchase with backend
-   */
-  private async verifyWithBackend(purchase: IAPPurchase): Promise<VerifyResult> {
-    const provider = Platform.OS === 'ios' ? 'apple' : 'google';
-    
-    const response = await api.post<VerifyResult>('/payment/iap/verify', {
-      provider,
-      receipt_data: purchase.transactionReceipt,
-      product_id: purchase.productId,
-      purchase_token: purchase.purchaseToken,
-    });
-    
-    if (!response.success) {
-      throw new Error('Verification failed');
-    }
-    
-    return response;
-  }
-  
-  /**
-   * Finish/acknowledge purchase (required by stores)
-   */
-  private async finishPurchase(purchase: any): Promise<void> {
-    try {
-      await this.iapModule.finishTransactionAsync(purchase, !this.isSubscription(purchase.productId));
-    } catch (error) {
-      console.error('[IAP] Failed to finish transaction:', error);
-    }
-  }
-  
-  /**
-   * Ensure IAP is initialized
-   */
-  private async ensureInitialized(): Promise<boolean> {
-    if (this.initialized) return true;
-    return await this.initialize();
-  }
-  
-  /**
-   * Check if IAP is available on this platform
-   */
-  isAvailable(): boolean {
-    return Platform.OS === 'ios' || Platform.OS === 'android';
-  }
-  
-  /**
-   * Get the provider name for current platform
-   */
-  getProvider(): 'apple' | 'google' {
-    return Platform.OS === 'ios' ? 'apple' : 'google';
-  }
-}
-
-// Singleton export
-export const iapService = new IAPService();
-
-// ============================================================================
-// Hook for React components
-// ============================================================================
-
-import { useState, useEffect, useCallback } from 'react';
-
-export function useIAP() {
-  const [products, setProducts] = useState<IAPProduct[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [purchasing, setPurchasing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
-  useEffect(() => {
-    let mounted = true;
-    
-    const init = async () => {
-      if (!iapService.isAvailable()) {
-        setLoading(false);
-        return;
-      }
-      
-      const success = await iapService.initialize();
-      if (!success || !mounted) {
-        setLoading(false);
-        return;
-      }
-      
-      const products = await iapService.getProducts();
-      if (mounted) {
-        setProducts(products);
-        setLoading(false);
-      }
-    };
-    
-    init();
-    
-    return () => {
-      mounted = false;
-    };
-  }, []);
-  
-  const purchase = useCallback(async (productId: string): Promise<boolean> => {
-    setError(null);
-    setPurchasing(true);
-    
-    return new Promise((resolve) => {
-      iapService.purchase(
-        productId,
-        () => {
-          setPurchasing(false);
-          resolve(true);
-        },
-        (err) => {
-          setError(err.message);
-          setPurchasing(false);
-          resolve(false);
-        },
-      );
-    });
-  }, []);
-  
-  const restore = useCallback(async () => {
-    setError(null);
-    setLoading(true);
-    
-    try {
-      const restored = await iapService.restorePurchases();
-      return restored;
     } catch (err: any) {
-      setError(err.message);
-      return [];
-    } finally {
-      setLoading(false);
+      console.error('[IAP] Purchase request failed:', err);
+      throw err;
     }
-  }, []);
+  },
+
+  /**
+   * Restore previous purchases
+   */
+  restorePurchases: async (): Promise<IAPPurchaseResult[]> => {
+    if (isExpoGo || !iapModule) {
+      console.log('[IAP] Cannot restore (Expo Go)');
+      return [];
+    }
+    
+    if (!isInitialized) {
+      await iapService.init();
+    }
+
+    try {
+      const purchases = await getAvailablePurchases();
+      console.log('[IAP] Restored purchases:', purchases.length);
+
+      return purchases
+        .filter((p: any) => SUBSCRIPTION_SKUS.includes(p.productId))
+        .map((p: any) => ({
+          success: true,
+          productId: p.productId,
+          transactionId: p.transactionId || '',
+          receipt: Platform.OS === 'ios' 
+            ? p.transactionReceipt || ''
+            : (p as any).purchaseToken || '',
+          tier: SKU_TO_TIER[p.productId] || 'premium',
+        }));
+    } catch (err) {
+      console.error('[IAP] Failed to restore purchases:', err);
+      return [];
+    }
+  },
+
+  /**
+   * Check if IAP is available on this device
+   */
+  isAvailable: (): boolean => {
+    return !isExpoGo && !!iapModule && isInitialized;
+  },
   
-  return {
-    products,
-    creditPackages: products.filter(p => p.type === 'consumable'),
-    subscriptions: products.filter(p => p.type === 'subscription'),
-    loading,
-    purchasing,
-    error,
-    purchase,
-    restore,
-    isAvailable: iapService.isAvailable(),
-  };
-}
+  /**
+   * Check if running in Expo Go
+   */
+  isExpoGo: (): boolean => {
+    return isExpoGo;
+  },
+};
 
 export default iapService;

@@ -33,6 +33,16 @@ class RelationshipStage(str, Enum):
 IntimacyStage = RelationshipStage
 
 
+# Stage ordering for boost calculations
+STAGE_ORDER = [
+    RelationshipStage.S0_STRANGER,
+    RelationshipStage.S1_FRIEND,
+    RelationshipStage.S2_CRUSH,
+    RelationshipStage.S3_LOVER,
+    RelationshipStage.S4_SPOUSE,
+]
+
+
 # 阶段阈值
 STAGE_THRESHOLDS = {
     RelationshipStage.S0_STRANGER: (0, 19),

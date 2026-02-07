@@ -20,7 +20,7 @@ from app.middleware.billing_middleware import BillingMiddleware
 from app.middleware.logging_middleware import LoggingMiddleware
 
 # Import routers
-from app.api.v1 import auth, chat, characters, wallet, market, voice, image, images, intimacy, pricing, payment, gifts, scenarios, emotion, user_settings, interests, referral, events, interactions, debug, dates, photos, stamina
+from app.api.v1 import auth, chat, characters, wallet, market, voice, image, images, intimacy, pricing, payment, gifts, scenarios, emotion, user_settings, interests, referral, events, interactions, debug, dates, photos, stamina, push, daily_reward
 
 
 # Lifespan context manager for startup/shutdown
@@ -41,8 +41,16 @@ async def lifespan(app: FastAPI):
     await init_redis()
     logger.info("Redis connection initialized")
     
-    # TODO: Initialize vector database connection
-    # await init_vector_db()
+    # Initialize Firebase Admin SDK
+    try:
+        from app.api.v1.auth import get_firebase_app
+        firebase_app = get_firebase_app()
+        if firebase_app:
+            logger.info("Firebase Admin SDK ready")
+        else:
+            logger.warning("Firebase Admin SDK not configured")
+    except Exception as e:
+        logger.error(f"Firebase initialization error: {e}")
     
     logger.info("Application startup complete")
     
@@ -159,6 +167,8 @@ app.include_router(debug.router, prefix="/api/v1", tags=["Debug"])
 app.include_router(dates.router, prefix="/api/v1", tags=["Dates"])
 app.include_router(photos.router, prefix="/api/v1", tags=["Photos"])
 app.include_router(stamina.router, prefix="/api/v1", tags=["Stamina"])
+app.include_router(push.router, prefix="/api/v1", tags=["Push"])
+app.include_router(daily_reward.router, prefix="/api/v1", tags=["DailyReward"])
 
 # Static files (privacy policy, terms, etc.)
 import os

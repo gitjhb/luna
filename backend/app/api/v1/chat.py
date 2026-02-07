@@ -35,15 +35,23 @@ def get_character_info(character_id: str) -> dict:
     return {"name": "AI Companion", "avatar_url": None, "background_url": None}
 
 
+def _get_user_id(request: Request) -> str:
+    """从请求中获取用户ID，支持认证和header fallback"""
+    user = getattr(request.state, "user", None)
+    if user and hasattr(user, "user_id"):
+        return str(user.user_id)
+    # Fallback to header for testing/development
+    return request.headers.get("X-User-ID", "demo-user-123")
+
+
 @router.post("/sessions", response_model=CreateSessionResponse)
 async def create_session(request: CreateSessionRequest, req: Request):
     """
     Create a new chat session with a character.
     If a session already exists for this character, return the existing one.
     """
-    # Get user ID (from auth or default)
-    user = getattr(req.state, "user", None)
-    user_id = str(user.user_id) if user else "demo-user-123"
+    # Get user ID (from auth or header)
+    user_id = _get_user_id(req)
     
     # Get character info
     character = get_character_info(str(request.character_id))
@@ -78,8 +86,7 @@ async def create_session(request: CreateSessionRequest, req: Request):
 @router.get("/sessions", response_model=list[SessionInfo])
 async def list_sessions(character_id: UUID = None, req: Request = None):
     """List all chat sessions for current user, optionally filtered by character_id"""
-    user = getattr(req.state, "user", None) if req else None
-    user_id = str(user.user_id) if user else "demo-user-123"
+    user_id = _get_user_id(req) if req else "demo-user-123"
     
     sessions = await chat_repo.list_sessions(
         user_id=user_id,
@@ -190,8 +197,7 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
     # =====================================================================
     # 体力系统 - 仅 Debug 记录，不阻塞聊天
     # =====================================================================
-    user = getattr(req.state, "user", None)
-    user_id = str(user.user_id) if user else "demo-user-123"
+    user_id = _get_user_id(req)
     
     try:
         from app.services.stamina_service import stamina_service, STAMINA_COST_PER_MESSAGE
@@ -244,8 +250,7 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         # 获取基础信息
         character_name = session["character_name"]
         character_id = session["character_id"]
-        user = getattr(req.state, "user", None)
-        user_id = str(user.user_id) if user else "demo-user-123"
+        user_id = _get_user_id(req)
         intimacy_level = request.intimacy_level
         
         # 构建V4请求
@@ -308,8 +313,7 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         # 获取基础信息
         character_name = session["character_name"]
         character_id = session["character_id"]
-        user = getattr(req.state, "user", None)
-        user_id = str(user.user_id) if user else "demo-user-123"
+        user_id = _get_user_id(req)
         intimacy_level = request.intimacy_level
         
         # 检查订阅状态
@@ -601,31 +605,34 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
     req.state.message_id = msg_id
 
     # =========================================================================
-    # Intimacy XP Awards
+    # Intimacy XP Awards (V4 pipeline handles its own XP in _async_post_update)
     # =========================================================================
-    user = getattr(req.state, "user", None)
-    user_id = str(user.user_id) if user else "demo-user-123"
+    user_id = _get_user_id(req)
     character_id = session["character_id"]
 
-    # Award XP for sending message (+2 XP)
-    xp_result = await intimacy_service.award_xp(user_id, character_id, "message")
-    intimacy_xp = xp_result.get("xp_awarded", 0) if xp_result.get("success") else 0
-    level_up = xp_result.get("level_up", False)
+    intimacy_xp = 0
+    level_up = False
 
-    # Check for continuous chat bonus (every 10 messages)
-    total_msgs = session.get("total_messages", 0) + 2
-    if total_msgs > 0 and total_msgs % 10 == 0:
-        bonus_result = await intimacy_service.award_xp(user_id, character_id, "continuous_chat")
-        if bonus_result.get("success"):
-            intimacy_xp += bonus_result.get("xp_awarded", 0)
-            logger.info(f"Continuous chat bonus awarded: +{bonus_result.get('xp_awarded', 0)} XP")
+    if not USE_V4_PIPELINE:
+        # Legacy path: award XP here
+        xp_result = await intimacy_service.award_xp(user_id, character_id, "message")
+        intimacy_xp = xp_result.get("xp_awarded", 0) if xp_result.get("success") else 0
+        level_up = xp_result.get("level_up", False)
 
-    # Check for emotional words bonus
-    if IntimacyService.contains_emotional_words(request.message):
-        emotional_result = await intimacy_service.award_xp(user_id, character_id, "emotional")
-        if emotional_result.get("success"):
-            intimacy_xp += emotional_result.get("xp_awarded", 0)
-            logger.info(f"Emotional expression bonus awarded: +{emotional_result.get('xp_awarded', 0)} XP")
+        # Check for continuous chat bonus (every 10 messages)
+        total_msgs = session.get("total_messages", 0) + 2
+        if total_msgs > 0 and total_msgs % 10 == 0:
+            bonus_result = await intimacy_service.award_xp(user_id, character_id, "continuous_chat")
+            if bonus_result.get("success"):
+                intimacy_xp += bonus_result.get("xp_awarded", 0)
+                logger.info(f"Continuous chat bonus awarded: +{bonus_result.get('xp_awarded', 0)} XP")
+
+        # Check for emotional words bonus
+        if IntimacyService.contains_emotional_words(request.message):
+            emotional_result = await intimacy_service.award_xp(user_id, character_id, "emotional")
+            if emotional_result.get("success"):
+                intimacy_xp += emotional_result.get("xp_awarded", 0)
+                logger.info(f"Emotional expression bonus awarded: +{emotional_result.get('xp_awarded', 0)} XP")
 
     # Store intimacy info in request state
     req.state.intimacy_xp_awarded = intimacy_xp
@@ -699,6 +706,17 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
     # 添加激活效果信息 (Tier 2 礼物状态)
     if effects_status and effects_status.get("has_effects"):
         extra_data["active_effects"] = effects_status.get("effects", [])
+    
+    # 添加瓶颈锁状态 (V4)
+    if USE_V4_PIPELINE and v4_response and v4_response.extra_data:
+        bottleneck_data = v4_response.extra_data.get("bottleneck")
+        if bottleneck_data and bottleneck_data.get("is_locked"):
+            extra_data["bottleneck"] = bottleneck_data
+        
+        # 添加临时升阶状态
+        stage_boost_data = v4_response.extra_data.get("stage_boost")
+        if stage_boost_data and stage_boost_data.get("active"):
+            extra_data["stage_boost"] = stage_boost_data
     
     # 添加约会状态信息
     if date_info:

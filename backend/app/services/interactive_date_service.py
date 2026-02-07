@@ -652,7 +652,7 @@ class InteractiveDateService:
             if current_stage.stage_num >= MAX_TOTAL_STAGES:
                 # 已达最大阶段，直接结束
                 await _save_session_to_db(session)
-                return await self.end_date(session.id)
+                return await self.finish_date(session.id)
             
             if is_extended:
                 # 已延长，继续正常流程
@@ -793,7 +793,7 @@ class InteractiveDateService:
             
             if current_stage.stage_num >= MAX_TOTAL_STAGES:
                 await _save_session_to_db(session)
-                return await self.end_date(session.id)
+                return await self.finish_date(session.id)
             
             if is_extended:
                 pass  # 继续正常流程
@@ -1537,8 +1537,14 @@ class InteractiveDateService:
         # =====================================================================
         # Layer 1: Persona（角色灵魂）
         # =====================================================================
+        # 提取性格核心（优先取前 800 字，确保包含性格特点）
+        personality_text = character_personality[:800] if character_personality else "你是一个温柔可爱的角色。"
+        
         persona_layer = f"""你是 {character_name}，正在和用户约会。
-{character_personality[:400] if character_personality else "你是一个温柔可爱的角色。"}"""
+
+{personality_text}
+
+【重要】在约会中保持上述性格特点，用符合角色的方式说话和反应。"""
         
         # =====================================================================
         # Layer 2: Rules（规则约束）

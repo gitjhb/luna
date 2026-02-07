@@ -21,13 +21,15 @@ import { useTheme } from '../../theme/config';
 import { useChatStore, ChatSession, Message } from '../../store/chatStore';
 import { chatService } from '../../services/chatService';
 import SettingsDrawer from '../../components/SettingsDrawer';
+import { useLocale, tpl } from '../../i18n';
 import { getCharacterAvatar } from '../../assets/characters';
 import { formatDistanceToNow } from 'date-fns';
-import { zhCN } from 'date-fns/locale';
+import { zhCN, enUS } from 'date-fns/locale';
 
 export default function ChatsScreen() {
   const router = useRouter();
   const { theme } = useTheme();
+  const { t, locale } = useLocale();
   const { sessions, setSessions, deleteSession, messagesBySession } = useChatStore();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -79,23 +81,22 @@ export default function ChatsScreen() {
   };
 
   const handleClearMessages = (session: ChatSession) => {
-    // Simple confirmation for clearing chat history only
     Alert.alert(
-      '清除聊天记录',
-      `确定要清除与「${session.characterName}」的聊天记录吗？\n\n亲密度和其他关系数据将保留。`,
+      t.chats.clearHistory,
+      tpl(t.chats.clearHistoryConfirm, { name: session.characterName }),
       [
-        { text: '取消', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: '清除',
+          text: t.chats.clearHistory,
           style: 'destructive',
           onPress: async () => {
             try {
               await chatService.deleteSession(session.sessionId);
               deleteSession(session.sessionId);
-              Alert.alert('已清除', '聊天记录已清除');
+              Alert.alert(t.chats.cleared, t.chats.clearedMessage);
             } catch (error) {
               console.error('Clear messages failed:', error);
-              Alert.alert('错误', '清除失败，请稍后重试');
+              Alert.alert(t.chats.error, t.chats.clearFailed);
             }
           },
         },
@@ -107,7 +108,7 @@ export default function ChatsScreen() {
     try {
       // Backend returns UTC time without timezone indicator, append Z to parse as UTC
       const utcDate = dateString.endsWith('Z') ? dateString : dateString + 'Z';
-      return formatDistanceToNow(new Date(utcDate), { addSuffix: true, locale: zhCN });
+      return formatDistanceToNow(new Date(utcDate), { addSuffix: true, locale: locale === 'zh' ? zhCN : enUS });
     } catch {
       return '';
     }
@@ -121,7 +122,7 @@ export default function ChatsScreen() {
     }
     // 回退到本地缓存
     const messages = messagesBySession[session.sessionId];
-    if (!messages || messages.length === 0) return '新对话';
+    if (!messages || messages.length === 0) return t.chats.newConversation;
     const lastMsg = messages[messages.length - 1];
     return lastMsg.content.slice(0, 50) + (lastMsg.content.length > 50 ? '...' : '');
   };
@@ -154,11 +155,11 @@ export default function ChatsScreen() {
       <View style={styles.emptyIcon}>
         <Ionicons name="chatbubbles-outline" size={48} color={theme.colors.text.tertiary} />
       </View>
-      <Text style={styles.emptyTitle}>暂无对话</Text>
-      <Text style={styles.emptySubtext}>去发现页面开始聊天吧</Text>
+      <Text style={styles.emptyTitle}>{t.chats.noChats}</Text>
+      <Text style={styles.emptySubtext}>{t.chats.noChatsHint}</Text>
       <TouchableOpacity style={styles.startButton} onPress={() => router.push('/(tabs)')}>
         <LinearGradient colors={[...theme.colors.primary.gradient]} style={styles.startButtonGradient}>
-          <Text style={styles.startButtonText}>去发现</Text>
+          <Text style={styles.startButtonText}>{t.chats.goDiscover}</Text>
         </LinearGradient>
       </TouchableOpacity>
     </View>
@@ -175,9 +176,9 @@ export default function ChatsScreen() {
             <Ionicons name="menu-outline" size={26} color="#fff" />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.title}>消息</Text>
+            <Text style={styles.title}>{t.chats.title}</Text>
             {sessions.length > 0 && (
-              <Text style={styles.subtitle}>{sessions.length} 个对话</Text>
+              <Text style={styles.subtitle}>{tpl(t.chats.conversations, { count: sessions.length })}</Text>
             )}
           </View>
           <View style={styles.headerRight} />

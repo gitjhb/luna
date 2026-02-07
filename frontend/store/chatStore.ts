@@ -73,6 +73,15 @@ export interface ExtraData {
   };
   active_effects?: ActiveEffect[];  // Tier 2 礼物激活效果
   date?: DateInfo;  // 约会状态
+  stage_boost?: {  // 临时升阶状态
+    active: boolean;
+    boost_amount: number;
+    original_stage: string;
+    original_stage_cn: string;
+    boosted_stage: string;
+    boosted_stage_cn: string;
+    hint: string;
+  };
 }
 
 export interface Message {

@@ -45,6 +45,9 @@ class UserSubscription(Base):
     payment_provider = Column(String(20), nullable=True)  # apple, google, stripe, mock
     provider_subscription_id = Column(String(100), nullable=True)  # 第三方订阅ID
     
+    # 每日奖励
+    last_daily_reward_date = Column(String(10), nullable=True)  # "2026-02-06" 格式
+    
     # 时间戳
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -55,16 +55,20 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Create user context
         if self.mock_mode:
-            # Mock mode: create demo user with consistent ID
+            # Mock mode: use X-User-ID header if provided, otherwise demo user
+            # This allows testing with different user IDs
+            header_user_id = request.headers.get("X-User-ID")
+            user_id = header_user_id if header_user_id else DEMO_USER_ID
+            
             # Get actual subscription status from unified subscription service
             from app.services.subscription_service import subscription_service
-            subscription_info = await subscription_service.get_subscription_info(DEMO_USER_ID)
+            subscription_info = await subscription_service.get_subscription_info(user_id)
             subscription_tier = subscription_info.get("effective_tier", "free")
             is_subscribed = subscription_info.get("is_subscribed", False)
             
             request.state.user = UserContext(
-                user_id=DEMO_USER_ID,
-                email="demo@example.com",
+                user_id=user_id,
+                email=f"{user_id}@example.com" if header_user_id else "demo@example.com",
                 subscription_tier=subscription_tier,
                 is_subscribed=is_subscribed,
             )
@@ -83,10 +87,65 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def _validate_token(self, token: str) -> Optional[UserContext]:
         """
         Validate auth token and return user context.
-        In production: verify with Firebase Admin SDK.
+        
+        Supports:
+        - guest_token_xxx: Guest login tokens
+        - luna_token_xxx: Firebase authenticated users
+        - mock_firebase_token_xxx: Mock mode tokens
         """
-        # TODO: Implement Firebase token verification
-        # from firebase_admin import auth
-        # decoded = auth.verify_id_token(token)
-        # return UserContext(user_id=UUID(decoded["uid"]), ...)
-        return None
+        from app.api.v1.auth import _users
+        from app.services.subscription_service import subscription_service
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        user_id = None
+        
+        # Extract user_id from token format
+        if token.startswith("guest_token_"):
+            user_id = token.replace("guest_token_", "")
+            logger.debug(f"Guest token, user_id: {user_id}")
+        elif token.startswith("luna_token_"):
+            # Format: luna_token_{user_id}_{random}
+            parts = token.replace("luna_token_", "").rsplit("_", 1)
+            if parts:
+                user_id = parts[0]
+        elif token.startswith("mock_firebase_token_"):
+            user_id = token.replace("mock_firebase_token_", "")
+        
+        if not user_id:
+            return None
+        
+        # Look up user
+        user = _users.get(user_id)
+        if not user:
+            # User not in memory (maybe server restarted)
+            # Auto-create a minimal user record for valid token formats
+            if user_id and (user_id.startswith("fb-") or user_id.startswith("guest-")):
+                logger.info(f"Auto-creating user record for: {user_id}")
+                _users[user_id] = {
+                    "user_id": user_id,
+                    "email": None,
+                    "display_name": "User",
+                    "provider": "firebase" if user_id.startswith("fb-") else "guest",
+                    "subscription_tier": "free",
+                }
+                user = _users[user_id]
+            else:
+                logger.warning(f"Token validation failed: user not found for {user_id}")
+                return None
+        
+        # Get subscription status
+        try:
+            sub_info = await subscription_service.get_subscription_info(user_id)
+            subscription_tier = sub_info.get("effective_tier", "free")
+            is_subscribed = sub_info.get("is_subscribed", False)
+        except Exception:
+            subscription_tier = "free"
+            is_subscribed = False
+        
+        return UserContext(
+            user_id=user_id,
+            email=user.get("email"),
+            subscription_tier=subscription_tier,
+            is_subscribed=is_subscribed,
+        )

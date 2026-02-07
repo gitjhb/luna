@@ -68,7 +68,7 @@ export function useLocale() {
 }
 
 // ── Helper: interpolate {key} in strings ───────────────────────────────────
-export function tt(template: string, vars: Record<string, string | number>): string {
+export function tpl(template: string, vars: Record<string, string | number>): string {
   let result = template;
   for (const [key, val] of Object.entries(vars)) {
     result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), String(val));

@@ -28,23 +28,15 @@ import { RechargeModal } from '../../components/RechargeModal';
 import { SubscriptionModal } from '../../components/SubscriptionModal';
 import { TransactionHistoryModal } from '../../components/TransactionHistoryModal';
 import { interestsService, InterestItem } from '../../services/interestsService';
+import { useLocale, tpl } from '../../i18n';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// Default avatar options
-const AVATAR_OPTIONS = [
-  'https://i.pravatar.cc/200?img=1',
-  'https://i.pravatar.cc/200?img=3',
-  'https://i.pravatar.cc/200?img=5',
-  'https://i.pravatar.cc/200?img=7',
-  'https://i.pravatar.cc/200?img=8',
-  'https://i.pravatar.cc/200?img=9',
-  'https://i.pravatar.cc/200?img=11',
-  'https://i.pravatar.cc/200?img=12',
-];
+// No default avatar placeholders - use user's real photo or show initials
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { t } = useLocale();
   const { user, wallet, updateWallet, updateUser, isSubscribed, isVip, isPremium } = useUserStore();
   
   // Get display tier name
@@ -57,14 +49,14 @@ export default function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(user?.displayName || '');
-  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  // Avatar picker removed - users use their Google/Apple photo
   const [showInterestsPicker, setShowInterestsPicker] = useState(false);
   const [showRechargeModal, setShowRechargeModal] = useState(false);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [showTransactionHistory, setShowTransactionHistory] = useState(false);
   
-  // User preferences
-  const [userAvatar, setUserAvatar] = useState(user?.avatar || AVATAR_OPTIONS[0]);
+  // User preferences - use real avatar or null
+  const [userAvatar, setUserAvatar] = useState(user?.avatar || null);
   const [selectedInterestIds, setSelectedInterestIds] = useState<number[]>([]);
   const [availableInterests, setAvailableInterests] = useState<InterestItem[]>([]);
   const [savingInterests, setSavingInterests] = useState(false);
@@ -109,24 +101,24 @@ export default function ProfileScreen() {
 
   const handleCancelSubscription = () => {
     Alert.alert(
-      '取消订阅',
-      '确定要取消订阅吗？\n\n• 将立即降级为免费用户\n• 金币余额保留\n• 不退款',
+      t.profile.cancelSubscription,
+      t.profile.cancelSubscriptionConfirm,
       [
-        { text: '再想想', style: 'cancel' },
+        { text: t.profile.thinkAgain, style: 'cancel' },
         {
-          text: '确定取消',
+          text: t.profile.confirmCancel,
           style: 'destructive',
           onPress: async () => {
             try {
               const result = await paymentService.cancelSubscription();
               if (result.success) {
                 updateUser({ subscriptionTier: 'free' });
-                Alert.alert('已取消', result.message || '订阅已取消，已降级为免费用户。');
+                Alert.alert(t.profile.cancelled, result.message || '订阅已取消');
               } else {
-                Alert.alert('取消失败', result.message || '请稍后重试');
+                Alert.alert(t.common.error, result.message || '请稍后重试');
               }
             } catch (e: any) {
-              Alert.alert('取消失败', e.message || '请稍后重试');
+              Alert.alert(t.common.error, e.message || '请稍后重试');
             }
           },
         },
@@ -147,11 +139,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleSelectAvatar = (avatar: string) => {
-    setUserAvatar(avatar);
-    updateUser({ avatar });
-    setShowAvatarPicker(false);
-  };
+  // handleSelectAvatar removed - users use their Google/Apple photo
 
   const MAX_INTERESTS = 5;
 
@@ -161,7 +149,7 @@ export default function ProfileScreen() {
         return prev.filter(id => id !== interestId);
       }
       if (prev.length >= MAX_INTERESTS) {
-        Alert.alert('提示', `最多选择${MAX_INTERESTS}个兴趣哦～`);
+        Alert.alert('', tpl(t.profile.maxInterests, { max: MAX_INTERESTS }));
         return prev;
       }
       return [...prev, interestId];
@@ -191,21 +179,23 @@ export default function ProfileScreen() {
         >
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>我</Text>
+            <Text style={styles.title}>{t.profile.title}</Text>
           </View>
 
           {/* Profile Card */}
           <View style={styles.profileCard}>
             {/* Avatar */}
-            <TouchableOpacity 
-              style={styles.avatarContainer}
-              onPress={() => setShowAvatarPicker(true)}
-            >
-              <Image source={{ uri: userAvatar }} style={styles.avatar} />
-              <View style={styles.avatarEditBadge}>
-                <Ionicons name="camera" size={14} color="#fff" />
-              </View>
-            </TouchableOpacity>
+            <View style={styles.avatarContainer}>
+              {userAvatar ? (
+                <Image source={{ uri: userAvatar }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                  <Text style={styles.avatarInitials}>
+                    {(user?.displayName || 'U').charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </View>
 
             {/* Name */}
             <View style={styles.nameContainer}>
@@ -215,7 +205,7 @@ export default function ProfileScreen() {
                     style={styles.nameInput}
                     value={nameInput}
                     onChangeText={setNameInput}
-                    placeholder="输入昵称"
+                    placeholder={t.profile.enterNickname}
                     placeholderTextColor={theme.colors.text.tertiary}
                     autoFocus
                     maxLength={20}
@@ -261,7 +251,7 @@ export default function ProfileScreen() {
                 style={styles.cancelSubscriptionLink}
                 onPress={handleCancelSubscription}
               >
-                <Text style={styles.cancelSubscriptionText}>取消订阅</Text>
+                <Text style={styles.cancelSubscriptionText}>{t.profile.cancelSubscription}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -274,24 +264,24 @@ export default function ProfileScreen() {
                   <Text style={styles.creditsIcon}>🪙</Text>
                 </View>
                 <View style={styles.creditsInfo}>
-                  <Text style={styles.creditsLabel}>我的金币</Text>
+                  <Text style={styles.creditsLabel}>{t.profile.myCoins}</Text>
                   <Text style={styles.creditsAmount}>{wallet?.totalCredits?.toFixed(0) || '0'}</Text>
                 </View>
                 <TouchableOpacity 
                   style={styles.rechargeButton}
                   onPress={() => setShowRechargeModal(true)}
                 >
-                  <Text style={styles.rechargeText}>充值</Text>
+                  <Text style={styles.rechargeText}>{t.profile.recharge}</Text>
                 </TouchableOpacity>
               </View>
               <View style={styles.creditsDivider} />
               <View style={styles.creditsDetails}>
                 <View style={styles.creditsDetailItem}>
-                  <Text style={styles.creditsDetailLabel}>每日赠送</Text>
-                  <Text style={styles.creditsDetailValue}>+{wallet?.dailyFreeCredits || 0}/天</Text>
+                  <Text style={styles.creditsDetailLabel}>{t.profile.dailyFree}</Text>
+                  <Text style={styles.creditsDetailValue}>{tpl(t.profile.perDay, { count: wallet?.dailyFreeCredits || 0 })}</Text>
                 </View>
                 <View style={styles.creditsDetailItem}>
-                  <Text style={styles.creditsDetailLabel}>已购买</Text>
+                  <Text style={styles.creditsDetailLabel}>{t.profile.purchased}</Text>
                   <Text style={styles.creditsDetailValue}>{wallet?.purchedCredits || 0}</Text>
                 </View>
               </View>
@@ -301,7 +291,7 @@ export default function ProfileScreen() {
                 onPress={() => setShowTransactionHistory(true)}
               >
                 <Ionicons name="receipt-outline" size={16} color={theme.colors.text.secondary} />
-                <Text style={styles.transactionHistoryText}>查看账单记录</Text>
+                <Text style={styles.transactionHistoryText}>{t.profile.viewBills}</Text>
                 <Ionicons name="chevron-forward" size={16} color={theme.colors.text.tertiary} />
               </TouchableOpacity>
             </View>
@@ -310,9 +300,9 @@ export default function ProfileScreen() {
           {/* Interests Section */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>我的兴趣</Text>
+              <Text style={styles.sectionTitle}>{t.profile.myInterests}</Text>
               <TouchableOpacity onPress={() => setShowInterestsPicker(true)}>
-                <Text style={styles.editLink}>编辑</Text>
+                <Text style={styles.editLink}>{t.profile.edit}</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.interestsCard}>
@@ -334,18 +324,18 @@ export default function ProfileScreen() {
                   onPress={() => setShowInterestsPicker(true)}
                 >
                   <Ionicons name="add-circle-outline" size={24} color={theme.colors.primary.main} />
-                  <Text style={styles.addInterestsText}>添加兴趣爱好，让AI更了解你</Text>
+                  <Text style={styles.addInterestsText}>{t.profile.addInterests}</Text>
                 </TouchableOpacity>
               )}
             </View>
             <Text style={styles.interestsHint}>
-              💡 兴趣爱好会帮助AI更好地与你互动
+              {t.profile.interestsHint}
             </Text>
           </View>
 
           {/* Quick Actions */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>更多</Text>
+            <Text style={styles.sectionTitle}>{t.profile.more}</Text>
             <View style={styles.actionsCard}>
               <TouchableOpacity 
                 style={styles.actionRow}
@@ -354,21 +344,21 @@ export default function ProfileScreen() {
                 <View style={styles.actionIcon}>
                   <Ionicons name="gift-outline" size={20} color={theme.colors.primary.main} />
                 </View>
-                <Text style={styles.actionText}>邀请好友</Text>
+                <Text style={styles.actionText}>{t.profile.inviteFriends}</Text>
                 <Ionicons name="chevron-forward" size={18} color={theme.colors.text.tertiary} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.actionRow}>
                 <View style={styles.actionIcon}>
                   <Ionicons name="star-outline" size={20} color={theme.colors.primary.main} />
                 </View>
-                <Text style={styles.actionText}>给我们评分</Text>
+                <Text style={styles.actionText}>{t.profile.rateUs}</Text>
                 <Ionicons name="chevron-forward" size={18} color={theme.colors.text.tertiary} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.actionRow}>
                 <View style={styles.actionIcon}>
                   <Ionicons name="help-circle-outline" size={20} color={theme.colors.primary.main} />
                 </View>
-                <Text style={styles.actionText}>帮助与反馈</Text>
+                <Text style={styles.actionText}>{t.profile.helpFeedback}</Text>
                 <Ionicons name="chevron-forward" size={18} color={theme.colors.text.tertiary} />
               </TouchableOpacity>
             </View>
@@ -377,39 +367,6 @@ export default function ProfileScreen() {
           <View style={{ height: 120 }} />
         </ScrollView>
       </SafeAreaView>
-
-      {/* Avatar Picker Modal */}
-      <Modal
-        visible={showAvatarPicker}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowAvatarPicker(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>选择头像</Text>
-              <TouchableOpacity onPress={() => setShowAvatarPicker(false)}>
-                <Ionicons name="close" size={24} color="#fff" />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.avatarGrid}>
-              {AVATAR_OPTIONS.map((avatar, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.avatarOption,
-                    userAvatar === avatar && styles.avatarOptionSelected,
-                  ]}
-                  onPress={() => handleSelectAvatar(avatar)}
-                >
-                  <Image source={{ uri: avatar }} style={styles.avatarOptionImage} />
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Interests Picker Modal */}
       <Modal
@@ -421,9 +378,9 @@ export default function ProfileScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>选择兴趣（{selectedInterestIds.length}/{MAX_INTERESTS}）</Text>
+              <Text style={styles.modalTitle}>{tpl(t.profile.selectInterests, { count: selectedInterestIds.length, max: MAX_INTERESTS })}</Text>
               <TouchableOpacity onPress={handleSaveInterests} disabled={savingInterests}>
-                <Text style={styles.modalDoneText}>{savingInterests ? '保存中...' : '完成'}</Text>
+                <Text style={styles.modalDoneText}>{savingInterests ? t.profile.saving : t.profile.done}</Text>
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.interestsGrid}>
@@ -500,6 +457,16 @@ const styles = StyleSheet.create({
     borderRadius: 48,
     borderWidth: 3,
     borderColor: theme.colors.primary.main,
+  },
+  avatarPlaceholder: {
+    backgroundColor: theme.colors.primary.main,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarInitials: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: '#fff',
   },
   avatarEditBadge: {
     position: 'absolute',

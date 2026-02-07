@@ -65,6 +65,7 @@ import DressupModal from '../../components/DressupModal';
 import DateModal from '../../components/DateModal';
 import DateSceneModal from '../../components/DateSceneModal';
 import AiDisclaimerBanner from '../../components/AiDisclaimerBanner';
+import { useLocale, tpl } from '../../i18n';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -74,6 +75,7 @@ export default function ChatScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ characterId: string; characterName: string; sessionId?: string; backgroundUrl?: string; avatarUrl?: string }>();
 
+  const { t } = useLocale();
   const { wallet, deductCredits, updateWallet, isSubscribed } = useUserStore();
   // NSFW mode disabled on mobile for App Store compliance (web only)
   const isSpicyMode = false; // useChatStore((s) => s.isSpicyMode);
@@ -137,6 +139,10 @@ export default function ChatScreen() {
   const [bottleneckLocked, setBottleneckLocked] = useState(false);
   const [bottleneckLockLevel, setBottleneckLockLevel] = useState<number | null>(null);
   const [bottleneckRequiredTier, setBottleneckRequiredTier] = useState<number | null>(null);
+
+  // 🍷 临时升阶状态
+  const [stageBoostActive, setStageBoostActive] = useState(false);
+  const [stageBoostHint, setStageBoostHint] = useState<string | null>(null);
 
   // 📖 剧情系统状态
   const [showEventStoryModal, setShowEventStoryModal] = useState(false);
@@ -311,11 +317,14 @@ export default function ChatScreen() {
           session.sessionId,
           1  // Just check if any messages exist
         );
+        console.log('[Chat] History check:', history.length, 'messages');
 
         // Step 5: If no messages yet, show character's greeting
         if (history.length === 0) {
+          console.log('[Chat] No history, loading greeting...');
           try {
             const character = await characterService.getCharacter(params.characterId);
+            console.log('[Chat] Character greeting:', character.greeting?.substring(0, 50));
             if (character.greeting) {
               const greetingMessage: Message = {
                 messageId: `greeting-${Date.now()}`,
@@ -459,6 +468,15 @@ export default function ChatScreen() {
               scenario_name: response.extraData.date.scenario_name || '约会',
             });
           }
+        }
+
+        // Update stage boost status
+        if (response.extraData.stage_boost?.active) {
+          setStageBoostActive(true);
+          setStageBoostHint(response.extraData.stage_boost.hint || '临时升阶中');
+        } else {
+          setStageBoostActive(false);
+          setStageBoostHint(null);
         }
       }
       if (response.tokensUsed) {
@@ -886,7 +904,7 @@ export default function ChatScreen() {
     <View style={[styles.messageRow, styles.messageRowAI]}>
       <Image source={getCharacterAvatar(params.characterId, characterAvatar)} style={styles.avatar} />
       <View style={[styles.bubble, styles.bubbleAI, styles.typingBubble]}>
-        <Text style={styles.typingText}>正在输入...</Text>
+        <Text style={styles.typingText}>{t.chat.typing}</Text>
       </View>
     </View>
   );
@@ -954,6 +972,18 @@ export default function ChatScreen() {
               </TouchableOpacity>
             )}
 
+            {/* 临时升阶状态指示 */}
+            {stageBoostActive && (
+              <TouchableOpacity
+                style={styles.boostBubble}
+                onPress={() => {
+                  Alert.alert('🍷 临时升阶', stageBoostHint || '状态效果生效中，行为模式暂时提升');
+                }}
+              >
+                <Text style={styles.boostBubbleText}>🍷</Text>
+              </TouchableOpacity>
+            )}
+
             {/* 头像按钮替代三个点 */}
             <TouchableOpacity style={styles.avatarButton} onPress={() => setShowCharacterInfo(true)}>
               <Image source={getCharacterAvatar(params.characterId, characterAvatar)} style={styles.headerAvatar} />
@@ -984,11 +1014,11 @@ export default function ChatScreen() {
             isFetchingNextPage ? (
               <View style={{ padding: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
                 <ActivityIndicator size="small" color="#888" />
-                <Text style={{ color: '#aaa' }}>加载历史消息...</Text>
+                <Text style={{ color: '#aaa' }}>{t.chat.loadingHistory}</Text>
               </View>
             ) : !hasNextPage && messages.length > 0 ? (
               <View style={{ padding: 15, alignItems: 'center' }}>
-                <Text style={{ color: '#666' }}>- 已加载全部消息 -</Text>
+                <Text style={{ color: '#666' }}>{t.chat.allLoaded}</Text>
               </View>
             ) : null
           }
@@ -1005,7 +1035,7 @@ export default function ChatScreen() {
           {/* 送礼物 - 始终显示 */}
           <TouchableOpacity style={styles.actionButton} onPress={() => setShowGiftModal(true)}>
             <Text style={styles.actionButtonEmoji}>🎁</Text>
-            <Text style={styles.actionButtonText}>送礼物</Text>
+            <Text style={styles.actionButtonText}>{t.chat.sendGift}</Text>
           </TouchableOpacity>
 
           {/* 拍照 - 隐藏（MVP精简，后续OTA开放） */}
@@ -1085,12 +1115,12 @@ export default function ChatScreen() {
               }}
             >
               <Text style={styles.actionButtonEmoji}>💕</Text>
-              <Text style={styles.actionButtonText}>约会</Text>
+              <Text style={styles.actionButtonText}>{t.chat.date}</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
               style={[styles.actionButton, styles.actionButtonLocked]}
-              onPress={() => Alert.alert('🔒 未解锁', '约会功能需要 Lv.10 解锁')}
+              onPress={() => Alert.alert(t.chat.locked, t.chat.dateLocked)}
             >
               <Text style={styles.actionButtonEmoji}>💕</Text>
               <Text style={styles.actionButtonTextLocked}>Lv10</Text>
@@ -1108,7 +1138,7 @@ export default function ChatScreen() {
             <View style={styles.inputWrapper}>
               <TextInput
                 style={styles.input}
-                placeholder={`与 ${characterName} 聊天`}
+                placeholder={tpl(t.chat.chatWith, { name: characterName })}
                 placeholderTextColor="rgba(255,255,255,0.4)"
                 value={inputText}
                 onChangeText={setInputText}
@@ -1196,7 +1226,7 @@ export default function ChatScreen() {
         <View style={styles.levelUpOverlay}>
           <View style={styles.levelUpContent}>
             <Text style={styles.levelUpEmoji}>🎉</Text>
-            <Text style={styles.levelUpTitle}>恭喜升级！</Text>
+            <Text style={styles.levelUpTitle}>{t.chat.levelUp}</Text>
             <Text style={styles.levelUpLevel}>Level {newLevel}</Text>
             <Text style={styles.levelUpDesc}>
               {newLevel <= 3 && '继续聊天解锁更多功能！'}
@@ -1213,7 +1243,7 @@ export default function ChatScreen() {
                 colors={['#8B5CF6', '#EC4899'] as [string, string]}
                 style={styles.levelUpButtonGradient}
               >
-                <Text style={styles.levelUpButtonText}>太棒了！</Text>
+                <Text style={styles.levelUpButtonText}>{t.chat.awesome}</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -1784,6 +1814,16 @@ const styles = StyleSheet.create({
     marginLeft: -4,
   },
   lockBubbleText: {
+    fontSize: 10,
+  },
+  boostBubble: {
+    backgroundColor: 'rgba(147, 51, 234, 0.7)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginLeft: -4,
+  },
+  boostBubbleText: {
     fontSize: 10,
   },
   avatarButton: {

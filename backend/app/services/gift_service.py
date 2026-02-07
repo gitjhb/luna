@@ -440,18 +440,17 @@ class GiftService:
             # Apology gifts - clear cold war
             if gift_info.get("clears_cold_war"):
                 try:
-                    from app.services.emotion_score_service import emotion_score_service
+                    from app.services.emotion_engine_v2 import emotion_engine
                     
-                    score_data = await emotion_score_service.get_score(user_id, character_id)
-                    was_in_cold_war = score_data.get("in_cold_war", False) or score_data.get("score", 0) <= -75
+                    current_score = await emotion_engine.get_score(user_id, character_id)
+                    was_in_cold_war = current_score <= -75
                     
                     if was_in_cold_war:
                         emotion_boost = gift_info.get("emotion_boost", 50)
-                        await emotion_score_service.update_score(
+                        await emotion_engine.update_score(
                             user_id, character_id,
                             delta=emotion_boost,
                             reason=f"apology_gift:{gift_type}",
-                            intimacy_level=xp_result.get("current_level", 1)
                         )
                         cold_war_unlocked = True
                         logger.info(f"Cold war unlocked via apology gift: {gift_type}")
@@ -461,13 +460,12 @@ class GiftService:
             # Emotion boost gifts
             elif gift_info.get("emotion_boost"):
                 try:
-                    from app.services.emotion_score_service import emotion_score_service
+                    from app.services.emotion_engine_v2 import emotion_engine
                     
-                    await emotion_score_service.update_score(
+                    await emotion_engine.update_score(
                         user_id, character_id,
                         delta=gift_info["emotion_boost"],
                         reason=f"gift:{gift_type}",
-                        intimacy_level=xp_result.get("current_level", 1)
                     )
                     emotion_boosted = True
                 except Exception as e:
@@ -476,17 +474,49 @@ class GiftService:
             # Force emotion (luxury gifts)
             if gift_info.get("force_emotion"):
                 try:
-                    from app.services.emotion_score_service import emotion_score_service
+                    from app.services.emotion_engine_v2 import emotion_engine
                     
                     # Set to maximum positive emotion
-                    await emotion_score_service.update_score(
+                    await emotion_engine.update_score(
                         user_id, character_id,
                         delta=100,  # Max boost
                         reason=f"luxury_gift:{gift_type}",
-                        intimacy_level=xp_result.get("current_level", 1)
                     )
                 except Exception as e:
                     logger.warning(f"Failed to force emotion: {e}")
+            
+            # Restore energy (energy drinks)
+            if gift_info.get("restores_energy"):
+                try:
+                    from app.services.stamina_service import stamina_service
+                    energy_amount = gift_info["restores_energy"]
+                    await stamina_service.add_stamina(user_id, energy_amount)
+                    logger.info(f"⚡ Energy restored: +{energy_amount}")
+                except Exception as e:
+                    logger.warning(f"Failed to restore energy: {e}")
+            
+            # Level boost (oath ring) - boost to near Lover stage if below
+            if gift_info.get("level_boost"):
+                try:
+                    current_lv = xp_result.get("new_level") or xp_result.get("current_level", 1)
+                    target_lv = 16  # Lover stage starts at Lv.16
+                    if current_lv < target_lv:
+                        # Calculate XP needed to reach target
+                        from app.services.intimacy_service import IntimacyService
+                        current_xp = IntimacyService.xp_for_level(current_lv)
+                        target_xp = IntimacyService.xp_for_level(target_lv)
+                        boost_xp = int(target_xp - current_xp)
+                        if boost_xp > 0:
+                            await intimacy_service.award_xp_direct(
+                                user_id, character_id, boost_xp, reason="oath_ring_level_boost"
+                            )
+                            logger.info(f"💍 Level boost: Lv.{current_lv} → Lv.{target_lv} (+{boost_xp} XP)")
+                except Exception as e:
+                    logger.warning(f"Failed to apply level boost: {e}")
+            
+            # Global broadcast/announcement - TODO: 需要广播系统，暂时只记录日志
+            if gift_info.get("global_broadcast") or gift_info.get("global_announcement"):
+                logger.info(f"📢 [即将推出] 全服广播: {user_id} 送出了 {gift_type}")
             
             # Step 9: Store idempotency key
             result = {
@@ -518,12 +548,21 @@ class GiftService:
             current_level = xp_result.get("new_level") or xp_result.get("current_level", 1)
             current_mood = "neutral"
             
-            if emotion_service:
-                try:
-                    emotion_data = await emotion_service.get_emotion(user_id, character_id)
-                    current_mood = emotion_data.get("emotional_state", "neutral")
-                except Exception as e:
-                    logger.warning(f"Could not get emotion state: {e}")
+            try:
+                from app.services.emotion_engine_v2 import emotion_engine
+                emotion_score = await emotion_engine.get_score(user_id, character_id)
+                if emotion_score >= 50:
+                    current_mood = "happy"
+                elif emotion_score >= 20:
+                    current_mood = "content"
+                elif emotion_score >= -20:
+                    current_mood = "neutral"
+                elif emotion_score >= -50:
+                    current_mood = "annoyed"
+                else:
+                    current_mood = "angry"
+            except Exception as e:
+                logger.warning(f"Could not get emotion state: {e}")
             
             # Generate AI response for the gift (核心：一切交互都要过AI)
             ai_response = await self.generate_ai_gift_response(
@@ -719,6 +758,31 @@ class GiftService:
             
             ai_response = response["choices"][0]["message"]["content"]
             logger.info(f"AI gift response generated: {ai_response[:50]}...")
+            
+            # 存储礼物事件和AI回复到聊天记录（让V4 pipeline也能看到）
+            try:
+                from app.services.chat_repository import chat_repo
+                session = await chat_repo.get_session_by_character(user_id, character_id)
+                if session:
+                    session_id = session["session_id"]
+                    # 存用户送礼事件
+                    await chat_repo.add_message(
+                        session_id=session_id,
+                        role="user",
+                        content=f"[送出礼物] {icon} {gift_name}",
+                        tokens_used=0,
+                    )
+                    # 存AI回复
+                    await chat_repo.add_message(
+                        session_id=session_id,
+                        role="assistant",
+                        content=ai_response,
+                        tokens_used=response.get("usage", {}).get("total_tokens", 0),
+                    )
+                    logger.info(f"🎁 Gift messages stored to chat_repo")
+            except Exception as e:
+                logger.warning(f"Failed to store gift messages: {e}")
+            
             return ai_response
             
         except Exception as e:
@@ -875,40 +939,108 @@ class GiftService:
     
     async def get_gift_summary(self, user_id: str, character_id: str) -> dict:
         """Get gift summary for AI memory context."""
-        gifts = [
-            g for g in _MOCK_GIFTS.values()
-            if g["user_id"] == user_id and g["character_id"] == character_id
-        ]
+        if self.mock_mode:
+            gifts = [
+                g for g in _MOCK_GIFTS.values()
+                if g["user_id"] == user_id and g["character_id"] == character_id
+            ]
+            
+            total_gifts = len(gifts)
+            total_spent = sum(g["gift_price"] for g in gifts)
+            total_xp = sum(g["xp_reward"] for g in gifts)
+            
+            gift_counts = {}
+            for g in gifts:
+                gift_type = g["gift_type"]
+                if gift_type not in gift_counts:
+                    gift_counts[gift_type] = {
+                        "count": 0,
+                        "name": g["gift_name"],
+                        "name_cn": g.get("gift_name_cn"),
+                        "icon": g.get("icon", "🎁"),
+                    }
+                gift_counts[gift_type]["count"] += 1
+            
+            top_gifts = sorted(
+                gift_counts.values(),
+                key=lambda x: x["count"],
+                reverse=True
+            )[:5]
+            
+            return {
+                "total_gifts": total_gifts,
+                "total_spent": total_spent,
+                "total_xp_from_gifts": total_xp,
+                "top_gifts": top_gifts,
+                "first_gift_at": min((g["created_at"] for g in gifts), default=None),
+                "last_gift_at": max((g["created_at"] for g in gifts), default=None),
+            }
         
-        total_gifts = len(gifts)
-        total_spent = sum(g["gift_price"] for g in gifts)
-        total_xp = sum(g["xp_reward"] for g in gifts)
+        # Database mode
+        from app.core.database import get_db
+        from sqlalchemy import select, func
+        from app.models.database.gift_models import Gift as GiftModel
         
-        gift_counts = {}
-        for g in gifts:
-            gift_type = g["gift_type"]
-            if gift_type not in gift_counts:
-                gift_counts[gift_type] = {
-                    "count": 0,
-                    "name": g["gift_name"],
-                    "name_cn": g.get("gift_name_cn"),
-                    "icon": g.get("icon", "🎁"),
-                }
-            gift_counts[gift_type]["count"] += 1
-        
-        top_gifts = sorted(
-            gift_counts.values(),
-            key=lambda x: x["count"],
-            reverse=True
-        )[:5]
+        async with get_db() as db:
+            # 总计查询
+            total_result = await db.execute(
+                select(
+                    func.count(GiftModel.id).label("total"),
+                    func.coalesce(func.sum(GiftModel.gift_price), 0).label("spent"),
+                    func.coalesce(func.sum(GiftModel.xp_reward), 0).label("xp"),
+                    func.min(GiftModel.created_at).label("first_at"),
+                    func.max(GiftModel.created_at).label("last_at"),
+                ).where(
+                    GiftModel.user_id == user_id,
+                    GiftModel.character_id == character_id,
+                )
+            )
+            row = total_result.fetchone()
+            total_gifts = row.total or 0
+            total_spent = row.spent or 0
+            total_xp = row.xp or 0
+            first_at = row.first_at
+            last_at = row.last_at
+            
+            # Top gifts 查询
+            top_result = await db.execute(
+                select(
+                    GiftModel.gift_type,
+                    GiftModel.gift_name,
+                    GiftModel.gift_name_cn,
+                    func.count(GiftModel.id).label("cnt"),
+                ).where(
+                    GiftModel.user_id == user_id,
+                    GiftModel.character_id == character_id,
+                ).group_by(
+                    GiftModel.gift_type,
+                    GiftModel.gift_name,
+                    GiftModel.gift_name_cn,
+                ).order_by(func.count(GiftModel.id).desc()).limit(5)
+            )
+            top_rows = top_result.fetchall()
+            
+            # 从 catalog 获取 icon
+            top_gifts = []
+            for r in top_rows:
+                icon = "🎁"
+                cat_item = _MOCK_GIFT_CATALOG.get(r.gift_type)
+                if cat_item:
+                    icon = cat_item.get("icon", "🎁")
+                top_gifts.append({
+                    "count": r.cnt,
+                    "name": r.gift_name,
+                    "name_cn": r.gift_name_cn,
+                    "icon": icon,
+                })
         
         return {
             "total_gifts": total_gifts,
             "total_spent": total_spent,
             "total_xp_from_gifts": total_xp,
             "top_gifts": top_gifts,
-            "first_gift_at": min((g["created_at"] for g in gifts), default=None),
-            "last_gift_at": max((g["created_at"] for g in gifts), default=None),
+            "first_gift_at": first_at,
+            "last_gift_at": last_at,
         }
     
     # =========================================================================

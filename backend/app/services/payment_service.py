@@ -12,8 +12,8 @@ from uuid import uuid4
 logger = logging.getLogger(__name__)
 
 # Mock mode - skip real payment processing  
-# Default to FALSE so it uses real database
-MOCK_PAYMENT = os.getenv("MOCK_PAYMENT", "true").lower() == "true"
+# Default to FALSE so it uses real database for persistence
+MOCK_PAYMENT = os.getenv("MOCK_PAYMENT", "false").lower() == "true"
 logger.info(f"Payment service MOCK_PAYMENT: {MOCK_PAYMENT}")
 
 # In-memory storage (replace with DB in production)
@@ -33,9 +33,9 @@ SUBSCRIPTION_PLANS = {
         "tier": "free",
         "price_monthly": 0,
         "price_yearly": 0,
-        "daily_credits": 10,
+        "daily_credits": 0,
         "features": [
-            "10 daily credits",
+            "Limited free trial",
             "Basic characters",
             "Standard response speed",
         ],
@@ -374,6 +374,56 @@ class PaymentService:
         """
         from app.services.subscription_service import subscription_service
         return await subscription_service.cancel_subscription(user_id, immediate=immediate)
+    
+    async def update_subscription_auto_renew(self, user_id: str, auto_renew: bool) -> dict:
+        """
+        Update subscription auto-renew status.
+        Called when user toggles auto-renew in App Store/Play Store.
+        """
+        from app.services.subscription_service import subscription_service
+        return await subscription_service.update_auto_renew(user_id, auto_renew)
+    
+    async def expire_subscription(self, user_id: str) -> dict:
+        """
+        Expire subscription and downgrade to free tier.
+        Called when subscription expires, is revoked, or user gets refund.
+        """
+        from app.services.subscription_service import subscription_service
+        return await subscription_service.expire_subscription(user_id)
+    
+    async def mark_billing_issue(self, user_id: str) -> dict:
+        """
+        Mark subscription as having billing issues.
+        User is in grace period - don't revoke access yet but notify them.
+        """
+        from app.services.subscription_service import subscription_service
+        return await subscription_service.mark_billing_issue(user_id)
+    
+    async def handle_refund(self, user_id: str, transaction_id: str) -> dict:
+        """
+        Handle refund - revoke subscription access.
+        Apple/Google refunds mean we must revoke access.
+        """
+        from app.services.subscription_service import subscription_service
+        
+        # Log refund
+        logger.warning(f"Processing refund for user {user_id}, transaction {transaction_id}")
+        
+        # Revoke subscription
+        result = await subscription_service.expire_subscription(user_id, reason="refund")
+        
+        # Record refund transaction
+        _transactions.append({
+            "id": str(uuid4()),
+            "user_id": user_id,
+            "transaction_type": "refund",
+            "amount": 0,
+            "description": f"Refund processed (txn: {transaction_id})",
+            "status": "completed",
+            "created_at": datetime.utcnow(),
+        })
+        
+        return result
     
     # ========================================================================
     # Purchase Operations

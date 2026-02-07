@@ -74,6 +74,13 @@ export interface SubscribeResult {
   transaction: Transaction;
 }
 
+export interface ReceiptVerificationResult {
+  success: boolean;
+  message?: string;
+  tier?: 'free' | 'premium' | 'vip';
+  expiresAt?: string;
+}
+
 export interface GiftResult {
   success: boolean;
   credits_deducted: number;
@@ -177,6 +184,32 @@ export const paymentService = {
    */
   cancelSubscription: async (): Promise<{ success: boolean; message: string }> => {
     return await api.post('/payment/subscription/cancel');
+  },
+
+  /**
+   * Verify IAP receipt with backend
+   * Validates with Apple/Google servers and updates subscription status
+   */
+  verifyReceipt: async (
+    receipt: string,
+    productId: string,
+    platform: 'ios' | 'android' | string
+  ): Promise<ReceiptVerificationResult> => {
+    const provider = platform === 'ios' ? 'apple' : 'google';
+    
+    const result = await api.post('/payment/iap/verify', {
+      provider,
+      receipt_data: receipt,
+      product_id: productId,
+    });
+    
+    // Map backend response to our expected format
+    return {
+      success: result.success || result.verified,
+      message: result.message,
+      tier: result.tier || result.subscription?.tier,
+      expiresAt: result.expires_at || result.subscription?.expires_at,
+    };
   },
 
   // ========================================================================

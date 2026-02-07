@@ -532,34 +532,27 @@ class StripeService:
         metadata = subscription.get("metadata", {})
         user_id = metadata.get("user_id")
         tier = metadata.get("tier", "premium")
+        billing_period = metadata.get("billing_period", "monthly")
         
         if not user_id:
             logger.error("No user_id in subscription metadata")
             return {"error": "Missing user_id"}
         
-        # Update user's subscription in database
-        from app.services.payment_service import payment_service, SUBSCRIPTION_PLANS
+        # Use subscription_service for consistency
+        from app.services.subscription_service import subscription_service
         
-        # Get plan details
-        plan = SUBSCRIPTION_PLANS.get(tier, SUBSCRIPTION_PLANS["premium"])
+        # Calculate duration from Stripe period
+        period_end = subscription.get("current_period_end", 0)
+        period_start = subscription.get("current_period_start", 0)
+        duration_days = max(1, (period_end - period_start) // 86400)
         
-        # Store subscription info
-        from app.services.payment_service import _subscriptions
-        _subscriptions[user_id] = {
-            "user_id": user_id,
-            "tier": tier,
-            "started_at": datetime.utcnow(),
-            "expires_at": datetime.fromtimestamp(subscription["current_period_end"]),
-            "auto_renew": not subscription.get("cancel_at_period_end", False),
-            "payment_provider": "stripe",
-            "provider_subscription_id": subscription["id"],
-            "is_active": True,
-            "created_at": datetime.utcnow(),
-        }
-        
-        # Update daily credits
-        wallet = await payment_service.get_or_create_wallet(user_id)
-        wallet["daily_free_credits"] = plan["daily_credits"]
+        await subscription_service.activate_subscription(
+            user_id=user_id,
+            tier=tier,
+            duration_days=duration_days,
+            payment_provider="stripe",
+            provider_transaction_id=subscription["id"],
+        )
         
         logger.info(f"Created subscription for user {user_id}: tier={tier}")
         
@@ -579,22 +572,31 @@ class StripeService:
         if not user_id:
             return {"handled": False, "reason": "Missing user_id"}
         
-        from app.services.payment_service import _subscriptions
+        from app.services.subscription_service import subscription_service
         
-        if user_id in _subscriptions:
-            _subscriptions[user_id].update({
-                "expires_at": datetime.fromtimestamp(subscription["current_period_end"]),
-                "auto_renew": not subscription.get("cancel_at_period_end", False),
-                "is_active": subscription["status"] == "active",
-                "updated_at": datetime.utcnow(),
-            })
+        # Check if auto-renew status changed
+        cancel_at_period_end = subscription.get("cancel_at_period_end", False)
+        auto_renew = not cancel_at_period_end
         
-        logger.info(f"Updated subscription for user {user_id}")
+        await subscription_service.update_auto_renew(user_id, auto_renew)
+        
+        # Check subscription status
+        status = subscription.get("status")
+        if status == "past_due":
+            # Payment failed, in grace period
+            await subscription_service.mark_billing_issue(user_id)
+        elif status == "unpaid":
+            # Grace period ended, still unpaid
+            await subscription_service.expire_subscription(user_id, reason="unpaid")
+        
+        logger.info(f"Updated subscription for user {user_id}: status={status}, auto_renew={auto_renew}")
         
         return {
             "handled": True,
             "type": "subscription_updated",
             "user_id": user_id,
+            "status": status,
+            "auto_renew": auto_renew,
         }
     
     async def _handle_subscription_deleted(self, subscription: Dict) -> Dict[str, Any]:
@@ -605,28 +607,22 @@ class StripeService:
         if not user_id:
             return {"handled": False, "reason": "Missing user_id"}
         
-        from app.services.payment_service import _subscriptions, SUBSCRIPTION_PLANS
+        from app.services.subscription_service import subscription_service
+        
+        # Determine reason
+        cancellation_details = subscription.get("cancellation_details", {})
+        reason = cancellation_details.get("reason", "cancelled")
         
         # Downgrade to free
-        if user_id in _subscriptions:
-            _subscriptions[user_id].update({
-                "tier": "free",
-                "auto_renew": False,
-                "is_active": True,  # Free is always active
-                "updated_at": datetime.utcnow(),
-            })
+        await subscription_service.expire_subscription(user_id, reason=reason)
         
-        # Reset daily credits to free tier
-        from app.services.payment_service import payment_service
-        wallet = await payment_service.get_or_create_wallet(user_id)
-        wallet["daily_free_credits"] = SUBSCRIPTION_PLANS["free"]["daily_credits"]
-        
-        logger.info(f"Subscription deleted for user {user_id}, downgraded to free")
+        logger.info(f"Subscription deleted for user {user_id}, reason={reason}")
         
         return {
             "handled": True,
             "type": "subscription_deleted",
             "user_id": user_id,
+            "reason": reason,
         }
     
     async def _handle_invoice_paid(self, invoice: Dict) -> Dict[str, Any]:
@@ -651,8 +647,19 @@ class StripeService:
         
         logger.warning(f"Invoice payment failed for subscription {subscription_id}, email: {customer_email}")
         
-        # TODO: Send notification to user about failed payment
-        # TODO: Implement grace period logic
+        # Get user_id from subscription metadata
+        try:
+            sub = stripe.Subscription.retrieve(subscription_id)
+            user_id = sub.metadata.get("user_id")
+            
+            if user_id:
+                from app.services.subscription_service import subscription_service
+                await subscription_service.mark_billing_issue(user_id)
+                
+                # TODO: Send push notification to user about failed payment
+                logger.info(f"Marked billing issue for user {user_id}")
+        except Exception as e:
+            logger.error(f"Failed to mark billing issue: {e}")
         
         return {
             "handled": True,

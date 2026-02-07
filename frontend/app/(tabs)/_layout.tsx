@@ -11,8 +11,10 @@ import { useChatStore } from '../../store/chatStore';
 import { useUserStore } from '../../store/userStore';
 import { walletService } from '../../services/walletService';
 import { paymentService } from '../../services/paymentService';
+import { dailyRewardService } from '../../services/dailyRewardService';
 import { colors, spacing, radius, typography } from '../../theme/designSystem';
 import { useLocale } from '../../i18n';
+import DailyRewardModal from '../../components/DailyRewardModal';
 
 export default function TabsLayout() {
   const router = useRouter();
@@ -20,8 +22,9 @@ export default function TabsLayout() {
   const { theme } = useTheme();
   const { t } = useLocale();
   const { sessions, messagesBySession } = useChatStore();
-  const { updateWallet } = useUserStore();
+  const { updateWallet, isSubscribed } = useUserStore();
   const [hasInitialized, setHasInitialized] = useState(false);
+  const [showDailyReward, setShowDailyReward] = useState(false);
 
   // Sync wallet and subscription from backend on app start
   useEffect(() => {
@@ -41,6 +44,15 @@ export default function TabsLayout() {
             subscription.expires_at || undefined
           );
           console.log('Subscription synced:', subscription.tier);
+        }
+        
+        // 检查每日奖励（订阅用户）
+        if (subscription?.tier && subscription.tier !== 'free') {
+          const rewardStatus = await dailyRewardService.getStatus();
+          if (rewardStatus.can_claim) {
+            // 延迟显示弹窗，让用户先看到主界面
+            setTimeout(() => setShowDailyReward(true), 1000);
+          }
         }
       } catch (error) {
         console.error('Failed to sync user data:', error);
@@ -113,6 +125,7 @@ export default function TabsLayout() {
   };
 
   return (
+    <>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -175,6 +188,13 @@ export default function TabsLayout() {
         }}
       />
     </Tabs>
+    
+    {/* 每日登录奖励弹窗 */}
+    <DailyRewardModal 
+      visible={showDailyReward} 
+      onClose={() => setShowDailyReward(false)} 
+    />
+    </>
   );
 }
 

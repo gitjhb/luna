@@ -22,8 +22,9 @@ from enum import Enum
 
 logger = logging.getLogger(__name__)
 
-# Mock mode for testing
-MOCK_MODE = os.getenv("MOCK_PAYMENT", "true").lower() == "true"
+# Mock mode for testing - default to FALSE to use database
+MOCK_MODE = os.getenv("MOCK_PAYMENT", "false").lower() == "true"
+logger.info(f"SubscriptionService MOCK_MODE: {MOCK_MODE}")
 
 
 class SubscriptionTier(str, Enum):
@@ -46,7 +47,7 @@ TIER_HIERARCHY = {
 # Tier benefits
 TIER_BENEFITS = {
     "free": {
-        "daily_credits": 10,
+        "daily_credits": 0,
         "nsfw_enabled": False,
         "premium_characters": False,
         "priority_response": False,
@@ -366,6 +367,145 @@ class SubscriptionService:
         return {
             "success": True,
             "subscription": await self.get_subscription_info(user_id),
+        }
+    
+    async def update_auto_renew(self, user_id: str, auto_renew: bool) -> Dict[str, Any]:
+        """
+        更新自动续费状态（从 App Store/Play Store 通知调用）
+        
+        Args:
+            user_id: 用户ID
+            auto_renew: 是否自动续费
+            
+        Returns:
+            更新后的订阅信息
+        """
+        subscription = await self._get_subscription_record(user_id)
+        if not subscription:
+            return {"success": False, "message": "No subscription found"}
+        
+        subscription["auto_renew"] = auto_renew
+        subscription["updated_at"] = datetime.utcnow()
+        
+        await self._save_subscription_record(user_id, subscription)
+        
+        # Record transaction
+        action = "enabled" if auto_renew else "disabled"
+        await self._record_subscription_transaction(
+            user_id=user_id,
+            transaction_type="auto_renew_change",
+            description=f"自动续费{action}",
+            extra_data={"auto_renew": auto_renew}
+        )
+        
+        logger.info(f"Auto-renew updated: user={user_id}, auto_renew={auto_renew}")
+        
+        return {
+            "success": True,
+            "auto_renew": auto_renew,
+            "subscription": await self.get_subscription_info(user_id),
+        }
+    
+    async def expire_subscription(self, user_id: str, reason: str = None) -> Dict[str, Any]:
+        """
+        让订阅过期（从 App Store/Play Store 通知调用）
+        
+        用于：
+        - 订阅自然过期
+        - 用户退款
+        - 家庭共享权限被移除
+        
+        Args:
+            user_id: 用户ID
+            reason: 过期原因 (expired, refund, revoked)
+            
+        Returns:
+            操作结果
+        """
+        subscription = await self._get_subscription_record(user_id)
+        if not subscription:
+            return {"success": True, "message": "No subscription to expire"}
+        
+        old_tier = subscription.get("tier", "free")
+        if old_tier == "free":
+            return {"success": True, "message": "Already free tier"}
+        
+        now = datetime.utcnow()
+        
+        # Downgrade to free
+        subscription["tier"] = "free"
+        subscription["is_active"] = False
+        subscription["auto_renew"] = False
+        subscription["updated_at"] = now
+        
+        await self._save_subscription_record(user_id, subscription)
+        
+        # Record transaction
+        reason_text = {
+            "expired": "订阅到期",
+            "refund": "用户退款",
+            "revoked": "权限撤销",
+        }.get(reason, "订阅终止")
+        
+        await self._record_subscription_transaction(
+            user_id=user_id,
+            transaction_type="subscription_expired",
+            description=f"{reason_text}: {old_tier} -> free",
+            extra_data={
+                "old_tier": old_tier,
+                "new_tier": "free",
+                "reason": reason,
+            }
+        )
+        
+        logger.info(f"Subscription expired: user={user_id}, reason={reason}")
+        
+        return {
+            "success": True,
+            "old_tier": old_tier,
+            "new_tier": "free",
+            "reason": reason,
+        }
+    
+    async def mark_billing_issue(self, user_id: str) -> Dict[str, Any]:
+        """
+        标记订阅有账单问题（续费失败，在 grace period）
+        
+        不会立即取消订阅，但会记录状态。
+        可以用来触发用户通知。
+        
+        Args:
+            user_id: 用户ID
+            
+        Returns:
+            操作结果
+        """
+        subscription = await self._get_subscription_record(user_id)
+        if not subscription:
+            return {"success": False, "message": "No subscription found"}
+        
+        subscription["billing_issue"] = True
+        subscription["billing_issue_at"] = datetime.utcnow()
+        subscription["updated_at"] = datetime.utcnow()
+        
+        await self._save_subscription_record(user_id, subscription)
+        
+        # Record transaction
+        await self._record_subscription_transaction(
+            user_id=user_id,
+            transaction_type="billing_issue",
+            description="续费失败，请更新支付方式",
+            extra_data={"tier": subscription.get("tier")}
+        )
+        
+        logger.warning(f"Billing issue marked: user={user_id}")
+        
+        # TODO: 可以在这里触发推送通知提醒用户更新支付方式
+        
+        return {
+            "success": True,
+            "message": "Billing issue marked",
+            "tier": subscription.get("tier"),
         }
     
     # ========================================================================

@@ -2,7 +2,7 @@
  * Login Screen - Purple Pink Theme
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,8 @@ import { useUserStore } from '../../store/userStore';
 import { authService } from '../../services/authService';
 import { ReferralCodeModal } from '../../components/ReferralCodeModal';
 import AgeVerificationModal from '../../components/AgeVerificationModal';
+import { useLocale } from '../../i18n';
+import { requestNotificationPermission } from '../../services/pushService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -34,11 +36,19 @@ const BG_VIDEO = require('../../assets/characters/sakura/videos/profile_bg.mp4')
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { t } = useLocale();
   const { login, updateWallet } = useUserStore();
   const [loading, setLoading] = useState(false);
   const [showReferralModal, setShowReferralModal] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState(false);
   const [ageVerified, setAgeVerified] = useState(false);
+
+  // 进入登录页时请求通知权限
+  useEffect(() => {
+    requestNotificationPermission().then((granted) => {
+      console.log('[Login] Notification permission:', granted ? 'granted' : 'denied');
+    });
+  }, []);
 
   const handleLogin = async (provider: 'apple' | 'google' | 'guest') => {
     setLoading(true);
@@ -58,7 +68,7 @@ export default function LoginScreen() {
       }
     } catch (error: any) {
       console.error('Login failed:', error);
-      Alert.alert('登录失败', error.message || '请检查网络连接');
+      Alert.alert(t.login.loginFailed, error.message || t.login.checkNetwork);
     } finally {
       setLoading(false);
     }
@@ -130,13 +140,13 @@ export default function LoginScreen() {
           </View>
           
           <Text style={styles.appName}>{theme.appName}</Text>
-          <Text style={styles.tagline}>遇见你的专属AI伴侣 💕</Text>
+          <Text style={styles.tagline}>{t.login.tagline}</Text>
 
           {/* Features */}
           <View style={styles.features}>
-            <FeatureItem icon="chatbubble-ellipses" text="深度情感交流" />
-            <FeatureItem icon="shield-checkmark" text="私密安全对话" />
-            <FeatureItem icon="sparkles" text="独特个性体验" />
+            <FeatureItem icon="chatbubble-ellipses" text={t.login.featureChat} />
+            <FeatureItem icon="shield-checkmark" text={t.login.featureSafe} />
+            <FeatureItem icon="sparkles" text={t.login.featureUnique} />
           </View>
 
           {/* Auth Buttons */}
@@ -153,7 +163,7 @@ export default function LoginScreen() {
                 style={styles.guestButtonGradient}
               >
                 <Ionicons name="person" size={22} color="#fff" />
-                <Text style={styles.guestButtonText}>访客登录</Text>
+                <Text style={styles.guestButtonText}>{t.login.guestLogin}</Text>
               </LinearGradient>
             </TouchableOpacity>
 
@@ -164,7 +174,7 @@ export default function LoginScreen() {
               activeOpacity={0.85}
             >
               <Ionicons name="logo-apple" size={22} color="#fff" />
-              <Text style={styles.appleButtonText}>Apple 登录</Text>
+              <Text style={styles.appleButtonText}>{t.login.appleLogin}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -174,7 +184,7 @@ export default function LoginScreen() {
               activeOpacity={0.85}
             >
               <Ionicons name="logo-google" size={20} color="#fff" />
-              <Text style={styles.googleButtonText}>Google 登录</Text>
+              <Text style={styles.googleButtonText}>{t.login.googleLogin}</Text>
             </TouchableOpacity>
 
             {loading && (
@@ -186,18 +196,18 @@ export default function LoginScreen() {
 
           {/* AI Disclaimer */}
           <Text style={styles.aiDisclaimer}>
-            🤖 本应用角色对话内容由 AI 生成，不代表真实人物观点
+            {t.login.aiDisclaimer}
           </Text>
 
           {/* Terms */}
           <Text style={styles.termsText}>
-            注册即表示同意{' '}
+            {t.login.termsPrefix}
             <Text style={styles.termsLink} onPress={() => router.push('/legal/terms')}>
-              《服务条款》
+              {t.login.termsOfService}
             </Text>
-            {' '}和{' '}
+            {t.login.and}
             <Text style={styles.termsLink} onPress={() => router.push('/legal/privacy')}>
-              《隐私政策》
+              {t.login.privacyPolicy}
             </Text>
           </Text>
         </View>

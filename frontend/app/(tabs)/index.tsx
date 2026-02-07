@@ -25,7 +25,7 @@ import { Character } from '../../types';
 import { characterService } from '../../services/characterService';
 import SettingsDrawer from '../../components/SettingsDrawer';
 import MockModeBanner from '../../components/MockModeBanner';
-import { useLocale, tt } from '../../i18n';
+import { useLocale, tpl } from '../../i18n';
 import { getCharacterAvatar, getCharacterBackground } from '../../assets/characters';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -103,7 +103,7 @@ export default function CompanionsScreen() {
           </TouchableOpacity>
           
           <View style={styles.headerCenter}>
-            <Text style={styles.greeting}>{tt(t.discover.greeting, { name: user?.displayName || 'there' })}</Text>
+            <Text style={styles.greeting}>{tpl(t.discover.greeting, { name: user?.displayName || 'there' })}</Text>
             <Text style={styles.subtitle}>{t.discover.subtitle}</Text>
           </View>
           
@@ -177,7 +177,7 @@ export default function CompanionsScreen() {
                 </View>
                 <TouchableOpacity style={styles.chatButton} onPress={() => handleCharacterPress(character)}>
                   <LinearGradient colors={theme.colors.primary.gradient} style={styles.chatButtonGradient}>
-                    <Text style={styles.chatButtonText}>开始聊天</Text>
+                    <Text style={styles.chatButtonText}>{t.discover.startChat}</Text>
                     <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
                   </LinearGradient>
                 </TouchableOpacity>

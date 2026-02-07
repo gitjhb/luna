@@ -19,10 +19,19 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.luna.companion",
       "buildNumber": "1",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "usesAppleSignIn": true,
+      "entitlements": {
+        "com.apple.developer.in-app-payments": []
+      },
       "infoPlist": {
         "NSCameraUsageDescription": "用于拍照分享给角色",
         "NSPhotoLibraryUsageDescription": "用于选择照片分享给角色",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["remote-notification"],
+        "SKAdNetworkItems": [
+          { "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork" }
+        ]
       }
     },
     "android": {
@@ -39,7 +48,31 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#8B5CF6",
+          "sounds": []
+        }
+      ],
+      [
+        "react-native-iap",
+        {
+          "paymentProvider": "Apple"
+        }
+      ],
+      "expo-apple-authentication",
+      "@react-native-community/datetimepicker",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.1081215078404-67oravkof7blahfgsivjlka7uif3tsm4"
+        }
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging"
     ],
     "experiments": {
       "typedRoutes": true

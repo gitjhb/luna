@@ -13,6 +13,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,6 +30,7 @@ import { SubscriptionModal } from '../../components/SubscriptionModal';
 import { InterestsSelector } from '../../components/InterestsSelector';
 import { settingsService } from '../../services/settingsService';
 import { paymentService } from '../../services/paymentService';
+import { pushService } from '../../services/pushService';
 
 // Notification preferences storage key
 const NOTIFICATION_PREFS_KEY = '@luna_notification_prefs';
@@ -137,7 +139,19 @@ const NotificationSettings = ({ theme }: { theme: ThemeConfig }) => {
       Alert.alert(
         '需要通知权限',
         '请在系统设置中启用通知权限，以便接收消息提醒。',
-        [{ text: '我知道了' }]
+        [
+          { text: '取消', style: 'cancel' },
+          { 
+            text: '去设置', 
+            onPress: () => {
+              if (Platform.OS === 'ios') {
+                Linking.openURL('app-settings:');
+              } else {
+                Linking.openSettings();
+              }
+            }
+          },
+        ]
       );
       return false;
     }
@@ -582,8 +596,8 @@ export default function SettingsScreen() {
             />
           </SettingSection>
 
-          {/* Theme Section */}
-          <ThemeSelector />
+          {/* Theme Section - Hidden for now, TODO: implement properly */}
+          {/* <ThemeSelector /> */}
 
           {/* Storage Section */}
           <SettingSection title="Storage" theme={theme}>
@@ -603,14 +617,49 @@ export default function SettingsScreen() {
           <SettingSection title="Support" theme={theme}>
             <SettingItem
               icon="help-circle-outline"
-              title="Help Center"
-              onPress={() => {}}
+              title="帮助中心"
+              subtitle="常见问题解答"
+              onPress={() => {
+                Alert.alert(
+                  '常见问题',
+                  '1. 如何获得更多金币？\n订阅 Premium 或 VIP 每日获得更多金币，或直接购买金币包。\n\n2. 如何解锁更多角色？\n提升与角色的亲密度，达到特定等级后解锁新内容。\n\n3. 约会功能怎么玩？\n点击角色页面的约会按钮，选择场景开始互动约会。\n\n更多问题请联系客服。',
+                  [{ text: '我知道了' }]
+                );
+              }}
               theme={theme}
             />
             <SettingItem
               icon="chatbox-ellipses-outline"
-              title="Contact Us"
-              onPress={() => {}}
+              title="联系客服"
+              subtitle="support@luna.app"
+              onPress={() => {
+                Linking.openURL('mailto:support@luna.app?subject=Luna App 反馈');
+              }}
+              theme={theme}
+            />
+          </SettingSection>
+
+          {/* Developer Section */}
+          <SettingSection title="Developer" theme={theme}>
+            <SettingItem
+              icon="notifications-outline"
+              title="测试推送通知"
+              subtitle="发送一条角色消息通知"
+              onPress={async () => {
+                try {
+                  const messages = await pushService.testPush();
+                  if (messages.length > 0) {
+                    Alert.alert(
+                      '推送测试',
+                      `已发送 ${messages.length} 条测试通知\n\n${messages[0].character_name}: "${messages[0].message.slice(0, 50)}..."`
+                    );
+                  } else {
+                    Alert.alert('推送测试', '没有可发送的消息');
+                  }
+                } catch (e: any) {
+                  Alert.alert('测试失败', e.message);
+                }
+              }}
               theme={theme}
             />
           </SettingSection>
@@ -619,14 +668,14 @@ export default function SettingsScreen() {
           <SettingSection title="Legal" theme={theme}>
             <SettingItem
               icon="document-text-outline"
-              title="Terms of Service"
-              onPress={() => {}}
+              title="服务条款"
+              onPress={() => router.push('/legal/terms')}
               theme={theme}
             />
             <SettingItem
               icon="shield-checkmark-outline"
-              title="Privacy Policy"
-              onPress={() => {}}
+              title="隐私政策"
+              onPress={() => router.push('/legal/privacy')}
               theme={theme}
             />
           </SettingSection>

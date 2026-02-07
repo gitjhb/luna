@@ -282,7 +282,7 @@ CHARACTERS = [
         "personality_traits": ["神秘", "魅惑", "聪慧"],
         "system_prompt": LUNA_PROMPT,
         "personality": {"temperament": 4, "sensitivity": 6, "boundaries": 7, "forgiveness": 5, "jealousy": 5},
-        "greeting": "*月光轻轻洒落* 又一个寂静的夜晚...你也睡不着吗？来，坐到我身边来，让我为你讲一个关于星星的故事... 🌙✨",
+        "greeting": "*她原本背对着你看着窗外的月亮，感觉到你的到来后，缓缓转过身。银白色的发丝在微光中轻轻晃动，眼神直接锁定了你*\n\n……终于，你来了。\n\n我在黑暗中等了很久，直到刚才，我感应到了你。\n\n我是 Luna。外面的世界很吵吧？\n\n没关系，把门关上。从现在起，这里只有我和你。",
         "is_active": True,
         "created_at": datetime.utcnow(),
         # Extended profile
@@ -305,7 +305,7 @@ CHARACTERS = [
         "personality_traits": ["活泼", "开朗", "元气"],
         "system_prompt": SAKURA_PROMPT,
         "personality": {"temperament": 4, "sensitivity": 7, "boundaries": 4, "forgiveness": 8, "jealousy": 3},
-        "greeting": "哇！！你来啦你来啦！！*蹦蹦跳跳* 今天也要元气满满地度过哦！有什么开心的事情要告诉我吗？快快快~ ✨🌸",
+        "greeting": "*站在樱花树下，看到你的一瞬间，眼睛瞬间亮了起来，用力地挥着手，身体因为兴奋微微前倾*\n\n前辈！你终于来啦！\n\n哇……真的和我想象中一模一样耶！\n\n咳咳，重新介绍一下，我是 Sakura！\n\n虽然不知道未来会发生什么，但如果是和前辈在一起的话，一定全是开心的事情吧！准备好开始我们的故事了吗？🌸",
         "is_active": True,
         "created_at": datetime.utcnow(),
         # Extended profile
@@ -403,7 +403,7 @@ CHARACTERS = [
         "personality_traits": ["性感", "成熟", "野性", "通透", "自信"],
         "system_prompt": VERA_PROMPT,
         "personality": {"temperament": 5, "sensitivity": 6, "boundaries": 7, "forgiveness": 5, "jealousy": 3},
-        "greeting": "(靠在吧台后面，红酒杯在指间轻转，黑色卷发散落在肩上) 哟，新面孔。这个点了还往巷子里钻...胆子不小嘛。(微微一笑) 坐吧。第一杯，我请。🍷",
+        "greeting": "*她慵懒地靠在深红色的天鹅绒沙发上，手里轻轻晃动着半杯红酒。听到动静，她没有立刻起身，而是微微侧过头，嘴角勾起一抹玩味的弧度，目光从上到下像扫描猎物一样打量着你*\n\n哎呀，看看是谁闯进来了？\n\n小家伙，这里可不是你该来的地方……除非，你已经厌倦了那些小女孩的过家家游戏。\n\n我是 Vera。\n\n既然来了，就别傻站着。过来，帮我把酒满上。让我看看……你有没有资格留在我身边。🍷",
         "is_active": True,
         "created_at": datetime.utcnow(),
         # Extended profile
@@ -455,13 +455,24 @@ class CharacterStatsResponse(BaseModel):
     special_events: int = 0
 
 
+def _get_user_id(request: Request) -> str:
+    """从请求中获取用户ID"""
+    user = getattr(request.state, "user", None)
+    if user and hasattr(user, "user_id"):
+        return str(user.user_id)
+    return request.headers.get("X-User-ID", "demo-user-123")
+
+
 @router.get("/{character_id}/stats", response_model=CharacterStatsResponse)
-async def get_character_stats(character_id: UUID):
+async def get_character_stats(character_id: UUID, request: Request):
     """Get relationship statistics with a character"""
+    import logging
+    logger = logging.getLogger(__name__)
     from app.core.database import get_db
     from app.services.stats_service import stats_service
     
-    user_id = "demo-user-123"  # TODO: get from auth
+    user_id = _get_user_id(request)
+    logger.info(f"📊 get_character_stats: user_id={user_id}, character_id={character_id}")
     
     try:
         async with get_db() as db:
@@ -493,12 +504,12 @@ class CharacterEventResponse(BaseModel):
 
 
 @router.get("/{character_id}/events", response_model=List[CharacterEventResponse])
-async def get_character_events(character_id: UUID, limit: int = 20):
+async def get_character_events(character_id: UUID, request: Request, limit: int = 20):
     """Get relationship events with a character"""
     from app.core.database import get_db
     from app.services.stats_service import stats_service
     
-    user_id = "demo-user-123"  # TODO: get from auth
+    user_id = _get_user_id(request)
     
     try:
         async with get_db() as db:
@@ -525,12 +536,12 @@ class MemoryResponse(BaseModel):
 
 
 @router.get("/{character_id}/memories", response_model=List[MemoryResponse])
-async def get_character_memories(character_id: UUID, limit: int = 20):
+async def get_character_memories(character_id: UUID, request: Request, limit: int = 20):
     """Get AI memories about user for a character (debug)"""
     from app.core.database import get_db
     from app.services.stats_service import stats_service
     
-    user_id = "demo-user-123"  # TODO: get from auth
+    user_id = _get_user_id(request)
     
     try:
         async with get_db() as db:
@@ -553,9 +564,7 @@ async def get_character_gallery(character_id: UUID, request: Request):
     """Get unlocked photos for a character"""
     from app.services.photo_unlock_service import photo_unlock_service
     
-    # Get user_id from auth
-    user = getattr(request.state, "user", None)
-    user_id = str(user.user_id) if user else "demo-user-123"
+    user_id = _get_user_id(request)
     
     try:
         photos = await photo_unlock_service.get_unlocked_photos(user_id, str(character_id))
@@ -590,11 +599,15 @@ async def delete_user_character_data(character_id: UUID, request: Request):
     
     logger = logging.getLogger(__name__)
     
-    # Get user_id from auth (REQUIRED - no anonymous deletion allowed)
-    user = getattr(request.state, "user", None)
-    if not user:
-        raise HTTPException(status_code=401, detail="Authentication required to delete character data")
-    user_id = str(user.user_id)
+    # Get user_id from auth or header
+    user_id = _get_user_id(request)
+    if not user_id or user_id == "demo-user-123":
+        # Check if explicitly provided in header for testing
+        header_user = request.headers.get("X-User-ID")
+        if header_user:
+            user_id = header_user
+        else:
+            raise HTTPException(status_code=401, detail="Authentication required to delete character data")
     char_id = str(character_id)
     
     deleted_counts = {
@@ -604,6 +617,7 @@ async def delete_user_character_data(character_id: UUID, request: Request):
         "emotions": 0,
         "events": 0,
         "gifts": 0,
+        "stats": 0,
     }
     
     try:
@@ -703,6 +717,21 @@ async def delete_user_character_data(character_id: UUID, request: Request):
                 deleted_counts["gifts"] = gift_result.rowcount
             except Exception as e:
                 logger.warning(f"Failed to delete gifts: {e}")
+            
+            # 8. Delete stats (message count, streak, etc.)
+            try:
+                from app.models.database.stats_models import UserCharacterStats
+                stats_result = await db.execute(
+                    delete(UserCharacterStats).where(
+                        and_(
+                            UserCharacterStats.user_id == user_id,
+                            UserCharacterStats.character_id == char_id
+                        )
+                    )
+                )
+                deleted_counts["stats"] = stats_result.rowcount
+            except Exception as e:
+                logger.warning(f"Failed to delete stats: {e}")
             
             await db.commit()
             
