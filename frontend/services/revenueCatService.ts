@@ -22,7 +22,7 @@ import Purchases, {
 // Configuration
 // ============================================================================
 
-const REVENUECAT_API_KEY = 'test_FBObZPlGuTyizNXjsTFNnnHSqNc';
+const REVENUECAT_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY || 'test_FBObZPlGuTyizNXjsTFNnnHSqNc';
 
 // Entitlement IDs (configured in RevenueCat dashboard)
 export const ENTITLEMENTS = {
