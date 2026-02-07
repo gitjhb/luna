@@ -3,6 +3,13 @@ AI Companion Backend - FastAPI Application
 Main entry point with middleware and router configuration
 """
 
+# ============================================================
+# CRITICAL: Load .env FIRST before any other imports
+# This ensures all modules get correct environment variables
+# ============================================================
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
