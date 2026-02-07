@@ -13,7 +13,7 @@ import { LocaleProvider } from '../i18n';
 import { useChatStore } from '../store/chatStore';
 import { useUserStore } from '../store/userStore';
 import { useGiftStore } from '../store/giftStore';
-import { iapService } from '../services/iapService';
+import { revenueCatService } from '../services/revenueCatService';
 import { pushService } from '../services/pushService';
 
 const queryClient = new QueryClient({
@@ -33,16 +33,27 @@ function HydrationGate({ children }: { children: React.ReactNode }) {
   const fetchGiftCatalog = useGiftStore((s) => s.fetchCatalog);
   const needsGiftRefresh = useGiftStore((s) => s.needsRefresh);
   
-  // 初始化 IAP 连接
+  // 初始化 RevenueCat
+  const user = useUserStore((s) => s.user);
+  
   useEffect(() => {
-    iapService.init().then((ok) => {
-      console.log('[App] IAP initialized:', ok);
-    });
-    
-    return () => {
-      iapService.cleanup();
+    const initRevenueCat = async () => {
+      // Initialize with user ID if logged in
+      const userId = user?.userId;
+      const ok = await revenueCatService.init(userId);
+      console.log('[App] RevenueCat initialized:', ok);
+      
+      // Set user attributes if available
+      if (user) {
+        await revenueCatService.setUserAttributes({
+          email: user.email,
+          displayName: user.displayName,
+        });
+      }
     };
-  }, []);
+    
+    initRevenueCat();
+  }, [user?.userId]);
   
   // 初始化推送服务
   useEffect(() => {
