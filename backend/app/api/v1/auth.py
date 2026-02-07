@@ -191,7 +191,7 @@ async def authenticate_firebase(request: FirebaseAuthRequest):
         
         from app.core.database import get_db
         from sqlalchemy import select
-        from app.models.database.user_models import User
+        from app.models.database.billing_models import User
         
         async with get_db() as db:
             result = await db.execute(
