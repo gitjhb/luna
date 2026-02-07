@@ -29,11 +29,12 @@ export const ENTITLEMENTS = {
   LUNA_PRO: 'Luna Pro',
 } as const;
 
-// Product identifiers
+// Product identifiers (must match App Store Connect)
 export const PRODUCT_IDS = {
-  MONTHLY: 'monthly',
-  YEARLY: 'yearly',
-  LIFETIME: 'lifetime',
+  // Subscription (MVP: only one tier)
+  LUNA_PRO: 'luna_premium_monthly',
+  // Consumables
+  SHARDS_60: 'com.luna.companion.60shards',
 } as const;
 
 // ============================================================================
