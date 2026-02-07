@@ -183,32 +183,58 @@ async def authenticate_firebase(request: FirebaseAuthRequest):
         
         logger.info(f"Firebase token verified for UID: {firebase_uid}")
         
-        # Get or create user
+        # Get or create user in DATABASE (persistent)
         user_id = f"fb-{firebase_uid}"
-        existing_user = _users.get(user_id)
+        user_email = decoded_token.get("email") or request.email or f"{user_id}@luna.app"
+        user_display_name = request.display_name or decoded_token.get("name") or "User"
+        user_avatar = request.photo_url or decoded_token.get("picture")
         
-        if existing_user:
-            # Update existing user
-            existing_user["last_login_at"] = datetime.utcnow().isoformat()
-            if request.display_name:
-                existing_user["display_name"] = request.display_name
-            if request.photo_url:
-                existing_user["photo_url"] = request.photo_url
-        else:
-            # Create new user
-            _users[user_id] = {
-                "user_id": user_id,
-                "firebase_uid": firebase_uid,
-                "email": decoded_token.get("email") or request.email,
-                "display_name": request.display_name or decoded_token.get("name") or "User",
-                "photo_url": request.photo_url or decoded_token.get("picture"),
-                "provider": request.provider,
-                "email_verified": decoded_token.get("email_verified", False),
-                "subscription_tier": "free",
-                "created_at": datetime.utcnow().isoformat(),
-            }
+        from app.core.database import get_db
+        from sqlalchemy import select
+        from app.models.database.user_models import User
         
-        user = _users[user_id]
+        async with get_db() as db:
+            result = await db.execute(
+                select(User).where(User.user_id == user_id)
+            )
+            db_user = result.scalar_one_or_none()
+            
+            if db_user:
+                # Update existing user
+                db_user.last_login_at = datetime.utcnow()
+                if request.display_name:
+                    db_user.display_name = request.display_name
+                if request.photo_url:
+                    db_user.avatar_url = request.photo_url
+                await db.commit()
+                logger.info(f"Updated existing user: {user_id}")
+            else:
+                # Create new user in database
+                db_user = User(
+                    user_id=user_id,
+                    firebase_uid=firebase_uid,
+                    email=user_email,
+                    display_name=user_display_name,
+                    avatar_url=user_avatar,
+                    is_subscribed=False,
+                    subscription_tier="free",
+                )
+                db.add(db_user)
+                await db.commit()
+                await db.refresh(db_user)
+                logger.info(f"Created new user in database: {user_id}")
+        
+        # Also keep in memory cache for fast access
+        user = {
+            "user_id": user_id,
+            "firebase_uid": firebase_uid,
+            "email": user_email,
+            "display_name": user_display_name,
+            "photo_url": user_avatar,
+            "provider": request.provider,
+            "subscription_tier": "free",
+        }
+        _users[user_id] = user
         
         # Get subscription tier
         from app.services.subscription_service import subscription_service

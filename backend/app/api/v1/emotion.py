@@ -63,8 +63,9 @@ async def get_emotion_status(character_id: UUID, request: Request):
     else:
         user_id = str(user.user_id)
         
-        # Testing bypass: guest users, demo user, and MOCK_MODE always have access
-        if user_id.startswith("guest-") or user_id.startswith("demo-") or MOCK_MODE:
+        # Testing bypass: guest users, demo user, fb- users, and MOCK_MODE always have access
+        # TODO: Remove fb- bypass after subscription system is fully tested
+        if user_id.startswith("guest-") or user_id.startswith("demo-") or user_id.startswith("fb-") or MOCK_MODE:
             is_vip = True
         else:
             # Use unified subscription service to check VIP status
