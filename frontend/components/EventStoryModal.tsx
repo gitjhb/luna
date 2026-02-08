@@ -173,7 +173,7 @@ export default function EventStoryModal({
         >
           {isLoading ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#EC4899" />
+              <ActivityIndicator size="large" color="#00D4FF" />
               <Text style={styles.loadingText}>正在为你创作专属剧情...</Text>
               <Text style={styles.loadingSubtext}>这可能需要 10-20 秒</Text>
             </View>
@@ -228,7 +228,7 @@ export default function EventStoryModal({
           >
             <TouchableOpacity style={styles.bottomCloseButton} onPress={handleClose}>
               <LinearGradient
-                colors={['#EC4899', '#8B5CF6']}
+                colors={['#00D4FF', '#8B5CF6']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.bottomCloseGradient}

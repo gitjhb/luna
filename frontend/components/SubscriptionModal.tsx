@@ -208,7 +208,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   const getGradientColors = (tier: string): [string, string] => {
     switch (tier) {
       case 'premium':
-        return ['#8B5CF6', '#EC4899'];
+        return ['#8B5CF6', '#00D4FF'];
       case 'vip':
         return ['#F59E0B', '#EF4444'];
       default:
@@ -380,7 +380,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           {/* Plans */}
           {loading ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#EC4899" />
+              <ActivityIndicator size="large" color="#00D4FF" />
               <Text style={styles.loadingText}>加载中...</Text>
             </View>
           ) : (

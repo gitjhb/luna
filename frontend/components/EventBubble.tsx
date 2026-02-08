@@ -46,7 +46,7 @@ const EVENT_CONFIG: Record<string, {
     icon: '💕',
     name_cn: '约会',
     gradientColors: ['rgba(236, 72, 153, 0.2)', 'rgba(168, 85, 247, 0.2)'],
-    borderColor: '#EC4899',
+    borderColor: '#00D4FF',
   },
   gift: {
     icon: '🎁',

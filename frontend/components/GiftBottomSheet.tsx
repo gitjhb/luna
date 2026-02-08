@@ -356,7 +356,7 @@ export default function GiftBottomSheet({
               onPress={handleConfirmGift}
             >
               <LinearGradient
-                colors={['#EC4899', '#8B5CF6']}
+                colors={['#00D4FF', '#8B5CF6']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.confirmButtonGradient}
@@ -679,7 +679,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   giftItemSelected: {
-    borderColor: '#EC4899',
+    borderColor: '#00D4FF',
     backgroundColor: 'rgba(236, 72, 153, 0.15)',
   },
   giftItemBreakthrough: {

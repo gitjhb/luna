@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
   creditsText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#EC4899',
+    color: '#00D4FF',
   },
   shardIcon: {
     width: 20,

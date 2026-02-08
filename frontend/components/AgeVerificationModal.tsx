@@ -149,7 +149,7 @@ export default function AgeVerificationModal({ onConfirm, onDecline }: AgeVerifi
         <View style={styles.card}>
           {/* Glow ring */}
           <LinearGradient
-            colors={['#8B5CF6', '#EC4899']}
+            colors={['#8B5CF6', '#00D4FF']}
             style={styles.iconRing}
           >
             <View style={styles.iconInner}>
@@ -218,7 +218,7 @@ export default function AgeVerificationModal({ onConfirm, onDecline }: AgeVerifi
             disabled={!selectedDate}
           >
             <LinearGradient
-              colors={selectedDate ? ['#8B5CF6', '#EC4899'] : ['#4B5563', '#374151']}
+              colors={selectedDate ? ['#8B5CF6', '#00D4FF'] : ['#4B5563', '#374151']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.confirmGradient}
@@ -293,7 +293,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   highlight: {
-    color: '#EC4899',
+    color: '#00D4FF',
     fontWeight: '600',
   },
   label: {

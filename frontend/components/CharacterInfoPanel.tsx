@@ -755,7 +755,7 @@ export default function CharacterInfoPanel({
         memories.map((memory) => (
           <View key={memory.id} style={styles.memoryItem}>
             <View style={styles.memoryHeader}>
-              <View style={[styles.importanceDot, { backgroundColor: '#EC4899' }]} />
+              <View style={[styles.importanceDot, { backgroundColor: '#00D4FF' }]} />
               <Text style={styles.memoryDate}>
                 {memory.createdAt ? new Date(memory.createdAt).toLocaleDateString('zh-CN', {
                   month: 'short',

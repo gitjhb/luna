@@ -227,7 +227,7 @@ function SplashScreen() {
         <Image 
           source={SPLASH_LOGO} 
           style={splashStyles.logo}
-          resizeMode="contain"
+          resizeMode="cover"
         />
       </Animated.View>
     </View>

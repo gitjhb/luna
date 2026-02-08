@@ -821,7 +821,7 @@ export default function ChatScreen() {
         <View style={styles.giftEventRow}>
           <View style={[styles.giftEventBubble, { backgroundColor: 'rgba(236, 72, 153, 0.15)', borderColor: 'rgba(236, 72, 153, 0.3)' }]}>
             <Text style={styles.giftEventIcon}>💕</Text>
-            <Text style={[styles.giftEventText, { color: '#EC4899' }]}>
+            <Text style={[styles.giftEventText, { color: '#00D4FF' }]}>
               {sceneName} · {endingText}
             </Text>
           </View>
@@ -1240,7 +1240,7 @@ export default function ChatScreen() {
               onPress={() => setShowLevelUpModal(false)}
             >
               <LinearGradient
-                colors={['#8B5CF6', '#EC4899'] as [string, string]}
+                colors={['#8B5CF6', '#00D4FF'] as [string, string]}
                 style={styles.levelUpButtonGradient}
               >
                 <Text style={styles.levelUpButtonText}>{t.chat.awesome}</Text>
@@ -1620,7 +1620,7 @@ export default function ChatScreen() {
               onPress={() => setShowFirstDateCelebration(false)}
             >
               <LinearGradient
-                colors={['#EC4899', '#F472B6'] as [string, string]}
+                colors={['#00D4FF', '#5CE1FF'] as [string, string]}
                 style={styles.levelUpButtonGradient}
               >
                 <Text style={styles.levelUpButtonText}>
@@ -2161,7 +2161,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -8,
     right: -8,
-    backgroundColor: '#EC4899',
+    backgroundColor: '#00D4FF',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
@@ -2277,7 +2277,7 @@ const styles = StyleSheet.create({
   levelUpLevel: {
     fontSize: 48,
     fontWeight: '800',
-    color: '#EC4899',
+    color: '#00D4FF',
     marginBottom: 16,
   },
   levelUpDesc: {
@@ -2575,7 +2575,7 @@ const styles = StyleSheet.create({
     padding: 24,
     width: '85%',
     alignItems: 'center',
-    shadowColor: '#EC4899',
+    shadowColor: '#00D4FF',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
     shadowRadius: 16,
@@ -2595,7 +2595,7 @@ const styles = StyleSheet.create({
   },
   activeDateSubtitle: {
     fontSize: 14,
-    color: '#EC4899',
+    color: '#00D4FF',
     marginBottom: 8,
     fontWeight: '500',
   },
@@ -2610,7 +2610,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   activeDateContinueBtn: {
-    backgroundColor: '#EC4899',
+    backgroundColor: '#00D4FF',
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
@@ -2715,7 +2715,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 14,
     borderRadius: 25,
-    backgroundColor: '#EC4899',
+    backgroundColor: '#00D4FF',
   },
   photoPreviewBtnText: {
     fontSize: 16,

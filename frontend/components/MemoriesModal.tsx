@@ -151,7 +151,7 @@ export default function MemoriesModal({
           {/* Content */}
           {isLoading ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#EC4899" />
+              <ActivityIndicator size="large" color="#00D4FF" />
               <Text style={styles.loadingText}>加载中...</Text>
             </View>
           ) : memories.length === 0 ? (
@@ -173,7 +173,7 @@ export default function MemoriesModal({
                 <RefreshControl
                   refreshing={isRefreshing}
                   onRefresh={handleRefresh}
-                  tintColor="#EC4899"
+                  tintColor="#00D4FF"
                 />
               }
             >
@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#EC4899',
+    color: '#00D4FF',
   },
   statLabel: {
     fontSize: 12,

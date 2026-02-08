@@ -266,7 +266,7 @@ export default function CharacterProfileScreen() {
               <Ionicons 
                 name={character.characterType === 'buddy' ? 'paw' : 'heart'} 
                 size={16} 
-                color={character.characterType === 'buddy' ? '#63C7FF' : '#EC4899'} 
+                color={character.characterType === 'buddy' ? '#63C7FF' : '#00D4FF'} 
               />
               <Text style={styles.levelText}>Lv.{currentLevel}</Text>
               <Text style={styles.stageText}>
@@ -335,7 +335,7 @@ export default function CharacterProfileScreen() {
               title={t.characterProfile.intimacy} 
               value={`Lv.${currentLevel}`}
               subtitle={intimacy?.stageNameCn || getStageName(currentLevel)}
-              iconColor="#EC4899"
+              iconColor="#00D4FF"
             />
             <ProfileItem 
               icon="flame" 
@@ -577,7 +577,7 @@ const styles = StyleSheet.create({
   levelText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#EC4899',
+    color: '#00D4FF',
   },
   stageText: {
     fontSize: 14,

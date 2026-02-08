@@ -144,7 +144,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
           {/* Coin Packs */}
           {loading ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#EC4899" />
+              <ActivityIndicator size="large" color="#00D4FF" />
             </View>
           ) : (
             <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -213,7 +213,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
                 disabled={purchasing !== null}
               >
                 {purchasing === 'free' ? (
-                  <ActivityIndicator size="small" color="#EC4899" />
+                  <ActivityIndicator size="small" color="#00D4FF" />
                 ) : (
                   <Text style={styles.freeButtonText}>🎁 领取 500 测试碎片</Text>
                 )}
@@ -335,7 +335,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -8,
     right: -8,
-    backgroundColor: '#EC4899',
+    backgroundColor: '#00D4FF',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -8,
     left: -8,
-    backgroundColor: '#EC4899',
+    backgroundColor: '#00D4FF',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
   packBonus: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#EC4899',
+    color: '#00D4FF',
     marginTop: 2,
   },
   packPrice: {
@@ -392,9 +392,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   freeButton: {
-    backgroundColor: 'rgba(236, 72, 153, 0.15)',
+    backgroundColor: 'rgba(0, 212, 255, 0.15)',
     borderWidth: 1,
-    borderColor: '#EC4899',
+    borderColor: '#00D4FF',
     borderRadius: 12,
     paddingVertical: 14,
     marginHorizontal: 16,
@@ -407,7 +407,7 @@ const styles = StyleSheet.create({
   freeButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#EC4899',
+    color: '#00D4FF',
   },
 });
 

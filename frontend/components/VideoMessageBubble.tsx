@@ -115,7 +115,7 @@ export default function VideoMessageBubble({
             {/* 播放图标 */}
             <View style={styles.playIconContainer}>
               <LinearGradient
-                colors={['#EC4899', '#8B5CF6']}
+                colors={['#00D4FF', '#8B5CF6']}
                 style={styles.playIconGradient}
               >
                 <Ionicons name="play" size={28} color="#fff" style={{ marginLeft: 3 }} />
@@ -164,7 +164,7 @@ export default function VideoMessageBubble({
           {isLoading && (
             <ActivityIndicator 
               size="large" 
-              color="#EC4899" 
+              color="#00D4FF" 
               style={styles.loadingIndicator}
             />
           )}

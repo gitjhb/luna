@@ -42,10 +42,10 @@ export const colors = {
   
   // 次要强调 - 霓虹紫
   secondary: {
-    main: '#8B5CF6',
+    main: '#00D4FF',
     light: '#A78BFA',
     dark: '#7C3AED',
-    glow: 'rgba(139, 92, 246, 0.4)',
+    glow: 'rgba(0, 212, 255, 0.4)',
   },
   
   // 警示色 - 赛博黄
@@ -374,7 +374,7 @@ export const badgeStyles = {
   // 次要徽章
   secondary: {
     container: {
-      backgroundColor: 'rgba(139, 92, 246, 0.2)',
+      backgroundColor: 'rgba(0, 212, 255, 0.2)',
       borderRadius: radius.full,
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.xs,
@@ -407,12 +407,12 @@ export const badgeStyles = {
   // 等级徽章
   level: {
     container: {
-      backgroundColor: 'rgba(139, 92, 246, 0.2)',
+      backgroundColor: 'rgba(0, 212, 255, 0.2)',
       borderRadius: radius.md,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.xs,
       borderWidth: 1,
-      borderColor: 'rgba(139, 92, 246, 0.3)',
+      borderColor: 'rgba(0, 212, 255, 0.3)',
     } as ViewStyle,
     text: {
       color: colors.secondary.light,
@@ -431,10 +431,10 @@ export const gradients = {
   primary: ['#00F0FF', '#FF2A6D'] as const,
   
   // 强调渐变 (品红 → 紫)
-  accent: ['#FF2A6D', '#8B5CF6'] as const,
+  accent: ['#FF2A6D', '#00D4FF'] as const,
   
   // 紫色渐变 (Spicy Mode)
-  purple: ['#8B5CF6', '#EC4899'] as const,
+  purple: ['#00D4FF', '#00D4FF'] as const,
   
   // 金色渐变
   gold: ['#FFD700', '#FFA500'] as const,

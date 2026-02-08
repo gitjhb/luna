@@ -1368,7 +1368,7 @@ export default function DateSceneModal({
         {unlockedPhoto?.is_new && (
           <View style={[styles.rewardsBox, { backgroundColor: 'rgba(236, 72, 153, 0.15)', borderColor: 'rgba(236, 72, 153, 0.3)' }]}>
             <Text style={styles.rewardsTitle}>📸 解锁新照片</Text>
-            <Text style={[styles.rewardsText, { color: '#EC4899' }]}>
+            <Text style={[styles.rewardsText, { color: '#00D4FF' }]}>
               {unlockedPhoto.photo_type === 'perfect' ? '💕 特别版照片' : '📷 普通照片'}
             </Text>
             <Text style={{ color: '#888', fontSize: 12, marginTop: 4 }}>

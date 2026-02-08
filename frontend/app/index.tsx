@@ -64,7 +64,7 @@ export default function Index() {
         <Image 
           source={SPLASH_LOGO} 
           style={styles.logo}
-          resizeMode="contain"
+          resizeMode="cover"
         />
       </Animated.View>
     </View>

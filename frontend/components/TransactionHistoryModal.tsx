@@ -28,7 +28,7 @@ const TRANSACTION_TYPES: Record<string, { label: string; icon: string; color: st
   purchase: { label: '充值', icon: 'add-circle', color: '#10B981' },
   bonus: { label: '奖励', icon: 'gift', color: '#8B5CF6' },
   deduction: { label: '消费', icon: 'remove-circle', color: '#F59E0B' },
-  gift: { label: '送礼', icon: 'heart', color: '#EC4899' },
+  gift: { label: '送礼', icon: 'heart', color: '#00D4FF' },
   daily_refresh: { label: '每日赠送', icon: 'sunny', color: '#06B6D4' },
   refund: { label: '退款', icon: 'refresh-circle', color: '#6366F1' },
   subscription: { label: '订阅', icon: 'diamond', color: '#FFD700', isCash: true },
@@ -154,7 +154,7 @@ export const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = (
         <View style={styles.transactionAmount}>
           <Text style={[
             styles.transactionAmountText,
-            { color: isCash ? '#EC4899' : (isPositive ? '#10B981' : '#F59E0B') }
+            { color: isCash ? '#00D4FF' : (isPositive ? '#10B981' : '#F59E0B') }
           ]}>
             {formatAmount()}
           </Text>

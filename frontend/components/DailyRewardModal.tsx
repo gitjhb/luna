@@ -163,7 +163,7 @@ export default function DailyRewardModal({ visible, onClose }: DailyRewardModalP
                   activeOpacity={0.85}
                 >
                   <LinearGradient
-                    colors={['#8B5CF6', '#EC4899']}
+                    colors={['#8B5CF6', '#00D4FF']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={styles.claimButtonGradient}
@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
   },
   subscribeHintText: {
     fontSize: 15,
-    color: '#EC4899',
+    color: '#00D4FF',
     fontWeight: '500',
   },
   successContainer: {

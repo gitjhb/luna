@@ -111,16 +111,16 @@ export const purpleSeduction: ThemeConfig = {
     },
     
     primary: {
-      main: "#EC4899",
-      light: "#F472B6",
-      dark: "#DB2777",
-      gradient: ["#EC4899", "#8B5CF6"] as const,
+      main: "#00D4FF",
+      light: "#5CE1FF",
+      dark: "#00A3C7",
+      gradient: ["#00D4FF", "#8B5CF6"] as const,
     },
     
     accent: {
-      pink: "#EC4899",
+      pink: "#00D4FF",
       purple: "#8B5CF6",
-      gradient: ["#EC4899", "#8B5CF6"] as const,
+      gradient: ["#00D4FF", "#8B5CF6"] as const,
     },
     
     text: {

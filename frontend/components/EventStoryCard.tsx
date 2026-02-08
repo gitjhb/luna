@@ -100,7 +100,7 @@ export default function EventStoryCard({
   const getBorderColor = () => {
     if (isRead) return 'rgba(255, 255, 255, 0.2)';
     switch (placeholder.event_type) {
-      case 'first_date': return '#EC4899';
+      case 'first_date': return '#00D4FF';
       case 'first_kiss': return '#F43F5E';
       case 'first_confession': return '#F97316';
       case 'first_nsfw': return '#EF4444';
