@@ -26,13 +26,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
   
   const loadTheme = async () => {
+    // MVP: Force luna-2077 theme, ignore saved preferences
+    // This ensures all users see the new Luna 2077 design
+    setThemeId('luna-2077');
     try {
-      const saved = await AsyncStorage.getItem(THEME_STORAGE_KEY);
-      if (saved && themes[saved]) {
-        setThemeId(saved);
-      }
+      // Clear any old saved theme
+      await AsyncStorage.removeItem(THEME_STORAGE_KEY);
     } catch (error) {
-      console.log('Failed to load theme:', error);
+      console.log('Failed to clear old theme:', error);
     }
   };
   
