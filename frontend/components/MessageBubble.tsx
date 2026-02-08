@@ -245,32 +245,47 @@ export default function MessageBubble({
 const styles = StyleSheet.create({
   wrapper: {
     position: 'relative',
-    maxWidth: SCREEN_WIDTH * 0.72,
+    maxWidth: SCREEN_WIDTH * 0.75,
   },
   bubbleContainer: {},
   bubble: {
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 18,
     position: 'relative',
   },
+  // User bubble: Cyan wireframe + semi-transparent black
   bubbleUser: {
-    backgroundColor: 'rgba(139, 92, 246, 0.85)',
-    borderBottomRightRadius: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 255, 0.6)',
+    // HUD glow
+    shadowColor: '#00D4FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
   },
+  // AI bubble: Ultra transparent, text floats with shadow
   bubbleAI: {
-    backgroundColor: 'rgba(30, 20, 50, 0.85)',
-    borderBottomLeftRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
   messageText: {
     fontSize: 15,
-    lineHeight: 21,
+    lineHeight: 22,
   },
   messageTextUser: {
-    color: '#fff',
+    color: '#00D4FF',  // Cyan text for user
+    fontWeight: '400',
   },
   messageTextAI: {
-    color: 'rgba(255, 255, 255, 0.92)',
+    color: 'rgba(255, 255, 255, 0.95)',
+    // Text shadow for readability on transparent bg
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   
   // Locked
@@ -312,12 +327,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: -8,
     right: -4,
-    backgroundColor: 'rgba(30, 20, 50, 0.9)',
-    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: 8,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderWidth: 1.5,
-    borderColor: 'rgba(139, 92, 246, 0.4)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 255, 0.3)',
   },
   reactionBadgeText: {
     fontSize: 14,
@@ -346,23 +361,23 @@ const styles = StyleSheet.create({
     right: 0,
   },
   
-  // Pill shape
+  // Pill shape - Luna 2077 HUD style
   popupPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(60, 40, 80, 0.95)',
-    borderRadius: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    borderRadius: 8,
     paddingHorizontal: 6,
     paddingVertical: 6,
     gap: 0,
-    // Shadow
-    shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
+    // Cyan glow
+    shadowColor: '#00D4FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
     elevation: 10,
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.3)',
+    borderColor: 'rgba(0, 212, 255, 0.4)',
   },
   
   // Button inside pill
@@ -375,34 +390,37 @@ const styles = StyleSheet.create({
   popupIconCircle: {
     width: 32,
     height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(139, 92, 246, 0.4)',
+    borderRadius: 8,
+    backgroundColor: 'rgba(0, 212, 255, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 255, 0.3)',
   },
   popupLabel: {
     fontSize: 10,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontWeight: '500',
+    color: 'rgba(0, 212, 255, 0.9)',
+    letterSpacing: 0.5,
   },
   
   // Divider
   popupDivider: {
     width: 1,
     height: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(0, 212, 255, 0.2)',
   },
   
   // Arrow pointing down to bubble
   popupArrow: {
     width: 12,
     height: 12,
-    backgroundColor: 'rgba(60, 40, 80, 0.95)',
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
     transform: [{ rotate: '45deg' }],
     marginTop: -6,
     borderRightWidth: 1,
     borderBottomWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.3)',
+    borderColor: 'rgba(0, 212, 255, 0.4)',
   },
   popupArrowLeft: {
     marginLeft: 20,
