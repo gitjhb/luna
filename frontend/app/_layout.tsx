@@ -2,8 +2,8 @@
  * Root Layout
  */
 
-import React, { useEffect, useRef } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, ActivityIndicator, Image, StyleSheet, Dimensions, Animated } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -17,6 +17,9 @@ import { revenueCatService } from '../services/revenueCatService';
 import { pushService } from '../services/pushService';
 import { initDatabase } from '../services/database';
 import { migrateToSQLite, needsMigration } from '../services/database/migration';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const SPLASH_LOGO = require('../assets/images/splash-logo.jpg');
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -151,17 +154,9 @@ function HydrationGate({ children }: { children: React.ReactNode }) {
     }
   }, [giftHydrated]);
   
+  // Show splash screen while hydrating
   if (!chatHydrated || !userHydrated || !giftHydrated) {
-    return (
-      <View style={{ 
-        flex: 1, 
-        backgroundColor: theme.colors.background.primary,
-        justifyContent: 'center',
-        alignItems: 'center',
-      }}>
-        <ActivityIndicator size="large" color={theme.colors.primary.main} />
-      </View>
-    );
+    return <SplashScreen />;
   }
   
   return <>{children}</>;
@@ -202,6 +197,61 @@ function ThemedLayout() {
     </View>
   );
 }
+
+// Splash screen component with Luna logo
+function SplashScreen() {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.8)).current;
+  
+  useEffect(() => {
+    // Fade in and scale up animation
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scale, {
+        toValue: 1,
+        tension: 50,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+  
+  return (
+    <View style={splashStyles.container}>
+      <StatusBar style="light" />
+      <Animated.View style={[splashStyles.logoContainer, { opacity, transform: [{ scale }] }]}>
+        <Image 
+          source={SPLASH_LOGO} 
+          style={splashStyles.logo}
+          resizeMode="contain"
+        />
+      </Animated.View>
+    </View>
+  );
+}
+
+const splashStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#0a0a12', // Dark background matching the logo
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  logoContainer: {
+    width: SCREEN_WIDTH * 0.6,
+    height: SCREEN_WIDTH * 0.6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  logo: {
+    width: '100%',
+    height: '100%',
+  },
+});
 
 export default function RootLayout() {
   return (
