@@ -1,5 +1,7 @@
 /**
- * Login Screen - Purple Pink Theme
+ * Login Screen - Immersive Design
+ * 
+ * 少即是多：让 Sakura 的脸说话
  */
 
 import React, { useState, useEffect } from 'react';
@@ -15,6 +17,7 @@ import {
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -119,7 +122,7 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Background Video/Image */}
+      {/* Full-screen Background */}
       {USE_VIDEO_BACKGROUND ? (
         <View style={styles.backgroundVideo}>
           <Video
@@ -130,103 +133,88 @@ export default function LoginScreen() {
             isLooping
             isMuted
           />
+          {/* Subtle gradient only at bottom for readability */}
           <LinearGradient
-            colors={['rgba(26,16,37,0.1)', 'rgba(26,16,37,0.5)', 'rgba(26,16,37,0.98)'] as [string, string, string]}
-            style={styles.overlay}
+            colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)'] as const}
+            locations={[0, 0.6, 1]}
+            style={styles.bottomGradient}
           />
         </View>
       ) : (
         <ImageBackground
           source={{ uri: BG_IMAGE }}
-          style={styles.backgroundImage}
+          style={StyleSheet.absoluteFillObject}
           resizeMode="cover"
         >
           <LinearGradient
-            colors={['rgba(26,16,37,0.2)', 'rgba(26,16,37,0.6)', 'rgba(26,16,37,0.98)'] as [string, string, string]}
-            style={styles.overlay}
+            colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)'] as const}
+            locations={[0, 0.6, 1]}
+            style={styles.bottomGradient}
           />
         </ImageBackground>
       )}
 
       <SafeAreaView style={styles.safeArea}>
-        {/* Spacer to push content down */}
-        <View style={styles.spacer} />
-
-        {/* Content */}
-        <View style={styles.content}>
-          {/* Logo */}
-          <View style={styles.logoContainer}>
-            <LinearGradient
-              colors={theme.colors.primary.gradient}
-              style={styles.logoGradient}
-            >
-              <Ionicons name="heart" size={36} color="#fff" />
-            </LinearGradient>
-          </View>
-          
+        {/* Top: App Name Only */}
+        <View style={styles.topSection}>
           <Text style={styles.appName}>{theme.appName}</Text>
-          <Text style={styles.tagline}>{t.login.tagline}</Text>
+        </View>
 
-          {/* Features */}
-          <View style={styles.features}>
-            <FeatureItem icon="chatbubble-ellipses" text={t.login.featureChat} />
-            <FeatureItem icon="shield-checkmark" text={t.login.featureSafe} />
-            <FeatureItem icon="sparkles" text={t.login.featureUnique} />
-          </View>
+        {/* Middle: Empty - Let Sakura shine */}
+        <View style={styles.middleSection} />
 
-          {/* Auth Buttons */}
-          <View style={styles.authSection}>
+        {/* Bottom: Frosted glass bar with auth buttons */}
+        <BlurView intensity={40} tint="dark" style={styles.bottomBar}>
+          <View style={styles.authButtons}>
             {/* Guest/Demo Login - Only in dev mode */}
             {__DEV__ && (
               <TouchableOpacity
-                style={styles.guestButton}
+                style={styles.authButton}
                 onPress={() => handleLogin('guest')}
                 disabled={loading}
-                activeOpacity={0.85}
+                activeOpacity={0.8}
               >
                 <LinearGradient
                   colors={theme.colors.primary.gradient}
-                  style={styles.guestButtonGradient}
+                  style={styles.authButtonInner}
                 >
-                  <Ionicons name="person" size={22} color="#fff" />
-                  <Text style={styles.guestButtonText}>{t.login.guestLogin}</Text>
+                  <Ionicons name="person" size={20} color="#fff" />
                 </LinearGradient>
               </TouchableOpacity>
             )}
 
             <TouchableOpacity
-              style={styles.appleButton}
+              style={styles.authButton}
               onPress={() => handleLogin('apple')}
               disabled={loading}
-              activeOpacity={0.85}
+              activeOpacity={0.8}
             >
-              <Ionicons name="logo-apple" size={22} color="#fff" />
-              <Text style={styles.appleButtonText}>{t.login.appleLogin}</Text>
+              <View style={[styles.authButtonInner, styles.appleButtonInner]}>
+                <Ionicons name="logo-apple" size={22} color="#fff" />
+              </View>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.googleButton}
+              style={styles.authButton}
               onPress={() => handleLogin('google')}
               disabled={loading}
-              activeOpacity={0.85}
+              activeOpacity={0.8}
             >
-              <Ionicons name="logo-google" size={20} color="#fff" />
-              <Text style={styles.googleButtonText}>{t.login.googleLogin}</Text>
-            </TouchableOpacity>
-
-            {loading && (
-              <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="large" color={theme.colors.primary.main} />
+              <View style={[styles.authButtonInner, styles.googleButtonInner]}>
+                <Ionicons name="logo-google" size={20} color="#fff" />
               </View>
-            )}
+            </TouchableOpacity>
           </View>
 
-          {/* AI Disclaimer */}
-          <Text style={styles.aiDisclaimer}>
-            {t.login.aiDisclaimer}
-          </Text>
+          {loading && (
+            <ActivityIndicator 
+              size="small" 
+              color={theme.colors.primary.main} 
+              style={styles.loadingIndicator}
+            />
+          )}
 
-          {/* Terms */}
+          {/* Tiny terms text */}
           <Text style={styles.termsText}>
             {t.login.termsPrefix}
             <Text style={styles.termsLink} onPress={() => router.push('/legal/terms')}>
@@ -237,10 +225,10 @@ export default function LoginScreen() {
               {t.login.privacyPolicy}
             </Text>
           </Text>
-        </View>
+        </BlurView>
       </SafeAreaView>
 
-      {/* Age Verification - shown after clicking login */}
+      {/* Age Verification Modal */}
       {showAgeVerification && (
         <AgeVerificationModal
           onConfirm={handleAgeVerified}
@@ -258,164 +246,87 @@ export default function LoginScreen() {
   );
 }
 
-const FeatureItem: React.FC<{ icon: any; text: string }> = ({ icon, text }) => (
-  <View style={styles.featureItem}>
-    <View style={styles.featureIcon}>
-      <Ionicons name={icon} size={18} color={theme.colors.primary.main} />
-    </View>
-    <Text style={styles.featureText}>{text}</Text>
-  </View>
-);
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background.primary,
-  },
-  backgroundImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: SCREEN_HEIGHT * 0.55,
+    backgroundColor: '#000',
   },
   backgroundVideo: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  bottomGradient: {
     position: 'absolute',
-    top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    overflow: 'hidden',
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
+    height: SCREEN_HEIGHT * 0.4,
   },
   safeArea: {
     flex: 1,
   },
-  spacer: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: 28,
-    paddingBottom: 24,
-  },
-  logoContainer: {
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  logoGradient: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
+  topSection: {
+    paddingTop: 20,
+    paddingHorizontal: 24,
   },
   appName: {
-    fontSize: 32,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '300',
     color: '#fff',
-    textAlign: 'center',
+    letterSpacing: 2,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
-  tagline: {
-    fontSize: 16,
-    color: theme.colors.text.secondary,
-    textAlign: 'center',
-    marginTop: 6,
-    marginBottom: 28,
+  middleSection: {
+    flex: 1,
   },
-  features: {
-    marginBottom: 28,
-    gap: 12,
-  },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  featureIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(236, 72, 153, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  featureText: {
-    fontSize: 15,
-    color: theme.colors.text.secondary,
-    fontWeight: '500',
-  },
-  authSection: {
-    gap: 12,
-    marginBottom: 20,
-  },
-  guestButton: {
-    borderRadius: 28,
-    overflow: 'hidden',
-  },
-  guestButtonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 15,
-    gap: 10,
-  },
-  guestButtonText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  appleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#000',
-    paddingVertical: 15,
-    borderRadius: 28,
-    gap: 10,
-  },
-  appleButtonText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  googleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingVertical: 15,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    gap: 10,
-  },
-  googleButtonText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(26, 16, 37, 0.8)',
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  aiDisclaimer: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.4)',
-    textAlign: 'center',
+  bottomBar: {
+    marginHorizontal: 16,
     marginBottom: 8,
+    borderRadius: 24,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  authButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginBottom: 16,
+  },
+  authButton: {
+    width: 56,
+    height: 56,
+  },
+  authButtonInner: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  appleButtonInner: {
+    backgroundColor: '#000',
+  },
+  googleButtonInner: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  loadingIndicator: {
+    position: 'absolute',
+    top: 20,
+    right: 24,
   },
   termsText: {
-    fontSize: 12,
-    color: theme.colors.text.tertiary,
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.4)',
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 14,
   },
   termsLink: {
-    color: theme.colors.primary.main,
+    color: 'rgba(255,255,255,0.6)',
   },
 });
