@@ -693,32 +693,40 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '400',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1.5,
     marginBottom: 8,
     marginLeft: 4,
+    color: 'rgba(0, 212, 255, 0.6)',
   },
+  // Luna 2077: Glass card with cyan border
   sectionContent: {
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderRadius: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 12,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 255, 0.15)',
   },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 14,
     paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 212, 255, 0.08)',
   },
   settingIcon: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 255, 0.2)',
   },
   settingIconDanger: {
     // Handled by inline style
@@ -761,11 +769,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  // Rate app card styles
+  // Rate app card styles - Luna 2077
   rateCard: {
-    borderRadius: 20,
+    borderRadius: 12,
     borderWidth: 1,
+    borderColor: 'rgba(0, 212, 255, 0.2)',
     overflow: 'hidden',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   rateCardGradient: {
     padding: 24,
@@ -781,10 +791,11 @@ const styles = StyleSheet.create({
     marginHorizontal: 2,
   },
   rateTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '400',
     color: '#fff',
     marginBottom: 8,
+    letterSpacing: 1,
   },
   rateSubtitle: {
     fontSize: 14,
