@@ -340,16 +340,7 @@ export default function ProfileScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t.profile.more}</Text>
             <View style={styles.actionsCard}>
-              <TouchableOpacity 
-                style={styles.actionRow}
-                onPress={() => router.push('/invite')}
-              >
-                <View style={styles.actionIcon}>
-                  <Ionicons name="gift-outline" size={20} color={theme.colors.primary.main} />
-                </View>
-                <Text style={styles.actionText}>{t.profile.inviteFriends}</Text>
-                <Ionicons name="chevron-forward" size={18} color={theme.colors.text.tertiary} />
-              </TouchableOpacity>
+              {/* MVP: Invite friends hidden for now */}
               <TouchableOpacity style={styles.actionRow}>
                 <View style={styles.actionIcon}>
                   <Ionicons name="star-outline" size={20} color={theme.colors.primary.main} />

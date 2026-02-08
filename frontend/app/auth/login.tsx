@@ -71,14 +71,8 @@ export default function LoginScreen() {
       
       login(result.user, result.accessToken, result.wallet);
       
-      // Check if this is a new user (could be based on result.isNewUser flag from backend)
-      // For now, show referral modal for all guest logins as they're likely new users
-      if (provider === 'guest') {
-        setShowReferralModal(true);
-        setPendingNavigation(true);
-      } else {
-        router.replace('/(tabs)');
-      }
+      // MVP: Skip referral modal, go directly to main app
+      router.replace('/(tabs)');
     } catch (error: any) {
       // Silently ignore user cancellation - this is normal flow
       if (error.message === 'Sign in cancelled') {
@@ -230,12 +224,7 @@ export default function LoginScreen() {
         />
       )}
 
-      {/* Referral Code Modal */}
-      <ReferralCodeModal
-        visible={showReferralModal}
-        onClose={handleReferralModalClose}
-        onSuccess={handleReferralSuccess}
-      />
+      {/* MVP: Referral Code Modal hidden */}
     </View>
   );
 }
