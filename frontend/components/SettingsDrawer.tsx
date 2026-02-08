@@ -19,7 +19,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme, themeList } from '../theme/config';
+import { useTheme } from '../theme/config';
 import { useLocale, Locale } from '../i18n';
 import { useUserStore } from '../store/userStore';
 import { useChatStore } from '../store/chatStore';
@@ -41,15 +41,15 @@ interface SettingItemProps {
   danger?: boolean;
 }
 
-const SettingItem = ({ icon, title, subtitle, onPress, rightElement, danger }: SettingItemProps) => (
+const SettingItem = ({ icon, title, subtitle, onPress, rightElement, danger, primaryColor }: SettingItemProps & { primaryColor?: string }) => (
   <TouchableOpacity 
     style={styles.settingItem} 
     onPress={onPress}
     disabled={!onPress && !rightElement}
     activeOpacity={0.7}
   >
-    <View style={[styles.settingIcon, danger && styles.settingIconDanger]}>
-      <Ionicons name={icon} size={18} color={danger ? '#EF4444' : '#EC4899'} />
+    <View style={[styles.settingIcon, danger && styles.settingIconDanger, !danger && { backgroundColor: `${primaryColor || '#00D4FF'}20` }]}>
+      <Ionicons name={icon} size={18} color={danger ? '#EF4444' : (primaryColor || '#00D4FF')} />
     </View>
     <View style={styles.settingContent}>
       <Text style={[styles.settingTitle, danger && styles.settingTitleDanger]}>{title}</Text>
@@ -198,52 +198,19 @@ export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps
                 icon="notifications-outline"
                 title={t.settings.notifications}
                 onPress={() => {}}
+                primaryColor={theme.colors.primary.main}
               />
               <SettingItem
                 icon="language-outline"
                 title={t.settings.language}
                 subtitle={locale === 'zh' ? t.settings.languageZh : t.settings.languageEn}
                 onPress={handleLanguagePress}
+                primaryColor={theme.colors.primary.main}
               />
             </View>
           </View>
 
-          {/* Theme Selection */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t.settings.themeStyle}</Text>
-            <View style={[styles.sectionContent, { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingVertical: 8 }]}>
-              {themeList.map((themeItem) => {
-                const isActive = themeId === themeItem.id;
-                const isCyberpunk = themeItem.id === 'cyberpunk-2077';
-                return (
-                  <TouchableOpacity
-                    key={themeItem.id}
-                    style={[
-                      styles.themeCard,
-                      isActive && { borderColor: theme.colors.primary.main, borderWidth: 2 },
-                      { borderRadius: isCyberpunk ? 4 : 12 },
-                      isActive && isCyberpunk && {
-                        shadowColor: '#00F0FF',
-                        shadowOffset: { width: 0, height: 0 },
-                        shadowOpacity: 0.5,
-                        shadowRadius: 8,
-                      }
-                    ]}
-                    onPress={() => setTheme(themeItem.id)}
-                  >
-                    <Text style={styles.themeIcon}>{themeItem.icon}</Text>
-                    <Text style={[
-                      styles.themeName,
-                      isActive && isCyberpunk && { color: '#00F0FF' }
-                    ]}>{locale === 'en' ? themeItem.name : themeItem.nameCn}</Text>
-                    {isActive && (
-                      <Ionicons name="checkmark-circle" size={16} color={theme.colors.primary.main} style={{ position: 'absolute', top: 4, right: 4 }} />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
+          {/* Theme Selection - Hidden for MVP (only Luna 2077) */}
 
           {/* Support */}
           <View style={styles.section}>
@@ -253,16 +220,19 @@ export default function SettingsDrawer({ visible, onClose }: SettingsDrawerProps
                 icon="help-circle-outline"
                 title={t.settings.helpCenter}
                 onPress={() => {}}
+                primaryColor={theme.colors.primary.main}
               />
               <SettingItem
                 icon="star-outline"
                 title={t.settings.rateApp}
                 onPress={() => {}}
+                primaryColor={theme.colors.primary.main}
               />
               <SettingItem
                 icon="document-text-outline"
                 title={t.settings.termsPrivacy}
                 onPress={() => {}}
+                primaryColor={theme.colors.primary.main}
               />
             </View>
           </View>
@@ -395,7 +365,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    // backgroundColor set via inline style for theme support
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
