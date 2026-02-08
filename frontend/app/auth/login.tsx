@@ -155,10 +155,8 @@ export default function LoginScreen() {
       )}
 
       <SafeAreaView style={styles.safeArea}>
-        {/* Top: App Name Only */}
-        <View style={styles.topSection}>
-          <Text style={styles.appName}>{theme.appName}</Text>
-        </View>
+        {/* Top: Empty - app name is already known */}
+        <View style={styles.topSection} />
 
         {/* Middle: Empty - Let Sakura shine */}
         <View style={styles.middleSection} />
@@ -262,17 +260,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   topSection: {
-    paddingTop: 20,
-    paddingHorizontal: 24,
-  },
-  appName: {
-    fontSize: 32,
-    fontWeight: '300',
-    color: '#fff',
-    letterSpacing: 4,
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    // Empty spacer at top
   },
   middleSection: {
     flex: 1,
