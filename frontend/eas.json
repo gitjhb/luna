@@ -24,7 +24,14 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "jiahongbinandroid@gmail.com"
+        "appleId": "jiahongbinandroid@gmail.com",
+        "ascAppId": "6758829951"
+      }
+    },
+    "preview": {
+      "ios": {
+        "appleId": "jiahongbinandroid@gmail.com",
+        "ascAppId": "6758829951"
       }
     }
   }

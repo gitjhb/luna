@@ -15,6 +15,8 @@ import { useUserStore } from '../store/userStore';
 import { useGiftStore } from '../store/giftStore';
 import { revenueCatService } from '../services/revenueCatService';
 import { pushService } from '../services/pushService';
+import { initDatabase } from '../services/database';
+import { migrateToSQLite, needsMigration } from '../services/database/migration';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -54,6 +56,27 @@ function HydrationGate({ children }: { children: React.ReactNode }) {
     
     initRevenueCat();
   }, [user?.userId]);
+  
+  // 初始化 SQLite 数据库
+  useEffect(() => {
+    const initDB = async () => {
+      try {
+        await initDatabase();
+        console.log('[App] SQLite database initialized');
+        
+        // Run migration if needed (AsyncStorage → SQLite)
+        if (await needsMigration()) {
+          console.log('[App] Running data migration...');
+          const result = await migrateToSQLite();
+          console.log('[App] Migration result:', result);
+        }
+      } catch (error) {
+        console.error('[App] Database init failed:', error);
+      }
+    };
+    
+    initDB();
+  }, []);
   
   // 初始化推送服务
   useEffect(() => {

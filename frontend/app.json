@@ -28,9 +28,13 @@
         "NSCameraUsageDescription": "用于拍照分享给角色",
         "NSPhotoLibraryUsageDescription": "用于选择照片分享给角色",
         "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": ["remote-notification"],
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
         "SKAdNetworkItems": [
-          { "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork" }
+          {
+            "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork"
+          }
         ]
       }
     },
@@ -72,7 +76,8 @@
         }
       ],
       "@react-native-firebase/app",
-      "@react-native-firebase/messaging"
+      "@react-native-firebase/messaging",
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true
