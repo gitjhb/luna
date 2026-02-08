@@ -284,15 +284,15 @@ export const luna2077: ThemeConfig = {
 // Theme Registry
 // ============================================================================
 export const themes: Record<string, ThemeConfig> = {
+  'luna-2077': luna2077,
+  // Legacy themes preserved but hidden from UI
   'purple-seduction': purpleSeduction,
   'cyberpunk-2077': cyberpunk2077,
-  'luna-2077': luna2077,
 };
 
+// Only Luna 2077 available for MVP
 export const themeList = [
   { id: 'luna-2077', name: 'Luna 2077', nameCn: '月光终端', icon: '🌙' },
-  { id: 'purple-seduction', name: 'Purple Seduction', nameCn: '紫色诱惑', icon: '💜' },
-  { id: 'cyberpunk-2077', name: 'Cyberpunk 2077', nameCn: '赛博朋克', icon: '🤖' },
 ];
 
 // 默认使用 Luna 2077 主题

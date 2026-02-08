@@ -23,7 +23,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import * as StoreReview from 'expo-store-review';
-import { useTheme, themeList, ThemeConfig } from '../../theme/config';
+import { useTheme, ThemeConfig } from '../../theme/config';
 import { useUserStore } from '../../store/userStore';
 import { useChatStore } from '../../store/chatStore';
 import { SubscriptionModal } from '../../components/SubscriptionModal';
@@ -341,64 +341,7 @@ const RateAppCard = ({ theme }: { theme: ThemeConfig }) => {
   );
 };
 
-// Theme Selector Component
-const ThemeSelector = () => {
-  const { themeId, setTheme, theme: currentTheme } = useTheme();
-  
-  return (
-    <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: currentTheme.colors.text.tertiary }]}>主题风格</Text>
-      <View style={styles.themeGrid}>
-        {themeList.map((t) => {
-          const isActive = themeId === t.id;
-          const isCyberpunk = t.id === 'cyberpunk-2077';
-          
-          return (
-            <TouchableOpacity
-              key={t.id}
-              style={[
-                styles.themeCard,
-                isActive && styles.themeCardActive,
-                { 
-                  borderColor: isActive ? currentTheme.colors.primary.main : 'rgba(255,255,255,0.1)',
-                  backgroundColor: isActive 
-                    ? `${currentTheme.colors.primary.main}15` 
-                    : 'rgba(255, 255, 255, 0.06)',
-                  borderRadius: isCyberpunk ? 4 : 16,
-                },
-                // Cyberpunk glow effect when active
-                isActive && isCyberpunk && {
-                  shadowColor: '#00F0FF',
-                  shadowOffset: { width: 0, height: 0 },
-                  shadowOpacity: 0.5,
-                  shadowRadius: 10,
-                  elevation: 10,
-                }
-              ]}
-              onPress={() => setTheme(t.id)}
-            >
-              <Text style={styles.themeIcon}>{t.icon}</Text>
-              <Text style={[
-                styles.themeName,
-                isCyberpunk && isActive && { 
-                  color: '#00F0FF',
-                  textShadowColor: '#00F0FF',
-                  textShadowOffset: { width: 0, height: 0 },
-                  textShadowRadius: 8,
-                }
-              ]}>{t.nameCn}</Text>
-              {isActive && (
-                <View style={[styles.themeCheck, { backgroundColor: currentTheme.colors.primary.main }]}>
-                  <Ionicons name="checkmark" size={12} color="#fff" />
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
-  );
-};
+// Theme Selector removed - Luna 2077 is the only theme for MVP
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -803,42 +746,6 @@ const styles = StyleSheet.create({
   interestsContainer: {
     padding: 0,
     margin: 0,
-  },
-  // Theme selector styles
-  themeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  themeCard: {
-    flex: 1,
-    minWidth: 140,
-    padding: 16,
-    alignItems: 'center',
-    borderWidth: 2,
-    position: 'relative',
-  },
-  themeCardActive: {
-    // Handled by inline style
-  },
-  themeIcon: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
-  themeName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  themeCheck: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   // Notification settings styles
   permissionBanner: {
