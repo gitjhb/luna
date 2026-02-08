@@ -75,14 +75,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0a0a12',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   logoContainer: {
-    width: SCREEN_WIDTH * 0.5,
-    height: SCREEN_WIDTH * 0.5,
-    justifyContent: 'center',
-    alignItems: 'center',
+    ...StyleSheet.absoluteFillObject,
   },
   logo: {
     width: '100%',

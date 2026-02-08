@@ -237,15 +237,10 @@ function SplashScreen() {
 const splashStyles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a12', // Dark background matching the logo
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#0a0a12',
   },
   logoContainer: {
-    width: SCREEN_WIDTH * 0.6,
-    height: SCREEN_WIDTH * 0.6,
-    justifyContent: 'center',
-    alignItems: 'center',
+    ...StyleSheet.absoluteFillObject,
   },
   logo: {
     width: '100%',
