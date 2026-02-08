@@ -187,7 +187,7 @@ export const zh = {
 
   // Common
   common: {
-    appName: '月光碎片',
+    appName: 'Luna',
     cancel: '取消',
     confirm: '确定',
     error: '错误',

@@ -189,7 +189,7 @@ export const en: Translations = {
 
   // Common
   common: {
-    appName: 'Moon Shard',
+    appName: 'Luna',
     cancel: 'Cancel',
     confirm: 'OK',
     error: 'Error',
