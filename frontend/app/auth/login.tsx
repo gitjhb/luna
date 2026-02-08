@@ -163,35 +163,19 @@ export default function LoginScreen() {
         {/* Middle: Empty - Let Sakura shine */}
         <View style={styles.middleSection} />
 
-        {/* Bottom: Frosted glass bar with auth buttons */}
-        <BlurView intensity={40} tint="dark" style={styles.bottomBar}>
+        {/* Bottom: Ultra-transparent auth area */}
+        <View style={styles.bottomArea}>
+          {/* Main auth buttons - unified frosted white style */}
           <View style={styles.authButtons}>
-            {/* Guest/Demo Login - Only in dev mode */}
-            {__DEV__ && (
-              <TouchableOpacity
-                style={styles.authButton}
-                onPress={() => handleLogin('guest')}
-                disabled={loading}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={theme.colors.primary.gradient}
-                  style={styles.authButtonInner}
-                >
-                  <Ionicons name="person" size={20} color="#fff" />
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
-
             <TouchableOpacity
               style={styles.authButton}
               onPress={() => handleLogin('apple')}
               disabled={loading}
               activeOpacity={0.8}
             >
-              <View style={[styles.authButtonInner, styles.appleButtonInner]}>
-                <Ionicons name="logo-apple" size={22} color="#fff" />
-              </View>
+              <BlurView intensity={80} tint="light" style={styles.authButtonBlur}>
+                <Ionicons name="logo-apple" size={24} color="#000" />
+              </BlurView>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -200,16 +184,28 @@ export default function LoginScreen() {
               disabled={loading}
               activeOpacity={0.8}
             >
-              <View style={[styles.authButtonInner, styles.googleButtonInner]}>
-                <Ionicons name="logo-google" size={20} color="#fff" />
-              </View>
+              <BlurView intensity={80} tint="light" style={styles.authButtonBlur}>
+                <Ionicons name="logo-google" size={22} color="#000" />
+              </BlurView>
             </TouchableOpacity>
           </View>
+
+          {/* Guest login as small text link - dev only */}
+          {__DEV__ && (
+            <TouchableOpacity
+              onPress={() => handleLogin('guest')}
+              disabled={loading}
+              activeOpacity={0.6}
+              style={styles.guestLink}
+            >
+              <Text style={styles.guestLinkText}>{t.login.guestLogin}</Text>
+            </TouchableOpacity>
+          )}
 
           {loading && (
             <ActivityIndicator 
               size="small" 
-              color={theme.colors.primary.main} 
+              color="#fff" 
               style={styles.loadingIndicator}
             />
           )}
@@ -225,7 +221,7 @@ export default function LoginScreen() {
               {t.login.privacyPolicy}
             </Text>
           </Text>
-        </BlurView>
+        </View>
       </SafeAreaView>
 
       {/* Age Verification Modal */}
@@ -260,7 +256,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: SCREEN_HEIGHT * 0.4,
+    height: SCREEN_HEIGHT * 0.35,
   },
   safeArea: {
     flex: 1,
@@ -270,10 +266,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   appName: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '300',
     color: '#fff',
-    letterSpacing: 2,
+    letterSpacing: 4,
     textShadowColor: 'rgba(0,0,0,0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
@@ -281,52 +277,51 @@ const styles = StyleSheet.create({
   middleSection: {
     flex: 1,
   },
-  bottomBar: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    borderRadius: 24,
-    paddingVertical: 20,
+  bottomArea: {
     paddingHorizontal: 24,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    paddingBottom: 16,
+    alignItems: 'center',
   },
   authButtons: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 16,
-    marginBottom: 16,
+    gap: 20,
+    marginBottom: 12,
   },
   authButton: {
-    width: 56,
-    height: 56,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    overflow: 'hidden',
   },
-  authButtonInner: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  authButtonBlur: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.85)',
   },
-  appleButtonInner: {
-    backgroundColor: '#000',
+  guestLink: {
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
   },
-  googleButtonInner: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+  guestLinkText: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.6)',
+    textDecorationLine: 'underline',
   },
   loadingIndicator: {
-    position: 'absolute',
-    top: 20,
-    right: 24,
+    marginBottom: 12,
   },
   termsText: {
     fontSize: 10,
-    color: 'rgba(255,255,255,0.4)',
+    color: 'rgba(255,255,255,0.35)',
     textAlign: 'center',
     lineHeight: 14,
   },
   termsLink: {
-    color: 'rgba(255,255,255,0.6)',
+    color: 'rgba(255,255,255,0.5)',
   },
 });
