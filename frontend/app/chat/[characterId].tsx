@@ -1294,17 +1294,18 @@ export default function ChatScreen() {
         bottleneckLockLevel={bottleneckLockLevel}
         onSelectGift={async (gift) => {
           try {
-            // 1. 调用后端 API
+            // 1. 调用后端 API（传 sessionId 以便后端保存消息到聊天记录）
             const giftResult = await paymentService.sendGift(
               params.characterId,
               gift.gift_type,
               gift.price,
-              gift.xp_reward
+              gift.xp_reward,
+              sessionId || undefined
             );
 
             if (!giftResult.success) {
               const errorMessage = giftResult.error === 'insufficient_credits'
-                ? '金币不足'
+                ? '余额不足'
                 : '系统异常，请稍后再试';
               Alert.alert('送礼失败', errorMessage);
               return;
@@ -1342,19 +1343,19 @@ export default function ChatScreen() {
             const reactions = giftReactions[gift.gift_type] || giftReactions.rose;
             const reactionMessage = giftResult.ai_response || reactions[Math.floor(Math.random() * reactions.length)];
 
-            // 添加送礼消息到聊天 (保持对话完整性)
+            // 乐观更新 UI（后端 /gifts/send 会自动保存消息到聊天记录）
             if (sessionId) {
-              // 先添加送礼事件 (显示为 system 消息)
+              // 添加礼物事件消息到 UI
               const giftEventMessage: Message = {
                 messageId: `gift-event-${Date.now()}`,
-                role: 'system',  // 系统消息，不是用户普通消息
+                role: 'system',
                 content: `[送出礼物] ${giftIcon} ${gift.name_cn || gift.name}`,
-                type: 'gift',  // 特殊类型，用于前端渲染
+                type: 'gift',
                 createdAt: new Date().toISOString(),
               };
               addMessage(giftEventMessage);
 
-              // 再添加 AI 回复
+              // 添加 AI 回复到 UI
               if (reactionMessage) {
                 const aiMessage: Message = {
                   messageId: `gift-reply-${Date.now()}`,
@@ -1364,8 +1365,6 @@ export default function ChatScreen() {
                 };
                 addMessage(aiMessage);
               }
-
-              // inverted list: 新消息在顶部，不需要滚动
             }
 
             // 4. 更新亲密度 (支持一次升多级)

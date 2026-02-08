@@ -454,7 +454,7 @@ export default function SettingsScreen() {
   const handleCancelSubscription = () => {
     Alert.alert(
       '取消订阅',
-      '确定要取消订阅吗？\n\n• 将立即降级为免费用户\n• 金币余额保留\n• 不退款',
+      '确定要取消订阅吗？\n\n• 将立即降级为免费用户\n• 月光碎片余额保留\n• 不退款',
       [
         { text: '再想想', style: 'cancel' },
         {
@@ -561,7 +561,7 @@ export default function SettingsScreen() {
               <SettingItem
                 icon="close-circle-outline"
                 title="取消订阅"
-                subtitle="降级为免费用户，金币保留"
+                subtitle="降级为免费用户，碎片余额保留"
                 onPress={handleCancelSubscription}
                 danger
                 theme={theme}
@@ -622,7 +622,7 @@ export default function SettingsScreen() {
               onPress={() => {
                 Alert.alert(
                   '常见问题',
-                  '1. 如何获得更多金币？\n订阅 Premium 或 VIP 每日获得更多金币，或直接购买金币包。\n\n2. 如何解锁更多角色？\n提升与角色的亲密度，达到特定等级后解锁新内容。\n\n3. 约会功能怎么玩？\n点击角色页面的约会按钮，选择场景开始互动约会。\n\n更多问题请联系客服。',
+                  '1. 如何获得更多月光碎片？\n订阅 Premium 或 VIP 每日获得更多碎片，或直接购买。\n\n2. 如何解锁更多角色？\n提升与角色的亲密度，达到特定等级后解锁新内容。\n\n3. 约会功能怎么玩？\n点击角色页面的约会按钮，选择场景开始互动约会。\n\n更多问题请联系客服。',
                   [{ text: '我知道了' }]
                 );
               }}

@@ -83,9 +83,22 @@ async def create_session(request: CreateSessionRequest, req: Request):
     )
 
 
-@router.get("/sessions", response_model=list[SessionInfo])
-async def list_sessions(character_id: UUID = None, req: Request = None):
-    """List all chat sessions for current user, optionally filtered by character_id"""
+@router.get("/sessions")
+async def list_sessions(
+    character_id: UUID = None, 
+    include_messages: int = 0,
+    req: Request = None
+):
+    """
+    List all chat sessions for current user.
+    
+    Args:
+        character_id: Optional filter by character
+        include_messages: If > 0, include latest N messages per session (for batch loading)
+    
+    When include_messages > 0, returns dict with sessions and messages.
+    Otherwise returns list of SessionInfo for backward compatibility.
+    """
     user_id = _get_user_id(req) if req else "demo-user-123"
     
     sessions = await chat_repo.list_sessions(
@@ -93,21 +106,44 @@ async def list_sessions(character_id: UUID = None, req: Request = None):
         character_id=str(character_id) if character_id else None
     )
     
-    return [
-        SessionInfo(
-            session_id=UUID(s["session_id"]),
-            character_id=UUID(s["character_id"]),
-            character_name=s["character_name"],
-            character_avatar=s.get("character_avatar"),
-            character_background=s.get("character_background"),
-            total_messages=s.get("total_messages", 0),
-            last_message=s.get("last_message"),
-            last_message_at=s.get("last_message_at"),
-            created_at=s["created_at"],
-            updated_at=s["updated_at"],
-        )
+    session_list = [
+        {
+            "session_id": s["session_id"],
+            "character_id": s["character_id"],
+            "character_name": s["character_name"],
+            "character_avatar": s.get("character_avatar"),
+            "character_background": s.get("character_background"),
+            "total_messages": s.get("total_messages", 0),
+            "last_message": s.get("last_message"),
+            "last_message_at": s.get("last_message_at"),
+            "created_at": s["created_at"].isoformat() if hasattr(s["created_at"], 'isoformat') else str(s["created_at"]),
+            "updated_at": s["updated_at"].isoformat() if hasattr(s["updated_at"], 'isoformat') else str(s["updated_at"]),
+        }
         for s in sessions
     ]
+    
+    # 批量获取消息（用于 app 启动时一次性加载）
+    if include_messages > 0:
+        messages_by_session = {}
+        for s in sessions:
+            session_id = s["session_id"]
+            msgs = await chat_repo.get_messages_paginated(session_id, limit=include_messages)
+            messages_by_session[session_id] = [
+                {
+                    "message_id": m["message_id"],
+                    "role": m["role"],
+                    "content": m["content"],
+                    "created_at": m["created_at"].isoformat() if hasattr(m["created_at"], 'isoformat') else str(m["created_at"]),
+                }
+                for m in msgs
+            ]
+        
+        return {
+            "sessions": session_list,
+            "messages": messages_by_session,
+        }
+    
+    return session_list
 
 
 @router.get("/sessions/{session_id}/messages")
@@ -179,6 +215,7 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
     # Initialize debug variables
     l1_result = None
     game_result = None
+    v4_response = None  # Initialize to avoid UnboundLocalError
     # emotion tracking is now handled by GameResult
     
     logger.info(f"")

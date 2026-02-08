@@ -84,7 +84,7 @@ export const GiftPicker: React.FC<GiftPickerProps> = ({
     if (userBalance < gift.price) {
       Alert.alert(
         '余额不足',
-        `需要 ${gift.price} 金币，当前余额 ${userBalance} 金币`,
+        `需要 ${gift.price} 碎片，当前余额 ${userBalance} 碎片`,
         [{ text: '确定' }]
       );
       return;
@@ -94,7 +94,7 @@ export const GiftPicker: React.FC<GiftPickerProps> = ({
     if (gift.price >= 100) {
       Alert.alert(
         '确认送礼',
-        `确定要送出 ${gift.name_cn || gift.name} 吗？\n将花费 ${gift.price} 金币`,
+        `确定要送出 ${gift.name_cn || gift.name} 吗？\n将花费 ${gift.price} 碎片`,
         [
           { text: '取消', style: 'cancel' },
           { text: '确定', onPress: () => doSendGift(gift) },
@@ -131,7 +131,7 @@ export const GiftPicker: React.FC<GiftPickerProps> = ({
       } else {
         // 根据错误类型显示不同提示
         const errorMessage = response.error === 'insufficient_credits' 
-          ? '金币不足' 
+          ? '余额不足' 
           : response.message || '系统异常，请稍后再试';
         Alert.alert('送礼失败', errorMessage);
       }
@@ -139,7 +139,7 @@ export const GiftPicker: React.FC<GiftPickerProps> = ({
       console.error('Failed to send gift:', error);
       // 网络错误统一提示
       const errorMessage = error.error === 'insufficient_credits'
-        ? '金币不足'
+        ? '余额不足'
         : '网络错误，请稍后重试';
       Alert.alert('送礼失败', errorMessage);
     } finally {

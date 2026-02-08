@@ -105,7 +105,7 @@ export default function CharacterInfoPanel({
   const [loading, setLoading] = useState(false);
   
   // Get VIP status - only VIP can see emotion
-  const isVip = useUserStore((s) => s.isVip);
+  const isSubscribed = useUserStore((s) => s.isSubscribed);
   
   // State from API
   const [intimacyLevel, setIntimacyLevel] = useState(propIntimacyLevel || 1);
@@ -440,7 +440,7 @@ export default function CharacterInfoPanel({
       {/* 情绪状态 */}
       <View style={[styles.statsCard, profileVideo && styles.statsCardTransparent]}>
         <Text style={styles.cardTitle}>当前状态</Text>
-        {isVip ? (
+        {isSubscribed ? (
           <View style={styles.emotionRow}>
             <View style={styles.emotionItem}>
               <Text style={styles.emotionLabel}>情绪</Text>
@@ -475,7 +475,7 @@ export default function CharacterInfoPanel({
             </BlurView>
             <View style={styles.upgradeOverlay}>
               <Ionicons name="lock-closed" size={24} color="#FFD700" />
-              <Text style={styles.upgradeText}>升级到 VIP 解锁</Text>
+              <Text style={styles.upgradeText}>订阅解锁</Text>
               <Text style={styles.upgradeSubtext}>了解 TA 的真实情绪</Text>
             </View>
           </View>

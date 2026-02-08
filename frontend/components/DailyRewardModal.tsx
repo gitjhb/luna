@@ -12,6 +12,7 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -139,7 +140,11 @@ export default function DailyRewardModal({ visible, onClose }: DailyRewardModalP
                   outputRange: [0, 0.3],
                 }))}] }
               ]}>
-                <Text style={styles.coinEmoji}>🌙</Text>
+                <Image 
+                  source={require('../assets/images/moon-shard.png')} 
+                  style={styles.coinImage}
+                  resizeMode="contain"
+                />
               </Animated.View>
               
               <Text style={styles.rewardAmount}>
@@ -243,6 +248,10 @@ const styles = StyleSheet.create({
   },
   coinIcon: {
     marginBottom: 12,
+  },
+  coinImage: {
+    width: 80,
+    height: 80,
   },
   coinEmoji: {
     fontSize: 64,

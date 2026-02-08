@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '../../theme/config';
 import { useChatStore, ChatSession, Message } from '../../store/chatStore';
 import { chatService } from '../../services/chatService';
@@ -30,6 +31,7 @@ export default function ChatsScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const { t, locale } = useLocale();
+  const queryClient = useQueryClient();
   const { sessions, setSessions, deleteSession, messagesBySession } = useChatStore();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -41,23 +43,65 @@ export default function ChatsScreen() {
 
   const loadSessions = async () => {
     try {
-      // Fetch latest sessions from backend
-      const backendSessions = await chatService.getSessions();
+      // 批量获取 sessions + messages（一次 API 调用）
+      const { sessions: backendSessions, messages } = await chatService.getSessionsWithMessages(20);
       
-      // Merge with local sessions to preserve any local-only data
-      // but always use backend's avatar/name (they may have been updated)
-      const mergedSessions = backendSessions.map(bs => {
-        const localSession = sessions.find(ls => ls.sessionId === bs.sessionId);
-        return {
-          ...localSession,
-          ...bs, // Backend data takes priority (updated avatars, names)
-        };
-      });
-      
-      setSessions(mergedSessions);
+      if (backendSessions && backendSessions.length > 0) {
+        // Merge with local sessions to preserve any local-only data
+        const mergedSessions = backendSessions.map(bs => {
+          const localSession = sessions.find(ls => ls.sessionId === bs.sessionId);
+          return {
+            ...localSession,
+            ...bs,
+          };
+        });
+        setSessions(mergedSessions);
+        
+        // 预填充 React Query 缓存，避免进入聊天页时再次请求
+        if (messages) {
+          for (const [sessionId, msgs] of Object.entries(messages)) {
+            const session = backendSessions.find(s => s.sessionId === sessionId);
+            if (session && msgs.length > 0) {
+              // 预填充 useMessages 的缓存
+              queryClient.setQueryData(
+                ['messages', session.characterId, sessionId],
+                {
+                  pages: [{
+                    messages: msgs,
+                    nextCursor: msgs.length >= 20 ? msgs[0]?.messageId : null,
+                    hasMore: msgs.length >= 20,
+                  }],
+                  pageParams: [null],
+                }
+              );
+            }
+          }
+          console.log('[Chats] Pre-cached messages for', Object.keys(messages).length, 'sessions');
+        }
+      } else {
+        // Backend returned empty - try SQLite fallback
+        try {
+          const { SessionRepository } = await import('../../services/database/repositories');
+          const sqliteSessions = await SessionRepository.getAll();
+          if (sqliteSessions && sqliteSessions.length > 0) {
+            const mappedSessions = sqliteSessions.map(s => ({
+              sessionId: s.id,
+              characterId: s.character_id,
+              characterName: s.character_name || 'Unknown',
+              characterAvatar: s.character_avatar,
+              lastMessage: s.last_message,
+              lastMessageAt: s.last_message_at || s.updated_at || s.created_at,
+              createdAt: s.created_at,
+            }));
+            setSessions(mappedSessions as any);
+            console.log('[Chats] Loaded sessions from SQLite:', mappedSessions.length);
+          }
+        } catch (sqliteError) {
+          console.log('[Chats] SQLite not available:', sqliteError);
+        }
+      }
     } catch (error) {
       console.error('Failed to load sessions:', error);
-      // Keep using cached sessions if backend fails
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -114,17 +158,50 @@ export default function ChatsScreen() {
     }
   };
 
-  const getLastMessage = (session: ChatSession): string => {
-    // 优先使用后端返回的 lastMessage
-    if ((session as any).lastMessage) {
-      const msg = (session as any).lastMessage;
-      return msg.slice(0, 50) + (msg.length > 50 ? '...' : '');
+  const formatMessagePreview = (msg: string): string => {
+    if (!msg) return t.chats.newConversation;
+    
+    // Handle event/date messages - parse JSON and show friendly text
+    if (msg.startsWith('[date]') || msg.startsWith('[event]')) {
+      try {
+        const jsonStr = msg.replace(/^\[(date|event)\]\s*/, '');
+        const data = JSON.parse(jsonStr);
+        if (data.type === 'event' && data.event_type === 'date_complete') {
+          const scenarioName = data.scenario_name || '约会';
+          return `🎉 完成了一次${scenarioName}`;
+        }
+        if (data.type === 'event') {
+          return `🎉 完成了一个特殊事件`;
+        }
+      } catch (e) {
+        // Not valid JSON, fall through
+      }
     }
-    // 回退到本地缓存
+    
+    // Handle system messages
+    if (msg.startsWith('[system]') || msg.startsWith('[event]')) {
+      return '📍 发生了一些事情...';
+    }
+    
+    // Normal message
+    const preview = msg.slice(0, 50);
+    return preview + (msg.length > 50 ? '...' : '');
+  };
+
+  const getLastMessage = (session: ChatSession): string => {
+    // 优先使用session自带的lastMessage（后端返回或SQLite存储）
+    if ((session as any).lastMessage) {
+      return formatMessagePreview((session as any).lastMessage);
+    }
+    // 检查SQLite存的last_message
+    if ((session as any).last_message) {
+      return formatMessagePreview((session as any).last_message);
+    }
+    // 回退到本地内存缓存
     const messages = messagesBySession[session.sessionId];
     if (!messages || messages.length === 0) return t.chats.newConversation;
     const lastMsg = messages[messages.length - 1];
-    return lastMsg.content.slice(0, 50) + (lastMsg.content.length > 50 ? '...' : '');
+    return formatMessagePreview(lastMsg.content);
   };
 
   const renderSession = ({ item }: { item: ChatSession }) => (

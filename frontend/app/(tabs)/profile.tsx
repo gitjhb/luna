@@ -261,7 +261,10 @@ export default function ProfileScreen() {
             <View style={styles.creditsCard}>
               <View style={styles.creditsHeader}>
                 <View style={styles.creditsIconContainer}>
-                  <Text style={styles.creditsIcon}>🪙</Text>
+                  <Image 
+                    source={require('../../assets/icons/moon-shard.png')} 
+                    style={styles.creditsIconImage}
+                  />
                 </View>
                 <View style={styles.creditsInfo}>
                   <Text style={styles.creditsLabel}>{t.profile.myCoins}</Text>
@@ -586,9 +589,15 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(255, 215, 0, 0.15)',
+    backgroundColor: 'rgba(100, 150, 255, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  creditsIconImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   creditsIcon: {
     fontSize: 24,

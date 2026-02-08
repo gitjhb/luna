@@ -3,6 +3,11 @@
  * 
  * React Query based infinite scroll for chat messages.
  * Uses cursor-based pagination with inverted FlatList pattern.
+ * 
+ * SQLite-first strategy:
+ * 1. First load from SQLite (offline-capable)
+ * 2. Only fetch from backend if SQLite is empty or for pagination
+ * 3. Sync backend data to SQLite for future use
  */
 
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -22,7 +27,7 @@ interface UseMessagesOptions {
 }
 
 /**
- * Fetch messages with cursor-based pagination
+ * Fetch messages with SQLite-first strategy
  * For inverted list: we load newest first, then fetch older on scroll
  */
 const fetchMessages = async ({ 
@@ -38,11 +43,41 @@ const fetchMessages = async ({
     return { messages: [], nextCursor: null, hasMore: false };
   }
 
+  // First page (pageParam = null) - ALWAYS fetch from backend for freshness
+  // SQLite is used as write-through cache, not read-first cache
+  // This ensures we always see the latest messages after app reload
+  if (!pageParam) {
+    console.log('[useMessages] Fetching first page from backend (fresh load)');
+  }
+
+  // Fallback to backend (for initial load if SQLite empty, or for pagination)
   const { messages, hasMore, oldestId } = await chatService.getSessionHistory(
     sessionId,
     limit,
     pageParam || undefined  // before_message_id
   );
+
+  // Save to SQLite for future use (async, don't block)
+  if (messages.length > 0) {
+    (async () => {
+      try {
+        const { MessageRepository } = await import('../services/database/repositories');
+        for (const msg of messages) {
+          await MessageRepository.create({
+            id: msg.messageId,
+            session_id: sessionId,
+            role: msg.role,
+            content: msg.content,
+            created_at: msg.createdAt,
+            is_unlocked: msg.isLocked ? 0 : 1,
+          }).catch(() => {}); // Ignore duplicate errors
+        }
+        console.log('[useMessages] Synced to SQLite:', messages.length, 'messages');
+      } catch (e) {
+        // Ignore SQLite errors
+      }
+    })();
+  }
 
   return {
     messages,

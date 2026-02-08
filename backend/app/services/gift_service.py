@@ -299,8 +299,15 @@ class GiftService:
             gift_id = str(uuid4())
             transaction_id = str(uuid4())
             
-            # Step 4: Deduct 月石
-            wallet = await payment_service.deduct_credits(user_id, price)
+            # Step 4: Deduct 月石 (包含交易记录)
+            gift_name = gift_info.get('name_cn') or gift_info['name']
+            description = f"送出礼物: {gift_name} ({price} 月石)"
+            wallet = await payment_service.deduct_credits(
+                user_id, price, 
+                description=description,
+                extra_data={"gift_type": gift_type},
+                transaction_type="gift"
+            )
             logger.info(f"月石 deducted: {price} from user {user_id}, new balance: {wallet['total_credits']}")
             
             # Step 5: Create gift record
@@ -321,8 +328,6 @@ class GiftService:
                 "acknowledged_at": None,
                 "icon": gift_info.get("icon", "🎁"),
             }
-            
-            description = f"送出礼物: {gift_info.get('name_cn') or gift_info['name']} ({price} 月石)"
             
             if self.mock_mode:
                 _MOCK_GIFTS[gift_id] = gift
@@ -349,7 +354,7 @@ class GiftService:
                 # Database mode
                 from app.core.database import get_db
                 from app.models.database.gift_models import Gift as GiftModel
-                from app.models.database.billing_models import TransactionHistory, TransactionType
+                # TransactionHistory 已在 payment_service.deduct_credits 中创建
                 
                 async with get_db() as db:
                     gift_obj = GiftModel(
@@ -366,17 +371,7 @@ class GiftService:
                         idempotency_key=idempotency_key,
                     )
                     db.add(gift_obj)
-                    
-                    transaction_obj = TransactionHistory(
-                        transaction_id=transaction_id,
-                        user_id=user_id,
-                        transaction_type=TransactionType.GIFT,
-                        amount=-price,
-                        balance_after=wallet["total_credits"],
-                        description=description,
-                        extra_data={"gift_id": gift_id, "character_id": character_id, "gift_type": gift_type},
-                    )
-                    db.add(transaction_obj)
+                    # 注意：TransactionHistory 已在 payment_service.deduct_credits 中创建，这里不再重复
                     await db.commit()
             
             # Step 6.5: Check and unlock bottleneck lock if applicable
@@ -547,10 +542,12 @@ class GiftService:
             # Get current intimacy level and mood for response
             current_level = xp_result.get("new_level") or xp_result.get("current_level", 1)
             current_mood = "neutral"
+            is_in_cold_war = False
             
             try:
                 from app.services.emotion_engine_v2 import emotion_engine
                 emotion_score = await emotion_engine.get_score(user_id, character_id)
+                is_in_cold_war = emotion_score <= -75
                 if emotion_score >= 50:
                     current_mood = "happy"
                 elif emotion_score >= 20:
@@ -564,6 +561,9 @@ class GiftService:
             except Exception as e:
                 logger.warning(f"Could not get emotion state: {e}")
             
+            # 判断是否是道歉礼物
+            is_apology_gift = gift_info.get("clears_cold_war", False)
+            
             # Generate AI response for the gift (核心：一切交互都要过AI)
             ai_response = await self.generate_ai_gift_response(
                 user_id=user_id,
@@ -573,6 +573,8 @@ class GiftService:
                 intimacy_level=current_level,
                 current_mood=current_mood,
                 cold_war_unlocked=cold_war_unlocked,
+                is_in_cold_war=is_in_cold_war,
+                is_apology_gift=is_apology_gift,
                 status_effect=status_effect_applied,
             )
             
@@ -683,6 +685,8 @@ class GiftService:
         intimacy_level: int = 1,
         current_mood: str = "neutral",
         cold_war_unlocked: bool = False,
+        is_in_cold_war: bool = False,
+        is_apology_gift: bool = False,
         status_effect: Optional[dict] = None,
     ) -> str:
         """
@@ -713,8 +717,13 @@ class GiftService:
 - 当前情绪：{current_mood}
 - 好感度增加：+{xp_awarded}
 """
+            # 冷战状态处理
             if cold_war_unlocked:
-                gift_context += "- 特殊：这份礼物解除了你们之间的冷战，你的心软了\n"
+                gift_context += "- 特殊：这是一份道歉礼物（悔过书），解除了你们之间的冷战，你的心软了\n"
+            elif is_in_cold_war and not is_apology_gift:
+                gift_context += "- ⚠️ 你们目前处于冷战状态！你很生气，对方送的不是道歉礼物，你可以拒绝收下或者表现得很不领情\n"
+            elif is_in_cold_war and is_apology_gift:
+                gift_context += "- 你们目前处于冷战状态，但对方送了道歉礼物，你的心软了一些\n"
             
             if status_effect:
                 effect_desc = {
@@ -742,6 +751,7 @@ class GiftService:
 - 动作和神态描写放在中文圆括号（）内
 - 根据当前情绪和亲密度调整反应热情程度
 - 如果是冷战后收到道歉礼物，表现出心软但还有点别扭
+- 如果处于冷战但收到的不是道歉礼物，你可以拒绝、不领情、或者表现得很冷淡
 - 回复简短自然，1-3句话即可，不要太长
 """
             
@@ -759,29 +769,8 @@ class GiftService:
             ai_response = response["choices"][0]["message"]["content"]
             logger.info(f"AI gift response generated: {ai_response[:50]}...")
             
-            # 存储礼物事件和AI回复到聊天记录（让V4 pipeline也能看到）
-            try:
-                from app.services.chat_repository import chat_repo
-                session = await chat_repo.get_session_by_character(user_id, character_id)
-                if session:
-                    session_id = session["session_id"]
-                    # 存用户送礼事件
-                    await chat_repo.add_message(
-                        session_id=session_id,
-                        role="user",
-                        content=f"[送出礼物] {icon} {gift_name}",
-                        tokens_used=0,
-                    )
-                    # 存AI回复
-                    await chat_repo.add_message(
-                        session_id=session_id,
-                        role="assistant",
-                        content=ai_response,
-                        tokens_used=response.get("usage", {}).get("total_tokens", 0),
-                    )
-                    logger.info(f"🎁 Gift messages stored to chat_repo")
-            except Exception as e:
-                logger.warning(f"Failed to store gift messages: {e}")
+            # 注意：消息存储已移到 gifts.py send_gift API 里统一处理
+            # 这里只负责生成 AI 回复
             
             return ai_response
             

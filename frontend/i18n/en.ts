@@ -58,7 +58,7 @@ export const en: Translations = {
   profile: {
     title: 'Me',
     enterNickname: 'Enter nickname',
-    myCoins: 'My Coins',
+    myCoins: 'Moon Shards',
     recharge: 'Recharge',
     dailyFree: 'Daily Free',
     perDay: '+{count}/day',
@@ -164,8 +164,8 @@ export const en: Translations = {
   // Invite page
   invite: {
     title: 'Invite Friends',
-    heroTitle: 'Invite Friends, Earn Coins',
-    heroSubtitle: 'Earn {reward} coins for each friend who signs up',
+    heroTitle: 'Invite Friends, Earn Points',
+    heroSubtitle: 'Earn {reward} Moon Shards for each friend who signs up',
     myCode: 'My Invite Code',
     shareToFriends: 'Share with Friends',
     invited: 'Friends Invited',
@@ -176,7 +176,7 @@ export const en: Translations = {
     step2Title: 'Friend signs up',
     step2Desc: 'Your friend registers using your code',
     step3Title: 'Both get rewarded',
-    step3Desc: 'You get {reward} coins, friend gets {bonus} coins',
+    step3Desc: 'You get {reward} shards, friend gets {bonus} shards',
     friendsList: 'Invited Friends ({count})',
     noFriends: 'No friends invited yet',
     noFriendsHint: 'Share your code and start earning!',
@@ -189,6 +189,7 @@ export const en: Translations = {
 
   // Common
   common: {
+    appName: 'Moon Shard',
     cancel: 'Cancel',
     confirm: 'OK',
     error: 'Error',

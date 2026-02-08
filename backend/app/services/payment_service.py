@@ -216,7 +216,7 @@ class PaymentService:
                 "daily_free_credits": wallet.daily_refresh_amount,
             }
     
-    async def deduct_credits(self, user_id: str, amount: int, description: str = None) -> dict:
+    async def deduct_credits(self, user_id: str, amount: int, description: str = None, extra_data: dict = None, transaction_type: str = None) -> dict:
         """Deduct credits from user wallet"""
         if MOCK_PAYMENT:
             wallet = await self.get_or_create_wallet(user_id)
@@ -244,13 +244,17 @@ class PaymentService:
             wallet.total_credits -= amount
             wallet.updated_at = datetime.utcnow()
             
+            # Determine transaction type
+            tx_type = TransactionType.GIFT if transaction_type == "gift" else TransactionType.DEDUCTION
+            
             # Record transaction
             transaction = TransactionHistory(
                 user_id=user_id,
-                transaction_type=TransactionType.DEDUCTION,
+                transaction_type=tx_type,
                 amount=-amount,
                 balance_after=wallet.total_credits,
                 description=description or "Credit deduction",
+                extra_data=extra_data,
             )
             db.add(transaction)
             await db.commit()

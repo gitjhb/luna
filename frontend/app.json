@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Luna",
+    "name": "Moon Shard",
     "slug": "luna-companion",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.luna.companion",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "googleServicesFile": "./GoogleService-Info.plist",
       "usesAppleSignIn": true,
       "entitlements": {

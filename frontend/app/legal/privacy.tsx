@@ -23,12 +23,12 @@ export default function PrivacyScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Text style={styles.title}>Luna 隐私政策</Text>
+          <Text style={styles.title}>月光碎片 隐私政策</Text>
           <Text style={styles.updated}>最后更新：2026 年 2 月 5 日</Text>
 
           <Text style={styles.sectionTitle}>1. 概述</Text>
           <Text style={styles.body}>
-            Luna（"本应用"）是一款 AI 虚拟角色互动应用。本隐私政策说明我们如何收集、使用和保护您的个人信息。使用本应用即表示您同意本政策。
+            月光碎片（"本应用"）是一款 AI 虚拟角色互动应用。本隐私政策说明我们如何收集、使用和保护您的个人信息。使用本应用即表示您同意本政策。
           </Text>
 
           <Text style={styles.sectionTitle}>2. AI 生成内容声明</Text>

@@ -98,15 +98,30 @@ export const authService = {
 
   /**
    * Guest login - instant access, no account required
+   * In dev mode, uses demo account with persistent data
    */
   loginAsGuest: async (): Promise<LoginResponse> => {
-    const response = await api.post<any>('/auth/guest');
+    // In Expo Go / dev mode, use demo login for persistent session
+    // Demo secret is only for JHB's testing
+    const isDev = __DEV__ || isExpoGo;
+    const DEMO_SECRET = 'jhb-luna-2024';
+    
+    let response: any;
+    
+    if (isDev) {
+      // Use demo login for persistent user ID
+      console.log('[Auth] Using demo login for dev mode');
+      response = await api.post<any>('/auth/demo', { secret: DEMO_SECRET });
+    } else {
+      // Production: regular guest login
+      response = await api.post<any>('/auth/guest');
+    }
     
     return {
       user: {
         userId: response.user_id,
-        email: 'guest@luna.app',
-        displayName: 'Guest',
+        email: response.email || (isDev ? 'jhb@luna.app' : 'guest@luna.app'),
+        displayName: response.display_name || (isDev ? 'JHB' : 'Guest'),
         subscriptionTier: response.subscription_tier || 'free',
         createdAt: new Date().toISOString(),
       },

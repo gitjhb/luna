@@ -86,12 +86,76 @@ class LinkAccountRequest(BaseModel):
 # Guest Login
 # ============================================================================
 
+# Demo user secret for JHB's testing (env var or hardcoded for dev)
+DEMO_SECRET = os.getenv("DEMO_SECRET", "jhb-luna-2024")
+
+
+class DemoLoginRequest(BaseModel):
+    secret: str
+
+
+@router.post("/demo", response_model=TokenResponse)
+async def demo_login(request: DemoLoginRequest):
+    """
+    Demo login - returns a FIXED user ID for JHB's testing.
+    Requires secret to prevent random access.
+    All previous data (characters, chats, etc.) will be preserved.
+    """
+    if request.secret != DEMO_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid demo secret. Use Apple/Google Sign In instead."
+        )
+    
+    user_id = "demo-jhb-123"
+    
+    # Store/update user
+    _users[user_id] = {
+        "user_id": user_id,
+        "email": "jhb@luna.app",
+        "display_name": "JHB",
+        "provider": "demo",
+        "subscription_tier": "vip",  # VIP for full feature access
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    
+    # Initialize wallet
+    from app.services.payment_service import payment_service
+    wallet = await payment_service.get_or_create_wallet(user_id)
+    
+    logger.info(f"Demo login successful for user: {user_id}")
+    
+    return TokenResponse(
+        access_token=f"demo_token_{user_id}",
+        user_id=user_id,
+        subscription_tier="vip",
+        display_name="JHB",
+        wallet=WalletInfo(
+            total_credits=wallet.get("total_credits", 100),
+            daily_free_credits=wallet.get("daily_free_credits", 10),
+            purchased_credits=wallet.get("purchased_credits", 0),
+            bonus_credits=wallet.get("bonus_credits", 0),
+            daily_credits_limit=wallet.get("daily_credits_limit", 50),
+        )
+    )
+
+
+# Only allow guest login in dev/test environment
+ALLOW_GUEST = os.getenv("ALLOW_GUEST", "false").lower() == "true"
+
+
 @router.post("/guest", response_model=TokenResponse)
 async def guest_login():
     """
     Guest login - creates a temporary user for testing.
-    No account required, instant access.
+    Only available in test environment (ALLOW_GUEST=true).
     """
+    if not ALLOW_GUEST:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Guest login is disabled. Please use Apple or Google Sign In."
+        )
+    
     user_id = f"guest-{str(uuid4())[:8]}"
     
     # Store user

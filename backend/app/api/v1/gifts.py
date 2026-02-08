@@ -243,9 +243,20 @@ async def send_gift(request: SendGiftRequest, req: Request):
             from app.core.database import get_db
             from app.services.stats_service import stats_service
             
+            # 获取礼物中文名称（优先用中文，fallback 到英文）
+            gift_display_name = (
+                result.get("gift", {}).get("gift_name_cn") or 
+                result.get("gift", {}).get("gift_name") or 
+                request.gift_type
+            )
+            gift_icon = result.get("gift", {}).get("icon", "🎁")
+            
             async with get_db() as db:
                 await stats_service.record_gift(
-                    db, user_id, request.character_id, request.gift_type
+                    db, user_id, request.character_id, 
+                    gift_type=request.gift_type,
+                    gift_name=gift_display_name,
+                    gift_icon=gift_icon
                 )
                 logger.info(f"📊 Stats updated: gift recorded for user={user_id}, character={request.character_id}")
         except Exception as e:
@@ -254,6 +265,33 @@ async def send_gift(request: SendGiftRequest, req: Request):
     # 使用 gift_service 生成的 AI 回复（已包含角色人设）
     if not result.get("is_duplicate"):
         response.ai_response = result.get("ai_response")
+        
+        # 自动插入礼物消息到聊天记录
+        if request.session_id:
+            try:
+                gift_icon = result.get("gift", {}).get("icon", "🎁")
+                gift_name = result.get("gift", {}).get("gift_name_cn") or result.get("gift", {}).get("gift_name", "礼物")
+                
+                # 插入礼物事件消息
+                await chat_repo.add_message(
+                    session_id=request.session_id,
+                    role="system",
+                    content=f"[送出礼物] {gift_icon} {gift_name}",
+                    tokens_used=0,
+                )
+                
+                # 插入 AI 回复消息
+                if result.get("ai_response"):
+                    await chat_repo.add_message(
+                        session_id=request.session_id,
+                        role="assistant",
+                        content=result["ai_response"],
+                        tokens_used=0,
+                    )
+                
+                logger.info(f"💾 Gift messages saved to session {request.session_id}")
+            except Exception as e:
+                logger.warning(f"Failed to save gift messages: {e}")
     
     return response
 

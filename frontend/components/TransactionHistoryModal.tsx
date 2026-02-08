@@ -35,6 +35,25 @@ const TRANSACTION_TYPES: Record<string, { label: string; icon: string; color: st
   referral: { label: '邀请奖励', icon: 'people', color: '#10B981' },
 };
 
+// Gift type -> emoji mapping (sync with backend gift catalog)
+const GIFT_ICONS: Record<string, string> = {
+  coffee: '☕',
+  hot_coffee: '☕',
+  cake: '🎂',
+  small_cake: '🎂',
+  rose: '🌹',
+  chocolate: '🍫',
+  teddy_bear: '🧸',
+  wine: '🍷',
+  red_wine: '🍷',
+  diamond_ring: '💍',
+  crown: '👑',
+  castle: '🏰',
+  apology_scroll: '📜',
+  truth_serum: '🧪',
+  maid_costume: '🎀',
+};
+
 // Check if transaction involves real money (not credits)
 const isCashTransaction = (tx: Transaction): boolean => {
   // Subscription is always cash
@@ -104,6 +123,10 @@ export const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = (
     const isCash = isCashTransaction(tx);
     const isPositive = tx.amount > 0;
     
+    // Get gift emoji from gift_type
+    const giftType = tx.extraData?.gift_type || tx.extraData?.giftType;
+    const giftEmoji = giftType ? GIFT_ICONS[giftType] : null;
+    
     // Format amount based on currency type
     const formatAmount = () => {
       if (isCash) {
@@ -111,14 +134,18 @@ export const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = (
         return `-$${Math.abs(tx.amount).toFixed(2)}`;
       } else {
         // Credits
-        return `${isPositive ? '+' : ''}${tx.amount} 金币`;
+        return `${isPositive ? '+' : ''}${tx.amount} 碎片`;
       }
     };
 
     return (
       <View key={tx.transactionId || index} style={styles.transactionItem}>
         <View style={[styles.transactionIcon, { backgroundColor: `${config.color}20` }]}>
-          <Ionicons name={config.icon as any} size={20} color={config.color} />
+          {giftEmoji ? (
+            <Text style={{ fontSize: 20 }}>{giftEmoji}</Text>
+          ) : (
+            <Ionicons name={config.icon as any} size={20} color={config.color} />
+          )}
         </View>
         <View style={styles.transactionInfo}>
           <Text style={styles.transactionTitle}>{tx.description || config.label}</Text>
@@ -132,7 +159,7 @@ export const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = (
             {formatAmount()}
           </Text>
           {!isCash && (
-            <Text style={styles.transactionBalance}>余额: {tx.balanceAfter} 金币</Text>
+            <Text style={styles.transactionBalance}>余额: {tx.balanceAfter} 碎片</Text>
           )}
         </View>
       </View>

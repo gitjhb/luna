@@ -56,7 +56,7 @@ export const zh = {
   profile: {
     title: '我',
     enterNickname: '输入昵称',
-    myCoins: '我的金币',
+    myCoins: '月光碎片',
     recharge: '充值',
     dailyFree: '每日赠送',
     perDay: '+{count}/天',
@@ -76,7 +76,7 @@ export const zh = {
     done: '完成',
     maxInterests: '最多选择{max}个兴趣哦～',
     cancelSubscription: '取消订阅',
-    cancelSubscriptionConfirm: '确定要取消订阅吗？\n\n• 将立即降级为免费用户\n• 金币余额保留\n• 不退款',
+    cancelSubscriptionConfirm: '确定要取消订阅吗？\n\n• 将立即降级为免费用户\n• 月光碎片余额保留\n• 不退款',
     thinkAgain: '再想想',
     confirmCancel: '确定取消',
     cancelled: '已取消',
@@ -162,8 +162,8 @@ export const zh = {
   // Invite page
   invite: {
     title: '邀请好友',
-    heroTitle: '邀请好友，共享金币',
-    heroSubtitle: '每邀请一位好友注册，你将获得 {reward} 金币奖励',
+    heroTitle: '邀请好友，赢取积分',
+    heroSubtitle: '每邀请一位好友注册，你将获得 {reward} 月光碎片',
     myCode: '我的邀请码',
     shareToFriends: '分享给好友',
     invited: '已邀请好友',
@@ -174,7 +174,7 @@ export const zh = {
     step2Title: '好友注册',
     step2Desc: '好友使用邀请码完成注册',
     step3Title: '双方获奖',
-    step3Desc: '你获得 {reward} 金币，好友获得 {bonus} 金币',
+    step3Desc: '你获得 {reward} 碎片，好友获得 {bonus} 碎片',
     friendsList: '已邀请的好友 ({count})',
     noFriends: '还没有邀请好友',
     noFriendsHint: '分享邀请码，一起来玩吧！',
@@ -187,6 +187,7 @@ export const zh = {
 
   // Common
   common: {
+    appName: '月光碎片',
     cancel: '取消',
     confirm: '确定',
     error: '错误',

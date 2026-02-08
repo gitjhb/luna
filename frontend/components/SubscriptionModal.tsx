@@ -16,6 +16,7 @@ import {
   Dimensions,
   ActivityIndicator,
   Platform,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,7 +32,7 @@ const PLAN_DISPLAY_INFO: Record<string, { name: string; features: string[]; dail
     name: 'Premium',
     dailyCredits: 100,
     features: [
-      '每日 100 金币',
+      '每日 100 碎片',
       '更快的回复速度',
       '高级角色解锁',
       '优先客服支持',
@@ -41,7 +42,7 @@ const PLAN_DISPLAY_INFO: Record<string, { name: string; features: string[]; dail
     name: 'VIP',
     dailyCredits: 300,
     features: [
-      '每日 300 金币',
+      '每日 300 碎片',
       '最快回复速度',
       '全部角色解锁',
       '专属 VIP 角色',
@@ -262,9 +263,12 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           </View>
 
           {/* Daily Credits */}
-          <Text style={styles.dailyCredits}>
-            🪙 每日 +{displayInfo?.dailyCredits || 100} 金币
-          </Text>
+          <View style={styles.dailyCreditsRow}>
+            <Image source={require('../assets/icons/moon-shard.png')} style={styles.shardIcon} />
+            <Text style={styles.dailyCredits}>
+              每日 +{displayInfo?.dailyCredits || 100} 碎片
+            </Text>
+          </View>
 
           {/* Features */}
           <View style={styles.featuresContainer}>
@@ -540,11 +544,22 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.7)',
     marginLeft: 4,
   },
+  dailyCreditsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: 16,
+  },
+  shardIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+  },
   dailyCredits: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFD700',
-    marginBottom: 16,
   },
   featuresContainer: {
     gap: 8,

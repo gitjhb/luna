@@ -71,7 +71,7 @@ export const referralService = {
         totalRewardsEarned: 150,
         rewardPerReferral: MOCK_REWARD_PER_REFERRAL,
         newUserBonus: MOCK_NEW_USER_BONUS,
-        shareText: `我正在使用 Luna AI 陪伴，超有趣！\n使用我的邀请码 ${MOCK_REFERRAL_CODE} 注册，你我都能获得金币奖励！`,
+        shareText: `我正在使用 Luna AI 陪伴，超有趣！\n使用我的邀请码 ${MOCK_REFERRAL_CODE} 注册，你我都能获得月光碎片！`,
       };
     }
 
@@ -109,7 +109,7 @@ export const referralService = {
       
       return {
         success: true,
-        message: `邀请码使用成功！获得${MOCK_NEW_USER_BONUS}金币奖励`,
+        message: `邀请码使用成功！获得 ${MOCK_NEW_USER_BONUS} 月光碎片`,
         new_user_bonus: MOCK_NEW_USER_BONUS,
         new_balance: 70, // 50 (initial) + 20 (bonus)
       };
@@ -180,7 +180,7 @@ export const referralService = {
   shareReferralCode: async (code: string, shareText?: string): Promise<boolean> => {
     const message = shareText || 
       `我正在使用 Luna AI 陪伴，超有趣！\n` +
-      `使用我的邀请码 ${code} 注册，你我都能获得金币奖励！\n` +
+      `使用我的邀请码 ${code} 注册，你我都能获得月光碎片！\n` +
       `下载链接: https://luna.app/download`;
 
     try {

@@ -12,7 +12,6 @@ import {
   ImageBackground,
   Dimensions,
   Alert,
-  BackHandler,
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -41,7 +40,8 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [showReferralModal, setShowReferralModal] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState(false);
-  const [ageVerified, setAgeVerified] = useState(false);
+  const [showAgeVerification, setShowAgeVerification] = useState(false);
+  const [pendingLoginProvider, setPendingLoginProvider] = useState<'apple' | 'google' | 'guest' | null>(null);
 
   // 进入登录页时请求通知权限
   useEffect(() => {
@@ -51,6 +51,16 @@ export default function LoginScreen() {
   }, []);
 
   const handleLogin = async (provider: 'apple' | 'google' | 'guest') => {
+    // First show age verification
+    setPendingLoginProvider(provider);
+    setShowAgeVerification(true);
+  };
+
+  const handleAgeVerified = async () => {
+    setShowAgeVerification(false);
+    const provider = pendingLoginProvider;
+    if (!provider) return;
+    
     setLoading(true);
     try {
       // Call real API
@@ -71,7 +81,17 @@ export default function LoginScreen() {
       Alert.alert(t.login.loginFailed, error.message || t.login.checkNetwork);
     } finally {
       setLoading(false);
+      setPendingLoginProvider(null);
     }
+  };
+
+  const handleAgeDeclined = () => {
+    setShowAgeVerification(false);
+    setPendingLoginProvider(null);
+    Alert.alert(
+      t.login.ageRestricted || 'Age Restricted',
+      t.login.mustBe18 || 'You must be 18 or older to use this app.'
+    );
   };
 
   const handleReferralModalClose = () => {
@@ -151,21 +171,23 @@ export default function LoginScreen() {
 
           {/* Auth Buttons */}
           <View style={styles.authSection}>
-            {/* Guest Login - Primary for testing */}
-            <TouchableOpacity
-              style={styles.guestButton}
-              onPress={() => handleLogin('guest')}
-              disabled={loading}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={theme.colors.primary.gradient}
-                style={styles.guestButtonGradient}
+            {/* Guest/Demo Login - Only in dev mode */}
+            {__DEV__ && (
+              <TouchableOpacity
+                style={styles.guestButton}
+                onPress={() => handleLogin('guest')}
+                disabled={loading}
+                activeOpacity={0.85}
               >
-                <Ionicons name="person" size={22} color="#fff" />
-                <Text style={styles.guestButtonText}>{t.login.guestLogin}</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+                <LinearGradient
+                  colors={theme.colors.primary.gradient}
+                  style={styles.guestButtonGradient}
+                >
+                  <Ionicons name="person" size={22} color="#fff" />
+                  <Text style={styles.guestButtonText}>{t.login.guestLogin}</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={styles.appleButton}
@@ -213,11 +235,11 @@ export default function LoginScreen() {
         </View>
       </SafeAreaView>
 
-      {/* Age Verification - first-time gate */}
-      {!ageVerified && (
+      {/* Age Verification - shown after clicking login */}
+      {showAgeVerification && (
         <AgeVerificationModal
-          onConfirm={() => setAgeVerified(true)}
-          onDecline={() => BackHandler.exitApp()}
+          onConfirm={handleAgeVerified}
+          onDecline={handleAgeDeclined}
         />
       )}
 

@@ -235,15 +235,72 @@ CHARACTER_PUSH_CONFIGS: Dict[str, CharacterPushConfig] = {
 
 
 # =============================================================================
-# 推送记录存储 (内存版，生产环境用数据库)
+# 推送记录存储 (文件持久化版)
 # =============================================================================
 
-# 格式: {user_id: {character_id: {"last_push": datetime, "daily_count": int, "daily_date": date}}}
+import json
+import os
+
+# 推送记录文件路径
+PUSH_RECORDS_FILE = os.path.join(os.path.dirname(__file__), ".push_records.json")
+
+# 内存缓存
 _push_records: Dict[str, Dict[str, Dict[str, Any]]] = {}
+_records_loaded = False
+
+
+def _load_push_records():
+    """从文件加载推送记录"""
+    global _push_records, _records_loaded
+    
+    if _records_loaded:
+        return
+    
+    try:
+        if os.path.exists(PUSH_RECORDS_FILE):
+            with open(PUSH_RECORDS_FILE, 'r') as f:
+                data = json.load(f)
+                # 转换日期字符串回 datetime/date 对象
+                for user_id, chars in data.items():
+                    _push_records[user_id] = {}
+                    for char_id, record in chars.items():
+                        _push_records[user_id][char_id] = {
+                            "last_push": datetime.fromisoformat(record["last_push"]) if record.get("last_push") else None,
+                            "daily_count": record.get("daily_count", 0),
+                            "daily_date": datetime.strptime(record["daily_date"], "%Y-%m-%d").date() if record.get("daily_date") else None,
+                        }
+            logger.info(f"Loaded push records from file: {len(_push_records)} users")
+    except Exception as e:
+        logger.warning(f"Could not load push records: {e}")
+        _push_records = {}
+    
+    _records_loaded = True
+
+
+def _save_push_records():
+    """保存推送记录到文件"""
+    try:
+        # 转换 datetime 对象为字符串
+        data = {}
+        for user_id, chars in _push_records.items():
+            data[user_id] = {}
+            for char_id, record in chars.items():
+                data[user_id][char_id] = {
+                    "last_push": record["last_push"].isoformat() if record.get("last_push") else None,
+                    "daily_count": record.get("daily_count", 0),
+                    "daily_date": record["daily_date"].strftime("%Y-%m-%d") if record.get("daily_date") else None,
+                }
+        
+        with open(PUSH_RECORDS_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.error(f"Could not save push records: {e}")
 
 
 def _get_push_record(user_id: str, character_id: str) -> Dict[str, Any]:
     """获取推送记录"""
+    _load_push_records()
+    
     if user_id not in _push_records:
         _push_records[user_id] = {}
     if character_id not in _push_records[user_id]:
@@ -268,6 +325,9 @@ def _update_push_record(user_id: str, character_id: str):
     
     record["last_push"] = now
     record["daily_count"] += 1
+    
+    # 保存到文件
+    _save_push_records()
 
 
 # =============================================================================
@@ -464,23 +524,22 @@ class PushNotificationService:
         这样用户点击通知后能在聊天界面看到这条消息
         """
         try:
-            from app.core.database import get_db
-            from app.models.database.chat_models import ChatMessage
-            from datetime import datetime
-            from uuid import uuid4
+            from app.services.chat_repository import chat_repo
             
-            async with get_db() as db:
-                chat_msg = ChatMessage(
-                    id=str(uuid4()),
-                    user_id=user_id,
-                    character_id=character_id,
-                    role="assistant",
-                    content=message,
-                    message_type="push",  # 标记为推送消息
-                    created_at=datetime.utcnow(),
-                )
-                db.add(chat_msg)
-                await db.commit()
+            # 获取或创建 session
+            session = await chat_repo.get_session_by_character(user_id, character_id)
+            if not session:
+                # 如果没有 session，先不保存（用户还没和这个角色聊过）
+                logger.info(f"No session found for push message, skipping save")
+                return
+            
+            # 保存推送消息
+            await chat_repo.add_message(
+                session_id=session["session_id"],
+                role="assistant",
+                content=f"[主动消息] {message}",
+                tokens_used=0,
+            )
                 
             logger.info(f"Saved push message to chat history: {character_id} -> {user_id}")
             

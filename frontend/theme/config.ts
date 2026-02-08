@@ -23,7 +23,8 @@ export type { EmotionMode, EmotionState } from './dynamicTheme';
 import { purpleSeduction } from './themes';
 export const theme = {
   ...purpleSeduction,
-  appName: "Luna",
+  appName: "Moon Shard",
+  appNameZh: "月光碎片",
   appTagline: "Your AI Companion",
 };
 

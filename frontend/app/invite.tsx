@@ -130,11 +130,11 @@ export default function InviteScreen() {
             <View style={styles.heroIconContainer}>
               <Text style={styles.heroIcon}>🎁</Text>
             </View>
-            <Text style={styles.heroTitle}>邀请好友，共享金币</Text>
+            <Text style={styles.heroTitle}>邀请好友，赢取积分</Text>
             <Text style={styles.heroSubtitle}>
               每邀请一位好友注册，你将获得 
               <Text style={styles.highlightText}> {referralStats?.rewardPerReferral || 50} </Text>
-              金币奖励
+              月光碎片
             </Text>
           </View>
 
@@ -175,7 +175,7 @@ export default function InviteScreen() {
             <View style={styles.statItem}>
               <Text style={styles.statValueGold}>
                 {referralStats?.totalRewardsEarned || 0}
-                <Text style={styles.statValueUnit}> 🪙</Text>
+                <Text style={styles.statValueUnit}> 碎片</Text>
               </Text>
               <Text style={styles.statLabel}>累计获得</Text>
             </View>
@@ -212,8 +212,8 @@ export default function InviteScreen() {
                 <View style={styles.ruleContent}>
                   <Text style={styles.ruleTitle}>双方获奖</Text>
                   <Text style={styles.ruleDesc}>
-                    你获得 {referralStats?.rewardPerReferral || 50} 金币，
-                    好友获得 {referralStats?.newUserBonus || 20} 金币
+                    你获得 {referralStats?.rewardPerReferral || 50} 碎片，
+                    好友获得 {referralStats?.newUserBonus || 20} 碎片
                   </Text>
                 </View>
               </View>
@@ -245,7 +245,7 @@ export default function InviteScreen() {
                       <Text style={styles.friendDate}>{formatDate(friend.referred_at)}</Text>
                     </View>
                     <View style={styles.friendReward}>
-                      <Text style={styles.friendRewardText}>+{friend.reward_earned} 🪙</Text>
+                      <Text style={styles.friendRewardText}>+{friend.reward_earned} 碎片</Text>
                     </View>
                   </View>
                 ))}

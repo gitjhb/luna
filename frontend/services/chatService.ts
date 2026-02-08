@@ -42,6 +42,7 @@ const mapSession = (data: any): ChatSession => ({
   totalMessages: data.total_messages || data.totalMessages || 0,
   totalCreditsSpent: data.total_credits_spent || data.totalCreditsSpent || 0,
   lastMessageAt: data.updated_at || data.updatedAt || data.last_message_at || data.lastMessageAt || data.created_at || data.createdAt,
+  lastMessage: data.last_message || data.lastMessage,  // 添加lastMessage映射
   createdAt: data.created_at || data.createdAt,
 });
 
@@ -92,6 +93,28 @@ export const chatService = {
   getSessions: async (): Promise<ChatSession[]> => {
     const data = await api.get<any[]>('/chat/sessions');
     return data.map(mapSession);
+  },
+  
+  /**
+   * Get sessions with messages (batch load for app startup)
+   * Reduces API calls by fetching everything in one request
+   */
+  getSessionsWithMessages: async (messageLimit: number = 20): Promise<{
+    sessions: ChatSession[];
+    messages: Record<string, Message[]>;
+  }> => {
+    const data = await api.get<any>('/chat/sessions', { include_messages: messageLimit });
+    
+    const sessions = (data.sessions || []).map(mapSession);
+    const messages: Record<string, Message[]> = {};
+    
+    if (data.messages) {
+      for (const [sessionId, msgs] of Object.entries(data.messages)) {
+        messages[sessionId] = (msgs as any[]).map(mapMessage);
+      }
+    }
+    
+    return { sessions, messages };
   },
   
   /**

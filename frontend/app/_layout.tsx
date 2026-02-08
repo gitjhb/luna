@@ -40,17 +40,22 @@ function HydrationGate({ children }: { children: React.ReactNode }) {
   
   useEffect(() => {
     const initRevenueCat = async () => {
-      // Initialize with user ID if logged in
-      const userId = user?.userId;
-      const ok = await revenueCatService.init(userId);
-      console.log('[App] RevenueCat initialized:', ok);
-      
-      // Set user attributes if available
-      if (user) {
-        await revenueCatService.setUserAttributes({
-          email: user.email,
-          displayName: user.displayName,
-        });
+      try {
+        // Initialize with user ID if logged in
+        const userId = user?.userId;
+        const ok = await revenueCatService.init(userId);
+        console.log('[App] RevenueCat initialized:', ok);
+        
+        // Only set attributes if RevenueCat initialized successfully
+        if (ok && user?.email) {
+          await revenueCatService.setUserAttributes({
+            email: user.email,
+            displayName: user.displayName,
+          });
+        }
+      } catch (error) {
+        // Silently log - don't crash app if RevenueCat fails
+        console.warn('[App] RevenueCat init error (non-fatal):', error);
       }
     };
     
@@ -71,11 +76,17 @@ function HydrationGate({ children }: { children: React.ReactNode }) {
           console.log('[App] Migration result:', result);
         }
       } catch (error) {
-        console.error('[App] Database init failed:', error);
+        // Don't crash app if database init fails
+        console.error('[App] Database init failed (non-fatal):', error);
       }
     };
     
-    initDB();
+    // Wrap in try-catch to prevent crash
+    try {
+      initDB();
+    } catch (e) {
+      console.error('[App] Database init threw:', e);
+    }
   }, []);
   
   // 初始化推送服务

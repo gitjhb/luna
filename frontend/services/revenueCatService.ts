@@ -8,6 +8,7 @@
  */
 
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import Purchases, {
   PurchasesOffering,
   PurchasesPackage,
@@ -22,7 +23,19 @@ import Purchases, {
 // Configuration
 // ============================================================================
 
-const REVENUECAT_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY || 'test_FBObZPlGuTyizNXjsTFNnnHSqNc';
+const REVENUECAT_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY || '';
+
+// Check if running in Expo Go (no native modules available)
+const isExpoGo = Constants.appOwnership === 'expo';
+
+// Check if we have a valid (non-test) API key for production
+const isTestKey = REVENUECAT_API_KEY.startsWith('test_');
+
+// Skip RevenueCat in:
+// 1. Expo Go (no native modules)
+// 2. Production with test key (would crash)
+// 3. No API key at all
+const shouldSkipRevenueCat = isExpoGo || (!__DEV__ && (!REVENUECAT_API_KEY || isTestKey));
 
 // Entitlement IDs (configured in RevenueCat dashboard)
 export const ENTITLEMENTS = {
@@ -99,6 +112,14 @@ export const revenueCatService = {
     if (isInitialized) {
       console.log('[RevenueCat] Already initialized');
       return true;
+    }
+
+    // Skip RevenueCat in production if no valid API key
+    if (shouldSkipRevenueCat) {
+      console.warn('[RevenueCat] Skipping init - no valid production API key');
+      console.warn('[RevenueCat] Using test key in production would crash the app');
+      isInitialized = true; // Mark as initialized to prevent retries
+      return false;
     }
 
     try {
@@ -440,6 +461,12 @@ export const revenueCatService = {
     phoneNumber?: string;
     [key: string]: string | undefined;
   }): Promise<void> => {
+    // Skip if RevenueCat is not properly initialized (e.g., Expo Go, no API key)
+    if (shouldSkipRevenueCat || !isInitialized) {
+      console.log('[RevenueCat] Skipping setUserAttributes - not initialized');
+      return;
+    }
+    
     try {
       if (attributes.email) await Purchases.setEmail(attributes.email);
       if (attributes.displayName) await Purchases.setDisplayName(attributes.displayName);

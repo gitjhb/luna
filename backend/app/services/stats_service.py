@@ -100,18 +100,23 @@ class StatsService:
         db: AsyncSession,
         user_id: str,
         character_id: str,
-        gift_type: str
+        gift_type: str,
+        gift_name: str = None,
+        gift_icon: str = None
     ) -> UserCharacterStats:
         """Record a gift sent."""
         stats = await StatsService.get_or_create_stats(db, user_id, character_id)
         stats.total_gifts += 1
         
-        # Record gift event
+        # Record gift event with proper display name
+        display_name = gift_name if gift_name else gift_type
+        icon = gift_icon if gift_icon else "🎁"
+        
         await StatsService.record_event(
             db, user_id, character_id,
             event_type="gift",
             title="收到礼物",
-            description=f"你送了一份{gift_type}"
+            description=f"你送了一份 {icon} {display_name}"
         )
         
         await db.commit()

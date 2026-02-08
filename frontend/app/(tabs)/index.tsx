@@ -108,7 +108,7 @@ export default function CompanionsScreen() {
           </View>
           
           <TouchableOpacity style={styles.creditsBadge} onPress={() => router.push('/(tabs)/profile')}>
-            <Ionicons name="diamond" size={16} color={theme.colors.primary.main} />
+            <Image source={require('../../assets/icons/moon-shard.png')} style={styles.shardIcon} />
             <Text style={styles.creditsText}>{wallet?.totalCredits?.toFixed(0) || '0'}</Text>
           </TouchableOpacity>
         </View>
@@ -246,6 +246,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#EC4899',
+  },
+  shardIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
   },
   searchContainer: {
     flexDirection: 'row',

@@ -15,6 +15,7 @@ import {
   Alert,
   Dimensions,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { pricingService, CoinPack } from '../services/pricingService';
@@ -61,7 +62,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
   const handlePurchase = (pack: CoinPack) => {
     Alert.alert(
       '确认购买',
-      `购买 ${pack.coins.toLocaleString()} 金币${pack.bonusCoins ? ` (+${pack.bonusCoins} 赠送)` : ''}，价格 $${pack.price.toFixed(2)}？`,
+      `购买 ${pack.coins.toLocaleString()} 碎片${pack.bonusCoins ? ` (+${pack.bonusCoins} 赠送)` : ''}，价格 $${pack.price.toFixed(2)}？`,
       [
         { text: '取消', style: 'cancel' },
         {
@@ -79,7 +80,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
                 onPurchaseSuccess?.(result.credits_added, result.wallet.total_credits);
                 
                 onClose();
-                Alert.alert('🎉 购买成功！', `获得 ${result.credits_added.toLocaleString()} 金币`);
+                Alert.alert('🎉 购买成功！', `获得 ${result.credits_added.toLocaleString()} 碎片`);
               }
             } catch (error: any) {
               Alert.alert('购买失败', error.message || '请稍后重试');
@@ -100,7 +101,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
       if (result.success) {
         updateWallet({ totalCredits: result.wallet.total_credits });
         onPurchaseSuccess?.(500, result.wallet.total_credits);
-        Alert.alert('🎁 领取成功！', '获得 500 测试金币');
+        Alert.alert('🎁 领取成功！', '获得 500 测试碎片');
       }
     } catch (error: any) {
       Alert.alert('领取失败', error.message || '请稍后重试');
@@ -121,7 +122,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.titleRow}>
-              <Text style={styles.title}>购买金币</Text>
+              <Text style={styles.title}>购买月光碎片</Text>
               <View style={styles.testBadge}>
                 <Text style={styles.testBadgeText}>测试模式</Text>
               </View>
@@ -135,7 +136,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
           <View style={styles.balanceRow}>
             <Text style={styles.balanceLabel}>当前余额</Text>
             <View style={styles.balanceValue}>
-              <Text style={styles.coinEmoji}>🪙</Text>
+              <Image source={require('../assets/icons/moon-shard.png')} style={styles.shardIcon} />
               <Text style={styles.balanceAmount}>{wallet?.totalCredits?.toFixed(0) || '0'}</Text>
             </View>
           </View>
@@ -173,9 +174,12 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
                     )}
 
                     {/* Coins */}
-                    <Text style={styles.packCoins}>
-                      🪙 {pack.coins.toLocaleString()}
-                    </Text>
+                    <View style={styles.packCoinsRow}>
+                      <Image source={require('../assets/icons/moon-shard.png')} style={styles.packShardIcon} />
+                      <Text style={styles.packCoins}>
+                        {pack.coins.toLocaleString()}
+                      </Text>
+                    </View>
 
                     {/* Bonus Coins */}
                     {pack.bonusCoins && pack.bonusCoins > 0 && (
@@ -211,7 +215,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
                 {purchasing === 'free' ? (
                   <ActivityIndicator size="small" color="#EC4899" />
                 ) : (
-                  <Text style={styles.freeButtonText}>🎁 领取 500 测试金币</Text>
+                  <Text style={styles.freeButtonText}>🎁 领取 500 测试碎片</Text>
                 )}
               </TouchableOpacity>
 
@@ -289,6 +293,11 @@ const styles = StyleSheet.create({
   coinEmoji: {
     fontSize: 18,
   },
+  shardIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
   balanceAmount: {
     fontSize: 20,
     fontWeight: '700',
@@ -345,12 +354,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
   },
+  packCoinsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  packShardIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
   packCoins: {
     fontSize: 22,
     fontWeight: '700',
     color: '#FFD700',
-    marginTop: 8,
-    marginBottom: 4,
   },
   packBonus: {
     fontSize: 13,

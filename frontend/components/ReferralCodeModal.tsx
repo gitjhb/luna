@@ -99,7 +99,7 @@ export const ReferralCodeModal: React.FC<Props> = ({ visible, onClose, onSuccess
               </View>
               <Text style={styles.successTitle}>领取成功！</Text>
               <Text style={styles.successText}>
-                你已获得 <Text style={styles.successAmount}>{bonusAmount}</Text> 金币奖励
+                你已获得 <Text style={styles.successAmount}>{bonusAmount}</Text> 月光碎片
               </Text>
             </View>
           ) : (
@@ -111,7 +111,7 @@ export const ReferralCodeModal: React.FC<Props> = ({ visible, onClose, onSuccess
               
               <Text style={styles.title}>有邀请码？</Text>
               <Text style={styles.subtitle}>
-                输入好友的邀请码，即可获得金币奖励
+                输入好友的邀请码，即可获得月光碎片
               </Text>
 
               <View style={styles.inputContainer}>

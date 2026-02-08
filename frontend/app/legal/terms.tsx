@@ -23,12 +23,12 @@ export default function TermsScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Text style={styles.title}>Luna 服务条款</Text>
+          <Text style={styles.title}>月光碎片 服务条款</Text>
           <Text style={styles.updated}>最后更新：2025 年 1 月</Text>
 
           <Text style={styles.sectionTitle}>1. 服务说明</Text>
           <Text style={styles.body}>
-            Luna 是一款 AI 虚拟角色互动应用。所有角色均由人工智能生成，非真实人物。用户与角色的所有互动均为虚拟内容。
+            月光碎片 是一款 AI 虚拟角色互动应用。所有角色均由人工智能生成，非真实人物。用户与角色的所有互动均为虚拟内容。
           </Text>
 
           <Text style={styles.sectionTitle}>2. 用户资格</Text>

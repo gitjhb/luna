@@ -108,7 +108,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         user_id = None
         
         # Extract user_id from token format
-        if token.startswith("guest_token_"):
+        if token.startswith("demo_token_"):
+            user_id = token.replace("demo_token_", "")
+            logger.debug(f"Demo token, user_id: {user_id}")
+        elif token.startswith("guest_token_"):
             user_id = token.replace("guest_token_", "")
             logger.debug(f"Guest token, user_id: {user_id}")
         elif token.startswith("luna_token_"):
@@ -127,14 +130,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not user:
             # User not in memory (maybe server restarted)
             # Auto-create a minimal user record for valid token formats
-            if user_id and (user_id.startswith("fb-") or user_id.startswith("guest-")):
+            if user_id and (user_id.startswith("fb-") or user_id.startswith("guest-") or user_id.startswith("demo-")):
                 logger.info(f"Auto-creating user record for: {user_id}")
+                is_demo = user_id.startswith("demo-")
                 _users[user_id] = {
                     "user_id": user_id,
-                    "email": None,
-                    "display_name": "User",
-                    "provider": "firebase" if user_id.startswith("fb-") else "guest",
-                    "subscription_tier": "free",
+                    "email": "jhb@luna.app" if is_demo else None,
+                    "display_name": "JHB" if is_demo else "User",
+                    "provider": "demo" if is_demo else ("firebase" if user_id.startswith("fb-") else "guest"),
+                    "subscription_tier": "vip" if is_demo else "free",
                 }
                 user = _users[user_id]
             else:
