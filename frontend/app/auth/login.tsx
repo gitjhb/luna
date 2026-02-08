@@ -77,6 +77,11 @@ export default function LoginScreen() {
         router.replace('/(tabs)');
       }
     } catch (error: any) {
+      // Silently ignore user cancellation - this is normal flow
+      if (error.message === 'Sign in cancelled') {
+        console.log('[Login] User cancelled sign in');
+        return;
+      }
       console.error('Login failed:', error);
       Alert.alert(t.login.loginFailed, error.message || t.login.checkNetwork);
     } finally {
