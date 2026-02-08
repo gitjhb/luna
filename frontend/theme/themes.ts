@@ -215,16 +215,85 @@ export const cyberpunk2077: ThemeConfig = {
 };
 
 // ============================================================================
+// Theme 3: Luna 2077 (月光终端) - 来自2077年的通讯终端
+// ============================================================================
+export const luna2077: ThemeConfig = {
+  id: 'luna-2077',
+  name: 'Luna 2077',
+  nameCn: '月光终端',
+  
+  colors: {
+    background: {
+      primary: "#000000",        // 纯黑 - OLED 省电
+      secondary: "#0A0F14",      // 极深灰蓝
+      tertiary: "#0D1319",       // 稍亮的灰蓝
+      gradient: ["#000000", "#0A0F14", "#000000"] as const,
+    },
+    
+    primary: {
+      main: "#00D4FF",           // 全息蓝
+      light: "#5CE1FF",
+      dark: "#00A3C7",
+      gradient: ["#00D4FF", "#00F5D4"] as const,  // 蓝到青绿
+    },
+    
+    accent: {
+      pink: "#FF6B9D",           // 柔和粉（偶尔点缀）
+      purple: "#A855F7",         // 淡紫
+      cyan: "#00F5D4",           // 荧光青绿
+      yellow: "#FFE066",         // 暖黄（警告用）
+      gradient: ["#00D4FF", "#A855F7"] as const,
+    },
+    
+    text: {
+      primary: "#FFFFFF",
+      secondary: "rgba(255, 255, 255, 0.65)",   // 银灰
+      tertiary: "rgba(255, 255, 255, 0.35)",
+      inverse: "#000000",
+    },
+    
+    success: "#00F5D4",          // 青绿
+    warning: "#FFE066",          // 暖黄
+    error: "#FF6B6B",            // 柔和红
+    
+    border: "rgba(0, 212, 255, 0.15)",     // 淡青边框
+    overlay: "rgba(0, 0, 0, 0.85)",
+    
+    glow: "#00D4FF",             // 发光色
+    neon: "#00F5D4",
+  },
+  
+  typography: {
+    fontSize: { xs: 11, sm: 13, base: 15, lg: 17, xl: 20, '2xl': 24, '3xl': 30 },
+    lineHeight: { tight: 1.2, normal: 1.5, relaxed: 1.7 },
+  },
+  
+  spacing: { xs: 4, sm: 8, md: 16, lg: 24, xl: 32, '2xl': 48 },
+  
+  // 2077风格：锐利但不过于硬朗
+  borderRadius: { sm: 4, md: 8, lg: 12, xl: 16, '2xl': 20, full: 9999 },
+  
+  effects: {
+    glowIntensity: 0.6,
+    borderGlow: true,
+    scanlines: false,  // 不要扫描线，保持干净
+  },
+};
+
+// ============================================================================
 // Theme Registry
 // ============================================================================
 export const themes: Record<string, ThemeConfig> = {
   'purple-seduction': purpleSeduction,
   'cyberpunk-2077': cyberpunk2077,
+  'luna-2077': luna2077,
 };
 
 export const themeList = [
+  { id: 'luna-2077', name: 'Luna 2077', nameCn: '月光终端', icon: '🌙' },
   { id: 'purple-seduction', name: 'Purple Seduction', nameCn: '紫色诱惑', icon: '💜' },
   { id: 'cyberpunk-2077', name: 'Cyberpunk 2077', nameCn: '赛博朋克', icon: '🤖' },
 ];
 
-export const defaultThemeId = 'purple-seduction';
+// 默认使用 Luna 2077 主题
+export const defaultThemeId = 'luna-2077';

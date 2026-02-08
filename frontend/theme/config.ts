@@ -9,7 +9,7 @@
 
 // Re-export everything from themes.ts
 export type { ThemeConfig } from './themes';
-export { purpleSeduction, cyberpunk2077, themes, themeList, defaultThemeId } from './themes';
+export { purpleSeduction, cyberpunk2077, luna2077, themes, themeList, defaultThemeId } from './themes';
 
 // Re-export theme context (static)
 export { ThemeProvider, useTheme } from './ThemeContext';
@@ -20,12 +20,13 @@ export { angryTheme, happyTheme, getEmotionMode, getThemeForEmotion, interpolate
 export type { EmotionMode, EmotionState } from './dynamicTheme';
 
 // Legacy: export default theme for backward compatibility
-import { purpleSeduction } from './themes';
+// Now using Luna 2077 as default
+import { luna2077 } from './themes';
 export const theme = {
-  ...purpleSeduction,
+  ...luna2077,
   appName: "Luna",
   appNameZh: "Luna",
-  appTagline: "Your AI Companion",
+  appTagline: "Your Link to 2077",
 };
 
 export const getShadow = (level: 'sm' | 'md' | 'lg' | 'xl') => ({
