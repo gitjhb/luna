@@ -266,19 +266,30 @@ async def authenticate_firebase(request: FirebaseAuthRequest):
             if db_user:
                 # Update existing user
                 db_user.last_login_at = datetime.utcnow()
-                if request.display_name:
-                    db_user.display_name = request.display_name
+                # Only update display_name if we got a new one AND current is generic
+                if request.display_name and request.display_name.strip():
+                    # Apple only sends name on first auth, so save it if we get it
+                    if db_user.display_name in (None, "", "User", "Mock User"):
+                        db_user.display_name = request.display_name
+                        logger.info(f"Updated display_name to: {request.display_name}")
                 if request.photo_url:
                     db_user.avatar_url = request.photo_url
                 await db.commit()
-                logger.info(f"Updated existing user: {user_id}")
+                
+                # Use stored values from database (important for Apple re-auth)
+                user_display_name = db_user.display_name or user_display_name
+                user_email = db_user.email or user_email
+                user_avatar = db_user.avatar_url or user_avatar
+                logger.info(f"Updated existing user: {user_id}, name: {user_display_name}")
             else:
                 # Create new user in database
+                # For new users, use the name from request (Apple sends it on first auth)
+                final_display_name = request.display_name or user_display_name
                 db_user = User(
                     user_id=user_id,
                     firebase_uid=firebase_uid,
                     email=user_email,
-                    display_name=user_display_name,
+                    display_name=final_display_name,
                     avatar_url=user_avatar,
                     is_subscribed=False,
                     subscription_tier="free",
@@ -286,14 +297,15 @@ async def authenticate_firebase(request: FirebaseAuthRequest):
                 db.add(db_user)
                 await db.commit()
                 await db.refresh(db_user)
-                logger.info(f"Created new user in database: {user_id}")
+                user_display_name = final_display_name
+                logger.info(f"Created new user in database: {user_id}, name: {user_display_name}")
         
         # Also keep in memory cache for fast access
         user = {
             "user_id": user_id,
             "firebase_uid": firebase_uid,
             "email": user_email,
-            "display_name": user_display_name,
+            "display_name": user_display_name,  # Use the resolved name
             "photo_url": user_avatar,
             "provider": request.provider,
             "subscription_tier": "free",
