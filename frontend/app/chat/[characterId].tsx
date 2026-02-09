@@ -972,9 +972,8 @@ export default function ChatScreen() {
 在这里，没有数据流，没有任务，没有所谓的'未来'。
 把那些沉重的东西都卸在门外吧……今晚，这一小块月亮，只属于我们。"`;
       
-      // 使用ref保存的sessionId (避免闭包问题)
-      const sid = lunaSessionIdRef.current;
-      if (sid) {
+      // 延迟添加消息，确保聊天界面完全显示
+      setTimeout(() => {
         const introMessage: Message = {
           messageId: `luna-intro-${Date.now()}`,
           role: 'assistant',
@@ -982,13 +981,12 @@ export default function ChatScreen() {
           createdAt: new Date().toISOString(),
           tokensUsed: 0,
         };
-        addMessageToStore(sid, introMessage);
-        console.log('[Luna] Intro message added to session:', sid);
-      } else {
-        console.error('[Luna] No sessionId available for intro message');
-      }
+        // 用 addMessage (来自useMessages hook) 而不是 addMessageToStore
+        addMessage(introMessage);
+        console.log('[Luna] Intro message added');
+      }, 100);
     });
-  }, [addMessageToStore, lunaIntroFadeAnim]);
+  }, [addMessage, lunaIntroFadeAnim]);
 
   // 🌙 Luna入场动画 - 黑屏1.5秒后播放视频
   useEffect(() => {
