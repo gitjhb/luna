@@ -99,6 +99,9 @@ export default function ChatScreen() {
   const [inputText, setInputText] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(params.sessionId || null);
   const [isInitializing, setIsInitializing] = useState(true);
+  
+  // Track message IDs that should show typewriter effect (just added via API response)
+  const [typewriterMessageIds, setTypewriterMessageIds] = useState<Set<string>>(new Set());
 
   // 📬 React Query 消息管理
   const {
@@ -479,6 +482,9 @@ export default function ChatScreen() {
       // Clear typing BEFORE adding message to avoid flicker
       setTyping(false);
 
+      // Mark this message for typewriter effect
+      setTypewriterMessageIds(prev => new Set(prev).add(response.messageId));
+
       addMessage({
         messageId: response.messageId,
         role: 'assistant',
@@ -615,6 +621,9 @@ export default function ChatScreen() {
 
       // Clear typing BEFORE adding message to avoid flicker
       setTyping(false);
+
+      // Mark this message for typewriter effect
+      setTypewriterMessageIds(prev => new Set(prev).add(response.messageId));
 
       addMessage({
         messageId: response.messageId,
@@ -941,7 +950,7 @@ export default function ChatScreen() {
           onReply={!isUser ? handleReply : undefined}
           showToast={showToast}
           messageReaction={item.reaction}
-          typewriter={!isUser && (Date.now() - new Date(item.createdAt).getTime()) < 3000}
+          typewriter={!isUser && typewriterMessageIds.has(item.messageId)}
         />
       </View>
     );
