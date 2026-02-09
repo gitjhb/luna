@@ -334,17 +334,19 @@ export default function ChatScreen() {
           console.log('[Chat] No history, loading greeting...');
           
           // 🌙 Luna专属入场动画 (仅第一次)
+          // TODO: 测试完后恢复AsyncStorage检查
           if (params.characterId === LUNA_CHARACTER_ID) {
-            const introKey = `luna_intro_shown_${params.characterId}`;
-            const introShown = await AsyncStorage.getItem(introKey);
+            // const introKey = `luna_intro_shown_${params.characterId}`;
+            // const introShown = await AsyncStorage.getItem(introKey);
             
-            if (!introShown) {
-              console.log('[Chat] Luna first time - showing intro animation');
+            // if (!introShown) {  // 临时：每次都显示intro
+            if (true) {
+              console.log('[Chat] Luna showing intro animation (DEBUG MODE)');
               lunaSessionIdRef.current = session.sessionId;  // 保存sessionId
               setShowLunaIntro(true);
               setLunaIntroPhase('black');
               setLunaVideoReady(false);
-              await AsyncStorage.setItem(introKey, 'true');
+              // await AsyncStorage.setItem(introKey, 'true');  // 临时禁用
               // Intro会在动画结束后发送开场白，这里不发送普通greeting
               setIsInitializing(false);
               return;
