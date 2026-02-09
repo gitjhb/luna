@@ -1133,6 +1133,8 @@ export default function ChatScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={0}
         >
+          {/* AI Disclaimer - California compliance */}
+          <Text style={styles.aiDisclaimer}>{t.chat.aiDisclaimer}</Text>
           <View style={styles.inputContainer}>
             {/* Input */}
             <View style={styles.inputWrapper}>
@@ -2004,11 +2006,17 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.4)',
   },
+  aiDisclaimer: {
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.4)',
+    textAlign: 'center',
+    paddingVertical: 4,
+  },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 8,
     paddingBottom: 16,
     gap: 10,
   },
@@ -2018,7 +2026,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     borderRadius: 8,
     paddingHorizontal: 16,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
+    paddingVertical: 10,
     minHeight: 44,
     justifyContent: 'center',
     borderWidth: 1,

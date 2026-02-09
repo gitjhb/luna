@@ -112,6 +112,7 @@ export const zh = {
     allLoaded: '- 已加载全部消息 -',
     dateLocked: '约会功能需要 Lv.10 解锁',
     locked: '🔒 未解锁',
+    aiDisclaimer: '由AI驱动的虚拟角色',
   },
 
   // Character profile

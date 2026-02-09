@@ -265,12 +265,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 6,
   },
-  // AI bubble: Ultra transparent, text floats with shadow
+  // AI bubble: Semi-transparent with visible border
   bubbleAI: {
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    backgroundColor: 'rgba(0, 0, 0, 0.15)',
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   messageText: {
     fontSize: 15,

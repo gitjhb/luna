@@ -114,6 +114,7 @@ export const en: Translations = {
     allLoaded: '- All messages loaded -',
     dateLocked: 'Dates unlock at Lv.10',
     locked: '🔒 Locked',
+    aiDisclaimer: 'AI-powered virtual character',
   },
 
   // Character profile
