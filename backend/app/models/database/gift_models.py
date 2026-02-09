@@ -140,7 +140,8 @@ class GiftCategory:
 # ============================================================================
 
 DEFAULT_GIFT_CATALOG = [
-    # ============ Tier 1: 日常消耗品 (Consumables) ============
+    # ============ Tier 1: 消耗品 (Consumables) ============
+    # 日常维护、情感修复、关系里程碑
     {
         "gift_type": "hot_coffee",
         "name": "Hot Coffee",
@@ -153,7 +154,7 @@ DEFAULT_GIFT_CATALOG = [
         "icon": "☕",
         "tier": GiftTier.CONSUMABLE,
         "category": GiftCategory.CONSUMABLE,
-        "emotion_boost": 10,  # 小礼物也要有明显效果
+        "emotion_boost": 10,
         "sort_order": 101,
     },
     {
@@ -169,8 +170,8 @@ DEFAULT_GIFT_CATALOG = [
         "tier": GiftTier.CONSUMABLE,
         "category": GiftCategory.CONSUMABLE,
         "emotion_boost": 25,
-        "can_calm_anger": True,  # 特殊：可以让生气→平静
-        "sort_order": 103,
+        "can_calm_anger": True,
+        "sort_order": 102,
     },
     {
         "gift_type": "energy_drink",
@@ -184,8 +185,54 @@ DEFAULT_GIFT_CATALOG = [
         "icon": "⚡",
         "tier": GiftTier.CONSUMABLE,
         "category": GiftCategory.CONSUMABLE,
-        "restores_energy": 10,  # 回复 10 点体力
+        "restores_energy": 10,
+        "sort_order": 103,
+    },
+    {
+        "gift_type": "red_rose",
+        "name": "Red Rose",
+        "name_cn": "红玫瑰",
+        "description": "A romantic red rose",
+        "description_cn": "浪漫的红玫瑰，表达心意",
+        "price": 50,
+        "xp_reward": 50,
+        "xp_multiplier": 1.2,
+        "icon": "🌹",
+        "tier": GiftTier.CONSUMABLE,
+        "category": GiftCategory.CONSUMABLE,
+        "emotion_boost": 20,
         "sort_order": 104,
+    },
+    {
+        "gift_type": "apology_scroll",
+        "name": "Apology Scroll",
+        "name_cn": "悔过书",
+        "description": "A sincere apology to mend the relationship",
+        "description_cn": "真诚的悔过书，修复关系、解除冷战",
+        "price": 60,
+        "xp_reward": 60,
+        "xp_multiplier": 1.0,
+        "icon": "📜",
+        "tier": GiftTier.CONSUMABLE,
+        "category": GiftCategory.APOLOGY,
+        "clears_cold_war": True,
+        "emotion_boost": 50,
+        "sort_order": 105,
+    },
+    {
+        "gift_type": "oath_ring",
+        "name": "Oath Ring",
+        "name_cn": "誓约之戒",
+        "description": "A ring symbolizing your commitment",
+        "description_cn": "象征承诺的戒指，大幅提升亲密度",
+        "price": 999,
+        "xp_reward": 2000,
+        "xp_multiplier": 1.5,
+        "icon": "💍",
+        "tier": GiftTier.CONSUMABLE,
+        "category": GiftCategory.CONSUMABLE,
+        "force_emotion": "ecstatic",
+        "sort_order": 106,
     },
     {
         "gift_type": "stinky_tofu",
@@ -199,11 +246,11 @@ DEFAULT_GIFT_CATALOG = [
         "icon": "🫠",
         "tier": GiftTier.CONSUMABLE,
         "category": GiftCategory.CONSUMABLE,
-        "emotion_boost": -30,  # 负面！彩蛋道具
-        "sort_order": 105,
+        "emotion_boost": -30,
+        "sort_order": 199,
     },
     
-    # ============ Tier 2: 状态触发器 (State Triggers) ⭐ MVP 重点 ============
+    # ============ Tier 2-3: 插件 (Plugins) - 状态效果道具 ============
     {
         "gift_type": "xp_potion",
         "name": "Double XP Potion",
@@ -221,27 +268,7 @@ DEFAULT_GIFT_CATALOG = [
             "duration_messages": 30,
             "prompt_modifier": "用户使用了双倍经验药水，你对他的好感度增长更快了。在对话中可以自然地提到'今天感觉和你特别有缘'之类的。",
         },
-        "sort_order": 199,
-    },
-    {
-        "gift_type": "red_rose",
-        "name": "Red Rose",
-        "name_cn": "红玫瑰",
-        "description": "A romantic red rose... perfect for a date invitation",
-        "description_cn": "一朵浪漫的红玫瑰，用来邀请约会",
-        "price": 50,
-        "xp_reward": 50,
-        "xp_multiplier": 1.2,
-        "icon": "🌹",
-        "tier": GiftTier.STATE_TRIGGER,
-        "category": GiftCategory.STATE,
-        "emotion_boost": 20,
-        "status_effect": {
-            "type": "date_mode",
-            "duration_messages": 20,
-            "prompt_modifier": "用户刚刚送了你一朵红玫瑰邀请约会。你现在进入约会模式，心情愉悦，有点害羞但很期待。可以讨论约会去哪里、做什么，表现得更加浪漫和亲近。",
-        },
-        "sort_order": 200,
+        "sort_order": 201,
     },
     {
         "gift_type": "tipsy_wine",
@@ -260,7 +287,7 @@ DEFAULT_GIFT_CATALOG = [
             "duration_messages": 30,
             "prompt_modifier": "你现在有点微醺，说话变得更加柔软和放松。防御心降低，更容易说出平时不会说的话。语气变得更加亲昵，偶尔会脸红。",
         },
-        "sort_order": 201,
+        "sort_order": 202,
     },
     {
         "gift_type": "maid_headband",
@@ -279,22 +306,6 @@ DEFAULT_GIFT_CATALOG = [
             "duration_messages": 50,
             "prompt_modifier": "你现在进入女仆模式，称呼用户为'主人'(Master/ご主人様)。说话方式变得更加恭敬和服务导向，但保持你原有的性格底色。会说'是的，主人'、'遵命'之类的话。",
         },
-        "sort_order": 202,
-    },
-    {
-        "gift_type": "apology_scroll",
-        "name": "Apology Scroll",
-        "name_cn": "悔过书",
-        "description": "A sincere apology to mend the relationship",
-        "description_cn": "真诚的悔过书，用于修复关系、解除冷战",
-        "price": 60,
-        "xp_reward": 60,
-        "xp_multiplier": 1.0,
-        "icon": "📜",
-        "tier": GiftTier.STATE_TRIGGER,
-        "category": GiftCategory.APOLOGY,
-        "clears_cold_war": True,
-        "emotion_boost": 50,  # 大幅提升情绪分
         "sort_order": 203,
     },
     {
@@ -316,37 +327,74 @@ DEFAULT_GIFT_CATALOG = [
         },
         "sort_order": 204,
     },
-    
-    # ============ Tier 3: 关系加速器 (Speed Dating) ============
     {
-        "gift_type": "luxury_bag",
-        "name": "Designer Handbag",
-        "name_cn": "名牌包包",
-        "description": "A luxurious designer handbag",
-        "description_cn": "奢华的名牌包包，让她狂喜",
-        "price": 999,
-        "xp_reward": 1500,
-        "xp_multiplier": 1.5,
-        "icon": "👜",
+        "gift_type": "triple_xp_boost",
+        "name": "Triple XP Boost",
+        "name_cn": "三倍经验加速",
+        "description": "Triple intimacy XP gain for the next 50 messages",
+        "description_cn": "接下来50条消息获得三倍亲密度经验",
+        "price": 300,
+        "xp_reward": 200,
+        "xp_multiplier": 3.0,
+        "icon": "🚀",
         "tier": GiftTier.SPEED_DATING,
-        "category": GiftCategory.ACCELERATOR,
-        "force_emotion": "ecstatic",  # 强制情绪变为狂喜
-        "sort_order": 301,
+        "category": GiftCategory.STATE,
+        "status_effect": {
+            "type": "xp_boost_triple",
+            "duration_messages": 50,
+            "prompt_modifier": "用户使用了三倍经验加速，你们之间的羁绊在快速加深。表现出更多的亲近感和好感。",
+        },
+        "sort_order": 205,
     },
+    
+    # ============ Tier 4: 记忆 (Memories) - 角色专属收藏品 ============
     {
-        "gift_type": "oath_ring",
-        "name": "Oath Ring",
-        "name_cn": "誓约之戒",
-        "description": "A ring symbolizing your commitment",
-        "description_cn": "象征承诺的戒指，直接升阶",
+        "gift_type": "vera_sunglasses",
+        "name": "Vera's Sunglasses",
+        "name_cn": "Vera的墨镜",
+        "description": "Exclusive accessory for Vera",
+        "description_cn": "Vera专属：酷炫墨镜，解锁隐藏对话",
         "price": 1999,
         "xp_reward": 3000,
-        "xp_multiplier": 1.5,
-        "icon": "💍",
-        "tier": GiftTier.SPEED_DATING,
-        "category": GiftCategory.ACCELERATOR,
-        "level_boost": True,  # 若 < Lv.20，拉升至接近 Lover
-        "sort_order": 302,
+        "xp_multiplier": 2.0,
+        "icon": "🕶️",
+        "tier": GiftTier.WHALE_BAIT,
+        "category": GiftCategory.LUXURY,
+        "character_exclusive": "b6c7d8e9-f0a1-4b2c-3d4e-5f6a7b8c9d0e",  # Vera
+        "unlocks_memory": True,
+        "sort_order": 401,
+    },
+    {
+        "gift_type": "luna_cyber_outfit",
+        "name": "Luna's Cyber Outfit",
+        "name_cn": "Luna的赛博套装",
+        "description": "Exclusive outfit for Luna",
+        "description_cn": "Luna专属：2077风格服装，解锁隐藏剧情",
+        "price": 1999,
+        "xp_reward": 3000,
+        "xp_multiplier": 2.0,
+        "icon": "🌙",
+        "tier": GiftTier.WHALE_BAIT,
+        "category": GiftCategory.LUXURY,
+        "character_exclusive": "d2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d",  # Luna
+        "unlocks_memory": True,
+        "sort_order": 402,
+    },
+    {
+        "gift_type": "sakura_cute_bag",
+        "name": "Sakura's Cute Bag",
+        "name_cn": "Sakura的可爱书包",
+        "description": "Exclusive bag for Sakura",
+        "description_cn": "Sakura专属：超可爱书包，解锁隐藏回忆",
+        "price": 1999,
+        "xp_reward": 3000,
+        "xp_multiplier": 2.0,
+        "icon": "🎒",
+        "tier": GiftTier.WHALE_BAIT,
+        "category": GiftCategory.LUXURY,
+        "character_exclusive": "e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e",  # Sakura
+        "unlocks_memory": True,
+        "sort_order": 403,
     },
     {
         "gift_type": "luxury_yacht",
@@ -358,28 +406,10 @@ DEFAULT_GIFT_CATALOG = [
         "xp_reward": 8000,
         "xp_multiplier": 1.6,
         "icon": "🛳️",
-        "tier": GiftTier.SPEED_DATING,
-        "category": GiftCategory.LUXURY,
-        "global_broadcast": True,  # 全服广播 (即将推出)
-        "sort_order": 303,
-    },
-    
-    # ============ Tier 4: 榜一大哥尊享 (The Whale Bait) ============
-    {
-        "gift_type": "cyber_heart",
-        "name": "Cyber Heart",
-        "name_cn": "赛博之心",
-        "description": "The ultimate gift - unlocks exclusive content",
-        "description_cn": "终极礼物，全服置顶公告（即将推出）",
-        "price": 9999,
-        "xp_reward": 20000,
-        "xp_multiplier": 2.0,
-        "icon": "💖",
         "tier": GiftTier.WHALE_BAIT,
         "category": GiftCategory.LUXURY,
-        "unlocks_full_obedience": True,  # 解锁完全服从模式 (XP本身就够用了)
-        "global_announcement": True,  # 全服置顶公告 (即将推出)
-        "sort_order": 401,
+        "global_broadcast": True,
+        "sort_order": 404,
     },
 ]
 
