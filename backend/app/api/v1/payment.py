@@ -735,25 +735,27 @@ async def revenuecat_webhook(request: Request):
             if product_id and "vip" in product_id.lower():
                 tier = "vip"
             
-            expiration_date = None
+            # Calculate duration_days from expiration timestamp
+            duration_days = 30  # Default to monthly
             if expiration_at:
                 from datetime import datetime
                 expiration_date = datetime.fromtimestamp(expiration_at / 1000)
+                duration_days = max(1, (expiration_date - datetime.utcnow()).days)
             
             await subscription_service.activate_subscription(
                 user_id=app_user_id,
                 tier=tier,
-                expiration_date=expiration_date,
-                source="revenuecat",
-                product_id=product_id,
+                duration_days=duration_days,
+                payment_provider="revenuecat",
+                provider_transaction_id=product_id,
             )
-            logger.info(f"Subscription activated: {app_user_id} -> {tier}")
+            logger.info(f"Subscription activated: {app_user_id} -> {tier} for {duration_days} days")
             
         elif event_type == "EXPIRATION":
             # Subscription expired
             await subscription_service.expire_subscription(
                 user_id=app_user_id,
-                source="revenuecat",
+                reason="revenuecat_expiration",
             )
             logger.info(f"Subscription expired: {app_user_id}")
             
