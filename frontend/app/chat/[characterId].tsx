@@ -334,19 +334,17 @@ export default function ChatScreen() {
           console.log('[Chat] No history, loading greeting...');
           
           // 🌙 Luna专属入场动画 (仅第一次)
-          // TODO: 测试完后恢复AsyncStorage检查
           if (params.characterId === LUNA_CHARACTER_ID) {
-            // const introKey = `luna_intro_shown_${params.characterId}`;
-            // const introShown = await AsyncStorage.getItem(introKey);
+            const introKey = `luna_intro_shown_${params.characterId}`;
+            const introShown = await AsyncStorage.getItem(introKey);
             
-            // if (!introShown) {  // 临时：每次都显示intro
-            if (true) {
-              console.log('[Chat] Luna showing intro animation (DEBUG MODE)');
+            if (!introShown) {
+              console.log('[Chat] Luna showing intro animation (first time)');
               lunaSessionIdRef.current = session.sessionId;  // 保存sessionId
               setShowLunaIntro(true);
               setLunaIntroPhase('black');
               setLunaVideoReady(false);
-              // await AsyncStorage.setItem(introKey, 'true');  // 临时禁用
+              await AsyncStorage.setItem(introKey, 'true');
               // Intro会在动画结束后发送开场白，这里不发送普通greeting
               setIsInitializing(false);
               return;
@@ -366,6 +364,17 @@ export default function ChatScreen() {
               };
               // Use store method for initial greeting (before useMessages is ready)
               addMessageToStore(session.sessionId, greetingMessage);
+              
+              // Also save to SQLite for persistence
+              import('../services/database/repositories').then(({ MessageRepository }) => {
+                MessageRepository.create({
+                  id: greetingMessage.messageId,
+                  session_id: session.sessionId,
+                  role: greetingMessage.role,
+                  content: greetingMessage.content,
+                  created_at: greetingMessage.createdAt,
+                }).catch(e => console.log('[Chat] Failed to save greeting to SQLite:', e));
+              });
 
               // 🎬 测试入口：Sakura 发送视频消息
               if (params.characterId === 'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e') {
@@ -984,6 +993,20 @@ export default function ChatScreen() {
         // 用 addMessage (来自useMessages hook) 而不是 addMessageToStore
         addMessage(introMessage);
         console.log('[Luna] Intro message added');
+        
+        // Also save to SQLite using ref (state may not be updated yet)
+        const sid = lunaSessionIdRef.current;
+        if (sid) {
+          import('../services/database/repositories').then(({ MessageRepository }) => {
+            MessageRepository.create({
+              id: introMessage.messageId,
+              session_id: sid,
+              role: introMessage.role,
+              content: introMessage.content,
+              created_at: introMessage.createdAt,
+            }).catch(e => console.log('[Luna] Failed to save intro to SQLite:', e));
+          });
+        }
       }, 100);
     });
   }, [addMessage, lunaIntroFadeAnim]);
@@ -1987,7 +2010,7 @@ const styles = StyleSheet.create({
   messagesList: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 8,
+    paddingBottom: 4,
   },
   messageRow: {
     flexDirection: 'row',
@@ -2102,16 +2125,16 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   actionButtonsScroll: {
-    minHeight: 56,
-    maxHeight: 56,
+    minHeight: 44,
+    maxHeight: 44,
   },
   actionButtonsRow: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 6,
     gap: 12,
     alignItems: 'center',
-    height: 56,
+    height: 44,
   },
   // iOS-style frosted glass buttons
   actionButton: {
@@ -2154,13 +2177,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: 'rgba(255, 255, 255, 0.7)',
     textAlign: 'center',
-    paddingVertical: 4,
+    paddingVertical: 2,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingTop: 4,
     paddingBottom: 16,
     gap: 10,
   },
