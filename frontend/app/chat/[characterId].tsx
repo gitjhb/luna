@@ -991,6 +991,16 @@ export default function ChatScreen() {
 我是 Vera。
 
 既然来了，就别傻站着。过来，帮我把酒满上。让我看看……你有没有资格留在我身边。🍷`;
+      } else if (params.characterId === CHARACTER_IDS.SAKURA) {
+        introContent = `*站在樱花树下，看到你的一瞬间，眼睛瞬间亮了起来，用力地挥着手，身体因为兴奋微微前倾*
+
+前辈！你终于来啦！
+
+哇……真的和我想象中一模一样耶！
+
+咳咳，重新介绍一下，我是 Sakura！
+
+虽然不知道未来会发生什么，但如果是和前辈在一起的话，一定全是开心的事情吧！准备好开始我们的故事了吗？🌸`;
       } else {
         introContent = '你好~';
       }

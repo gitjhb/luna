@@ -35,9 +35,10 @@ export const characterBackgrounds: Record<string, any> = {
 
 // Character intro videos (全屏播放)
 export const characterIntroVideos: Record<string, any> = {
+  [CHARACTER_IDS.SAKURA]: require('./sakura/videos/intro.mp4'),
   [CHARACTER_IDS.LUNA]: require('./luna/intro.mp4'),
   [CHARACTER_IDS.VERA]: require('./vera/videos/intro.mp4'),
-  // Sakura, Mei, Meiqiu 暂无intro视频
+  // Mei, Meiqiu 暂无intro视频
 };
 
 // Default avatar for unknown characters
