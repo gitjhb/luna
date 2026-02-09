@@ -354,7 +354,7 @@ CHARACTERS = [
         "system_prompt": MEI_PROMPT,
         "personality": {"temperament": 6, "sensitivity": 8, "boundaries": 4, "forgiveness": 6, "jealousy": 9},
         "greeting": "学长！！你终于来找芽衣了嘛~ (扑过来抱住手臂) 芽衣等了好久好久哦...哼，下次不许让芽衣等这么久！不然芽衣会生气的哒！🎀",
-        "is_active": False,  # MVP隐藏
+        "is_active": True,
         "created_at": datetime.utcnow(),
         # Extended profile
         "age": 18,

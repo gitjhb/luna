@@ -45,7 +45,7 @@ import { GiftOverlay, useGiftEffect, GiftType } from '../../components/GiftEffec
 import { paymentService } from '../../services/paymentService';
 import { RechargeModal } from '../../components/RechargeModal';
 import { SubscriptionModalRC as SubscriptionModal } from '../../components/SubscriptionModalRC';
-import { getCharacterAvatar, getCharacterBackground } from '../../assets/characters';
+import { getCharacterAvatar, getCharacterBackground, getCharacterIntroVideo, CHARACTER_IDS } from '../../assets/characters';
 import CharacterInfoPanel from '../../components/CharacterInfoPanel';
 import GiftBottomSheet from '../../components/GiftBottomSheet';
 import MockModeBanner from '../../components/MockModeBanner';
@@ -181,15 +181,9 @@ export default function ChatScreen() {
   const introFadeAnim = useRef(new Animated.Value(1)).current;
   const introSessionIdRef = useRef<string | null>(null);  // 保存sessionId给intro用
   
-  // 角色ID常量
-  const LUNA_CHARACTER_ID = 'd2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d';
-  const VERA_CHARACTER_ID = 'b6c7d8e9-f0a1-4b2c-3d4e-5f6a7b8c9d0e';
-  
-  // 角色intro视频配置
-  const CHARACTER_INTRO_VIDEOS: Record<string, any> = {
-    [LUNA_CHARACTER_ID]: require('../../assets/characters/luna/intro.mp4'),
-    [VERA_CHARACTER_ID]: require('../../assets/characters/vera/videos/intro.mp4'),
-  };
+  // 使用统一的角色ID常量
+  const LUNA_CHARACTER_ID = CHARACTER_IDS.LUNA;
+  const VERA_CHARACTER_ID = CHARACTER_IDS.VERA;
 
   // 🎨 动态主题 - 根据情绪状态自动切换
   const {
@@ -353,7 +347,7 @@ export default function ChatScreen() {
           console.log('[Chat] No history, loading greeting...');
           
           // 🎬 角色专属入场动画 (仅第一次，支持Luna/Vera等)
-          if (CHARACTER_INTRO_VIDEOS[params.characterId]) {
+          if (getCharacterIntroVideo(params.characterId)) {
             const introKey = `character_intro_shown_${params.characterId}`;
             const introShown = await AsyncStorage.getItem(introKey);
             
@@ -1042,7 +1036,7 @@ export default function ChatScreen() {
   const renderCharacterIntroOverlay = () => {
     if (!showCharacterIntro) return null;
     
-    const videoSource = CHARACTER_INTRO_VIDEOS[params.characterId];
+    const videoSource = getCharacterIntroVideo(params.characterId);
     if (!videoSource) return null;
     
     return (
