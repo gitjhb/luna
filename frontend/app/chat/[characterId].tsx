@@ -174,7 +174,9 @@ export default function ChatScreen() {
   // 🌙 Luna入场动画 (仅第一次打开Luna时显示)
   const [showLunaIntro, setShowLunaIntro] = useState(false);
   const [lunaIntroPhase, setLunaIntroPhase] = useState<'black' | 'video' | 'fadeout' | 'done'>('black');
+  const [lunaVideoReady, setLunaVideoReady] = useState(false);
   const lunaIntroFadeAnim = useRef(new Animated.Value(1)).current;
+  const lunaSessionIdRef = useRef<string | null>(null);  // 保存sessionId给intro用
   const LUNA_CHARACTER_ID = 'd2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d';
 
   // 🎨 动态主题 - 根据情绪状态自动切换
@@ -338,8 +340,10 @@ export default function ChatScreen() {
             
             if (!introShown) {
               console.log('[Chat] Luna first time - showing intro animation');
+              lunaSessionIdRef.current = session.sessionId;  // 保存sessionId
               setShowLunaIntro(true);
               setLunaIntroPhase('black');
+              setLunaVideoReady(false);
               await AsyncStorage.setItem(introKey, 'true');
               // Intro会在动画结束后发送开场白，这里不发送普通greeting
               setIsInitializing(false);
@@ -966,7 +970,9 @@ export default function ChatScreen() {
 在这里，没有数据流，没有任务，没有所谓的'未来'。
 把那些沉重的东西都卸在门外吧……今晚，这一小块月亮，只属于我们。"`;
       
-      if (sessionId) {
+      // 使用ref保存的sessionId (避免闭包问题)
+      const sid = lunaSessionIdRef.current;
+      if (sid) {
         const introMessage: Message = {
           messageId: `luna-intro-${Date.now()}`,
           role: 'assistant',
@@ -974,10 +980,13 @@ export default function ChatScreen() {
           createdAt: new Date().toISOString(),
           tokensUsed: 0,
         };
-        addMessageToStore(sessionId, introMessage);
+        addMessageToStore(sid, introMessage);
+        console.log('[Luna] Intro message added to session:', sid);
+      } else {
+        console.error('[Luna] No sessionId available for intro message');
       }
     });
-  }, [sessionId, addMessageToStore, lunaIntroFadeAnim]);
+  }, [addMessageToStore, lunaIntroFadeAnim]);
 
   // 🌙 Luna入场动画 - 黑屏1.5秒后播放视频
   useEffect(() => {
@@ -995,22 +1004,46 @@ export default function ChatScreen() {
       <View style={styles.lunaIntroContainer}>
         {/* 黑屏阶段 */}
         {lunaIntroPhase === 'black' && (
-          <View style={styles.lunaIntroBlack} />
+          <View style={styles.lunaIntroBlack}>
+            {/* Luna icon loading */}
+            <View style={styles.lunaIntroLoading}>
+              <Image
+                source={require('../../assets/characters/luna/avatar.jpg')}
+                style={styles.lunaIntroIcon}
+              />
+              <ActivityIndicator size="small" color="#00D4FF" style={{ marginTop: 16 }} />
+            </View>
+          </View>
         )}
         {/* 视频阶段 */}
         {lunaIntroPhase === 'video' && (
-          <Video
-            source={require('../../assets/characters/luna/intro.mp4')}
-            style={styles.lunaIntroVideo}
-            resizeMode={ResizeMode.COVER}
-            shouldPlay
-            isLooping={false}
-            onPlaybackStatusUpdate={(status) => {
-              if (status.isLoaded && status.didJustFinish) {
-                handleLunaVideoEnd();
-              }
-            }}
-          />
+          <>
+            {/* 视频加载前显示loading */}
+            {!lunaVideoReady && (
+              <View style={styles.lunaIntroBlack}>
+                <View style={styles.lunaIntroLoading}>
+                  <Image
+                    source={require('../../assets/characters/luna/avatar.jpg')}
+                    style={styles.lunaIntroIcon}
+                  />
+                  <ActivityIndicator size="small" color="#00D4FF" style={{ marginTop: 16 }} />
+                </View>
+              </View>
+            )}
+            <Video
+              source={require('../../assets/characters/luna/intro.mp4')}
+              style={[styles.lunaIntroVideo, !lunaVideoReady && { opacity: 0 }]}
+              resizeMode={ResizeMode.COVER}
+              shouldPlay
+              isLooping={false}
+              onReadyForDisplay={() => setLunaVideoReady(true)}
+              onPlaybackStatusUpdate={(status) => {
+                if (status.isLoaded && status.didJustFinish) {
+                  handleLunaVideoEnd();
+                }
+              }}
+            />
+          </>
         )}
         {/* 淡出阶段 - 视频最后一帧淡出 */}
         {lunaIntroPhase === 'fadeout' && (
@@ -1878,6 +1911,18 @@ const styles = StyleSheet.create({
   lunaIntroBlack: {
     flex: 1,
     backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  lunaIntroLoading: {
+    alignItems: 'center',
+  },
+  lunaIntroIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 2,
+    borderColor: 'rgba(0, 212, 255, 0.5)',
   },
   lunaIntroVideo: {
     flex: 1,
