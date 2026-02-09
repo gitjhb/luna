@@ -99,31 +99,20 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleCancelSubscription = () => {
-    Alert.alert(
-      t.profile.cancelSubscription,
-      t.profile.cancelSubscriptionConfirm,
-      [
-        { text: t.profile.thinkAgain, style: 'cancel' },
-        {
-          text: t.profile.confirmCancel,
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const result = await paymentService.cancelSubscription();
-              if (result.success) {
-                updateUser({ subscriptionTier: 'free' });
-                Alert.alert(t.profile.cancelled, result.message || '订阅已取消');
-              } else {
-                Alert.alert(t.common.error, result.message || '请稍后重试');
-              }
-            } catch (e: any) {
-              Alert.alert(t.common.error, e.message || '请稍后重试');
-            }
-          },
-        },
-      ]
-    );
+  const handleManageSubscription = async () => {
+    // RevenueCat方式：打开系统订阅管理页面
+    // 用户可以在那里取消或更改订阅计划
+    try {
+      const Purchases = require('react-native-purchases').default;
+      await Purchases.showManageSubscriptions();
+    } catch (e: any) {
+      // Fallback: 提示用户手动去设置
+      Alert.alert(
+        '管理订阅',
+        '请前往 设置 → Apple ID → 订阅 来管理您的订阅。\n\n取消后，您仍可享用权益直到当前周期结束。',
+        [{ text: '好的', style: 'default' }]
+      );
+    }
   };
 
   const onRefresh = useCallback(async () => {
@@ -249,9 +238,9 @@ export default function ProfileScreen() {
             {isSubscribed && (
               <TouchableOpacity 
                 style={styles.cancelSubscriptionLink}
-                onPress={handleCancelSubscription}
+                onPress={handleManageSubscription}
               >
-                <Text style={styles.cancelSubscriptionText}>{t.profile.cancelSubscription}</Text>
+                <Text style={styles.cancelSubscriptionText}>管理订阅</Text>
               </TouchableOpacity>
             )}
           </View>

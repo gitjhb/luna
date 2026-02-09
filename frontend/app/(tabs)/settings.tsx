@@ -394,32 +394,18 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleCancelSubscription = () => {
-    Alert.alert(
-      '取消订阅',
-      '确定要取消订阅吗？\n\n• 将立即降级为免费用户\n• 月光碎片余额保留\n• 不退款',
-      [
-        { text: '再想想', style: 'cancel' },
-        {
-          text: '确定取消',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const result = await paymentService.cancelSubscription();
-              if (result.success) {
-                // Update local state - set tier to free
-                useUserStore.getState().updateUser({ subscriptionTier: 'free' });
-                Alert.alert('已取消', result.message || '订阅已取消，已降级为免费用户。');
-              } else {
-                Alert.alert('取消失败', result.message || '请稍后重试');
-              }
-            } catch (e: any) {
-              Alert.alert('取消失败', e.message || '请稍后重试');
-            }
-          },
-        },
-      ]
-    );
+  const handleManageSubscription = async () => {
+    // RevenueCat方式：打开系统订阅管理页面
+    try {
+      const Purchases = require('react-native-purchases').default;
+      await Purchases.showManageSubscriptions();
+    } catch (e: any) {
+      Alert.alert(
+        '管理订阅',
+        '请前往 设置 → Apple ID → 订阅 来管理您的订阅。\n\n取消后，您仍可享用权益直到当前周期结束。',
+        [{ text: '好的', style: 'default' }]
+      );
+    }
   };
 
   const handleLogout = () => {
@@ -502,11 +488,10 @@ export default function SettingsScreen() {
             />
             {isSubscribed && (
               <SettingItem
-                icon="close-circle-outline"
-                title="取消订阅"
-                subtitle="降级为免费用户，碎片余额保留"
-                onPress={handleCancelSubscription}
-                danger
+                icon="settings-outline"
+                title="管理订阅"
+                subtitle="更改或取消订阅计划"
+                onPress={handleManageSubscription}
                 theme={theme}
               />
             )}
