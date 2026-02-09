@@ -998,66 +998,42 @@ export default function ChatScreen() {
     }
   }, [showLunaIntro, lunaIntroPhase]);
 
-  // 🌙 Luna入场动画渲染
-  if (showLunaIntro) {
+  // 🌙 Luna入场动画渲染函数 (覆盖在聊天界面上)
+  const renderLunaIntroOverlay = () => {
+    if (!showLunaIntro) return null;
+    
     return (
-      <View style={styles.lunaIntroContainer}>
-        {/* 黑屏阶段 */}
-        {lunaIntroPhase === 'black' && (
-          <View style={styles.lunaIntroBlack}>
-            {/* Luna icon loading */}
-            <View style={styles.lunaIntroLoading}>
-              <Image
-                source={require('../../assets/characters/luna/avatar.jpg')}
-                style={styles.lunaIntroIcon}
-              />
-              <ActivityIndicator size="small" color="#00D4FF" style={{ marginTop: 16 }} />
-            </View>
-          </View>
+      <Animated.View 
+        style={[styles.lunaIntroOverlay, { opacity: lunaIntroPhase === 'fadeout' ? lunaIntroFadeAnim : 1 }]}
+        pointerEvents={lunaIntroPhase === 'fadeout' ? 'none' : 'auto'}
+      >
+        {/* Loading阶段 - 用splash logo */}
+        {(lunaIntroPhase === 'black' || (lunaIntroPhase === 'video' && !lunaVideoReady)) && (
+          <Image
+            source={require('../../assets/images/splash-logo.jpg')}
+            style={styles.lunaIntroSplash}
+            resizeMode="cover"
+          />
         )}
         {/* 视频阶段 */}
-        {lunaIntroPhase === 'video' && (
-          <>
-            {/* 视频加载前显示loading */}
-            {!lunaVideoReady && (
-              <View style={styles.lunaIntroBlack}>
-                <View style={styles.lunaIntroLoading}>
-                  <Image
-                    source={require('../../assets/characters/luna/avatar.jpg')}
-                    style={styles.lunaIntroIcon}
-                  />
-                  <ActivityIndicator size="small" color="#00D4FF" style={{ marginTop: 16 }} />
-                </View>
-              </View>
-            )}
-            <Video
-              source={require('../../assets/characters/luna/intro.mp4')}
-              style={[styles.lunaIntroVideo, !lunaVideoReady && { opacity: 0 }]}
-              resizeMode={ResizeMode.COVER}
-              shouldPlay
-              isLooping={false}
-              onReadyForDisplay={() => setLunaVideoReady(true)}
-              onPlaybackStatusUpdate={(status) => {
-                if (status.isLoaded && status.didJustFinish) {
-                  handleLunaVideoEnd();
-                }
-              }}
-            />
-          </>
+        {(lunaIntroPhase === 'video' || lunaIntroPhase === 'fadeout') && (
+          <Video
+            source={require('../../assets/characters/luna/intro.mp4')}
+            style={[styles.lunaIntroVideo, !lunaVideoReady && { opacity: 0 }]}
+            resizeMode={ResizeMode.COVER}
+            shouldPlay
+            isLooping={false}
+            onReadyForDisplay={() => setLunaVideoReady(true)}
+            onPlaybackStatusUpdate={(status) => {
+              if (status.isLoaded && status.didJustFinish) {
+                handleLunaVideoEnd();
+              }
+            }}
+          />
         )}
-        {/* 淡出阶段 - 视频最后一帧淡出 */}
-        {lunaIntroPhase === 'fadeout' && (
-          <Animated.View style={[styles.lunaIntroFadeout, { opacity: lunaIntroFadeAnim }]}>
-            <Image
-              source={require('../../assets/characters/luna/chat_background.png')}
-              style={styles.lunaIntroVideo}
-              resizeMode="cover"
-            />
-          </Animated.View>
-        )}
-      </View>
+      </Animated.View>
     );
-  }
+  };
 
   return (
     <GestureHandlerRootView style={styles.container}>
@@ -1901,39 +1877,28 @@ export default function ChatScreen() {
           </View>
         </View>
       )}
+      
+      {/* 🌙 Luna入场动画覆盖层 */}
+      {renderLunaIntroOverlay()}
     </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
-  // 🌙 Luna Intro Animation
-  lunaIntroContainer: {
-    flex: 1,
-    backgroundColor: '#000',
+  // 🌙 Luna Intro Animation - 覆盖层
+  lunaIntroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
   },
-  lunaIntroBlack: {
-    flex: 1,
-    backgroundColor: '#000',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  lunaIntroLoading: {
-    alignItems: 'center',
-  },
-  lunaIntroIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    borderWidth: 2,
-    borderColor: 'rgba(0, 212, 255, 0.5)',
-  },
-  lunaIntroVideo: {
-    flex: 1,
+  lunaIntroSplash: {
+    ...StyleSheet.absoluteFillObject,
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
   },
-  lunaIntroFadeout: {
+  lunaIntroVideo: {
     ...StyleSheet.absoluteFillObject,
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
   },
   container: {
     flex: 1,
