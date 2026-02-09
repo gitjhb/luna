@@ -259,6 +259,10 @@ export default function ChatScreen() {
   const initializeSession = async () => {
     try {
       setIsInitializing(true);
+      
+      // 🧪 DEBUG: 清除Vera intro标记以便测试
+      await AsyncStorage.removeItem('character_intro_shown_b6c7d8e9-f0a1-4b2c-3d4e-5f6a7b8c9d0e');
+      console.log('[DEBUG] Cleared Vera intro flag');
 
       // Step 1: Check for cached session first (instant load)
       const cachedSession = useChatStore.getState().getSessionByCharacterId(params.characterId);
