@@ -33,8 +33,8 @@ export const characterBackgrounds: Record<string, any> = {
   // 小美 - 用头像作为背景
   'c1a2b3c4-d5e6-4f7a-8b9c-0d1e2f3a4b5c': require('./小美.jpg'),
   
-  // Luna
-  'd2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d': require('./luna/avatar.jpg'),
+  // Luna - 使用全身照作为背景
+  'd2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d': require('./luna.jpg'),
   
   // Sakura
   'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e': require('./Sakura.jpeg'),
