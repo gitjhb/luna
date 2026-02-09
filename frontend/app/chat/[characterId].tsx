@@ -2008,7 +2008,7 @@ const styles = StyleSheet.create({
   },
   aiDisclaimer: {
     fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.4)',
+    color: 'rgba(255, 255, 255, 0.7)',
     textAlign: 'center',
     paddingVertical: 4,
   },
