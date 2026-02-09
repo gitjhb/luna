@@ -366,7 +366,7 @@ export default function ChatScreen() {
               addMessageToStore(session.sessionId, greetingMessage);
               
               // Also save to SQLite for persistence
-              import('../services/database/repositories').then(({ MessageRepository }) => {
+              import('../../services/database/repositories').then(({ MessageRepository }) => {
                 MessageRepository.create({
                   id: greetingMessage.messageId,
                   session_id: session.sessionId,
@@ -1004,7 +1004,7 @@ export default function ChatScreen() {
         // Also save to SQLite using ref (state may not be updated yet)
         const sid = lunaSessionIdRef.current;
         if (sid) {
-          import('../services/database/repositories').then(({ MessageRepository }) => {
+          import('../../services/database/repositories').then(({ MessageRepository }) => {
             MessageRepository.create({
               id: introMessage.messageId,
               session_id: sid,
