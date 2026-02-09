@@ -323,6 +323,22 @@ export default function ChatScreen() {
         useChatStore.getState().addSession(session);
       }
 
+      // 🎬 Vera intro 视频 (每次进入都播放)
+      if (params.characterId === 'b6c7d8e9-f0a1-4b2c-3d4e-5f6a7b8c9d0e') {
+        setTimeout(() => {
+          const videoMessage: Message = {
+            messageId: `vera-intro-${Date.now()}`,
+            role: 'assistant',
+            type: 'video',
+            content: '来，先看看姐姐给你准备的～ 🍷',
+            videoUrl: 'vera_intro',
+            createdAt: new Date().toISOString(),
+            tokensUsed: 0,
+          };
+          addMessageToStore(session.sessionId, videoMessage);
+        }, 500);
+      }
+
       // Step 4: Messages will be loaded by useMessages hook automatically
       // Just check if we need to show greeting for new sessions
       try {
@@ -400,26 +416,7 @@ export default function ChatScreen() {
                 }
               }
 
-              // 🎬 Vera intro 视频 (仅第一次)
-              if (params.characterId === 'b6c7d8e9-f0a1-4b2c-3d4e-5f6a7b8c9d0e') {
-                const veraIntroKey = `vera_intro_shown_${params.characterId}`;
-                const veraIntroShown = await AsyncStorage.getItem(veraIntroKey);
-                if (!veraIntroShown) {
-                  await AsyncStorage.setItem(veraIntroKey, 'true');
-                  setTimeout(() => {
-                    const videoMessage: Message = {
-                      messageId: `video-${Date.now()}`,
-                      role: 'assistant',
-                      type: 'video',
-                      content: '来，先看看姐姐给你准备的～ 🍷',
-                      videoUrl: 'vera_intro',
-                      createdAt: new Date().toISOString(),
-                      tokensUsed: 0,
-                    };
-                    addMessageToStore(session.sessionId, videoMessage);
-                  }, 1500);
-                }
-              }
+              // Vera intro moved outside history check (plays every time)
             }
           } catch (e) {
             console.log('Could not load character greeting:', e);
