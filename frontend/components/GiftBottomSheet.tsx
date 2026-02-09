@@ -1,12 +1,12 @@
 /**
  * Gift Bottom Sheet
  * 
- * 礼物选择面板 - 按 Tier 分类展示
+ * 装备栏/终端面板风格的礼物选择界面
  * 
- * Tier 1: 日常消耗品 (Consumables)
- * Tier 2: 状态触发器 (State Triggers) ⭐ MVP 重点
- * Tier 3: 关系加速器 (Speed Dating)
- * Tier 4: 榜一大哥尊享 (Whale Bait)
+ * 分类：
+ * - 消耗品 (Consumables): 日常小礼物
+ * - 插件 (Plugins): 状态效果道具
+ * - 记忆 (Memories): 关系里程碑/收藏品
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -20,6 +20,8 @@ import {
   Animated,
   Dimensions,
   ActivityIndicator,
+  Image,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -29,12 +31,19 @@ import { theme } from '../theme/config';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.75;
 
-// Tier 分类配置
-const GIFT_TIERS = [
-  { id: 1, name: '日常', icon: 'cafe-outline', color: '#4ECDC4' },
-  { id: 2, name: '状态', icon: 'sparkles', color: '#FF6B9D' },
-  { id: 3, name: '加速', icon: 'rocket-outline', color: '#9B59B6' },
-  { id: 4, name: '尊享', icon: 'diamond', color: '#F1C40F' },
+// Moonshard icon
+const MoonShardIcon = ({ size = 16, style }: { size?: number; style?: any }) => (
+  <Image 
+    source={require('../assets/icons/moon-shard.png')} 
+    style={[{ width: size, height: size }, style]} 
+  />
+);
+
+// 终端风格分类 (映射到原有tier)
+const GIFT_CATEGORIES = [
+  { id: 'consumables', tiers: [1], name: '消耗品', nameEn: 'Consumables', icon: 'cube-outline', color: '#00D4FF' },
+  { id: 'plugins', tiers: [2, 3], name: '插件', nameEn: 'Plugins', icon: 'hardware-chip-outline', color: '#00F5D4' },
+  { id: 'memories', tiers: [4], name: '记忆', nameEn: 'Memories', icon: 'heart-outline', color: '#FF6B9D' },
 ];
 
 interface StatusEffect {
@@ -93,7 +102,7 @@ export default function GiftBottomSheet({
   bottleneckRequiredTier = null,
   bottleneckLockLevel = null,
 }: GiftBottomSheetProps) {
-  const [selectedTier, setSelectedTier] = useState(1);
+  const [selectedCategory, setSelectedCategory] = useState('consumables');
   const [selectedGift, setSelectedGift] = useState<GiftItem | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   
@@ -102,13 +111,17 @@ export default function GiftBottomSheet({
 
   useEffect(() => {
     if (visible) {
-      // 如果在冷战中，默认选择 Tier 2 (有悔过书)
+      // 如果在冷战中，默认选择 插件 (有悔过书)
       if (inColdWar) {
-        setSelectedTier(2);
+        setSelectedCategory('plugins');
       }
-      // 如果瓶颈锁激活，默认选择对应 tier
+      // 如果瓶颈锁激活，默认选择对应分类
       if (bottleneckLocked && bottleneckRequiredTier) {
-        setSelectedTier(bottleneckRequiredTier);
+        if (bottleneckRequiredTier >= 4) {
+          setSelectedCategory('memories');
+        } else if (bottleneckRequiredTier >= 2) {
+          setSelectedCategory('plugins');
+        }
       }
       
       Animated.parallel([
@@ -142,8 +155,9 @@ export default function GiftBottomSheet({
     }
   }, [visible, inColdWar]);
 
-  // 按 Tier 过滤礼物
-  const filteredGifts = gifts.filter(gift => gift.tier === selectedTier);
+  // 按分类过滤礼物 (分类映射到多个tier)
+  const currentCategory = GIFT_CATEGORIES.find(c => c.id === selectedCategory);
+  const filteredGifts = gifts.filter(gift => currentCategory?.tiers.includes(gift.tier));
 
   const handleSelectGift = (gift: GiftItem) => {
     setSelectedGift(gift);
@@ -162,33 +176,33 @@ export default function GiftBottomSheet({
   const canAfford = (gift: GiftItem) => gift.price <= userCredits;
   const needsSubscription = (gift: GiftItem) => gift.requires_subscription && !isSubscribed;
 
-  const renderTierTab = (tier: typeof GIFT_TIERS[0]) => {
-    const isActive = selectedTier === tier.id;
-    const tierGifts = gifts.filter(g => g.tier === tier.id);
+  const renderCategoryTab = (category: typeof GIFT_CATEGORIES[0]) => {
+    const isActive = selectedCategory === category.id;
+    const categoryGifts = gifts.filter(g => category.tiers.includes(g.tier));
     
     return (
       <TouchableOpacity
-        key={tier.id}
+        key={category.id}
         style={[
-          styles.tierTab,
-          isActive && { backgroundColor: tier.color + '30', borderColor: tier.color },
+          styles.categoryTab,
+          isActive && styles.categoryTabActive,
         ]}
-        onPress={() => setSelectedTier(tier.id)}
+        onPress={() => setSelectedCategory(category.id)}
       >
         <Ionicons
-          name={tier.icon as any}
-          size={18}
-          color={isActive ? tier.color : 'rgba(255,255,255,0.5)'}
+          name={category.icon as any}
+          size={16}
+          color={isActive ? '#00D4FF' : 'rgba(255,255,255,0.4)'}
         />
         <Text style={[
-          styles.tierTabText,
-          isActive && { color: tier.color },
+          styles.categoryTabText,
+          isActive && styles.categoryTabTextActive,
         ]}>
-          {tier.name}
+          {category.name}
         </Text>
-        {tierGifts.length > 0 && (
-          <View style={[styles.tierBadge, { backgroundColor: tier.color }]}>
-            <Text style={styles.tierBadgeText}>{tierGifts.length}</Text>
+        {categoryGifts.length > 0 && (
+          <View style={[styles.categoryBadge, isActive && styles.categoryBadgeActive]}>
+            <Text style={styles.categoryBadgeText}>{categoryGifts.length}</Text>
           </View>
         )}
       </TouchableOpacity>
@@ -242,7 +256,7 @@ export default function GiftBottomSheet({
         
         {/* 价格 */}
         <View style={styles.priceRow}>
-          <Text style={styles.moonStoneIcon}>💎</Text>
+          <MoonShardIcon size={14} />
           <Text style={[styles.giftPrice, !affordable && styles.giftPriceRed]}>
             {gift.price}
           </Text>
@@ -333,7 +347,7 @@ export default function GiftBottomSheet({
         {/* 价格和按钮 */}
         <View style={styles.detailFooter}>
           <View style={styles.detailPriceBox}>
-            <Text style={styles.moonStoneIcon}>💎</Text>
+            <MoonShardIcon size={20} style={{ marginRight: 4 }} />
             <Text style={[styles.detailPrice, !affordable && { color: '#E74C3C' }]}>
               {selectedGift.price}
             </Text>
@@ -410,16 +424,16 @@ export default function GiftBottomSheet({
               )}
             </View>
             <TouchableOpacity style={styles.creditsDisplay} onPress={onRecharge} activeOpacity={0.7}>
-              <Text style={styles.moonStoneIcon}>💎</Text>
+              <MoonShardIcon size={18} />
               <Text style={styles.creditsText}>{userCredits}</Text>
               <Text style={styles.creditsLabel}>月石</Text>
-              {onRecharge && <Ionicons name="add-circle" size={16} color="#FFD700" style={{ marginLeft: 4 }} />}
+              {onRecharge && <Ionicons name="add-circle" size={16} color="#00D4FF" style={{ marginLeft: 4 }} />}
             </TouchableOpacity>
           </View>
 
-          {/* Tier 标签 */}
-          <View style={styles.tierTabContainer}>
-            {GIFT_TIERS.map(renderTierTab)}
+          {/* 分类标签 - 终端风格 */}
+          <View style={styles.categoryTabContainer}>
+            {GIFT_CATEGORIES.map(renderCategoryTab)}
           </View>
 
           {/* 瓶颈锁提示条 */}
@@ -432,10 +446,10 @@ export default function GiftBottomSheet({
             </View>
           )}
 
-          {/* Tier 描述 */}
-          <View style={styles.tierDescContainer}>
-            <Text style={styles.tierDesc}>
-              {getTierDescription(selectedTier)}
+          {/* 分类描述 */}
+          <View style={styles.categoryDescContainer}>
+            <Text style={styles.categoryDesc}>
+              {getCategoryDescription(selectedCategory)}
             </Text>
           </View>
 
@@ -494,15 +508,14 @@ function getEffectDescription(effectType: string): string {
   return descriptions[effectType] || '特殊效果';
 }
 
-// 获取 Tier 描述
-function getTierDescription(tier: number): string {
-  const descriptions: Record<number, string> = {
-    1: '日常小礼物，维持好感，修补小摩擦',
-    2: '状态触发器，改变她的行为模式 ⭐',
-    3: '关系加速器，快速提升亲密度',
-    4: '榜一大哥专属，解锁终极特权',
+// 获取分类描述
+function getCategoryDescription(categoryId: string): string {
+  const descriptions: Record<string, string> = {
+    consumables: '日常补给，维持连接，修复小bug',
+    plugins: '状态插件，改变她的运行模式 ⚡',
+    memories: '记忆碎片，解锁隐藏剧情',
   };
-  return descriptions[tier] || '';
+  return descriptions[categoryId] || '';
 }
 
 const styles = StyleSheet.create({
@@ -553,9 +566,10 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#00D4FF',
+    letterSpacing: 1,
   },
   coldWarBadge: {
     flexDirection: 'row',
@@ -574,55 +588,71 @@ const styles = StyleSheet.create({
   creditsDisplay: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 255, 0.3)',
     gap: 6,
-  },
-  moonStoneIcon: {
-    fontSize: 14,
   },
   creditsText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#A78BFA',
+    color: '#00D4FF',
   },
   creditsLabel: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.6)',
   },
-  tierTabContainer: {
+  // 终端风格分类标签
+  categoryTabContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     gap: 8,
   },
-  tierTab: {
+  categoryTab: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     borderWidth: 1,
-    borderColor: 'transparent',
+    borderColor: 'rgba(0, 212, 255, 0.2)',
+    borderRadius: 4,
     gap: 6,
   },
-  tierTabText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
+  categoryTabActive: {
+    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+    borderColor: 'rgba(0, 212, 255, 0.6)',
+    shadowColor: '#00D4FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
   },
-  tierBadge: {
+  categoryTabText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.4)',
+    letterSpacing: 0.5,
+  },
+  categoryTabTextActive: {
+    color: '#00D4FF',
+  },
+  categoryBadge: {
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
-  tierBadgeText: {
+  categoryBadgeActive: {
+    backgroundColor: 'rgba(0, 212, 255, 0.3)',
+  },
+  categoryBadgeText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#fff',
+    color: '#00D4FF',
   },
   bottleneckBanner: {
     flexDirection: 'row',
@@ -644,14 +674,16 @@ const styles = StyleSheet.create({
     color: '#F59E0B',
     lineHeight: 16,
   },
-  tierDescContainer: {
+  categoryDescContainer: {
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
-  tierDesc: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.5)',
+  categoryDesc: {
+    fontSize: 11,
+    color: 'rgba(0, 212, 255, 0.6)',
     textAlign: 'center',
+    letterSpacing: 0.5,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   loadingContainer: {
     flex: 1,
@@ -670,17 +702,21 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   giftItem: {
-    width: (SCREEN_WIDTH - 52) / 4,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 14,
-    padding: 10,
+    width: (SCREEN_WIDTH - 52) / 3,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    borderRadius: 6,
+    padding: 12,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 255, 0.15)',
   },
   giftItemSelected: {
     borderColor: '#00D4FF',
-    backgroundColor: 'rgba(236, 72, 153, 0.15)',
+    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+    shadowColor: '#00D4FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
   },
   giftItemBreakthrough: {
     borderColor: 'rgba(245, 158, 11, 0.6)',
@@ -736,7 +772,7 @@ const styles = StyleSheet.create({
   giftPrice: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#A78BFA',
+    color: '#00D4FF',
   },
   giftPriceRed: {
     color: '#E74C3C',
