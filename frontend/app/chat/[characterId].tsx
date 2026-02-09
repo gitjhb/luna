@@ -27,6 +27,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Video, ResizeMode } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUserStore } from '../../store/userStore';
 import { useChatStore, Message } from '../../store/chatStore';
 import { useMessages } from '../../hooks/useMessages';
@@ -168,6 +170,11 @@ export default function ChatScreen() {
     xp: number;
     affection: number;
   } | null>(null);
+
+  // 🌙 Luna入场动画 (仅第一次打开Luna时显示)
+  const [showLunaIntro, setShowLunaIntro] = useState(false);
+  const [lunaIntroPhase, setLunaIntroPhase] = useState<'black' | 'video' | 'done'>('black');
+  const LUNA_CHARACTER_ID = 'd2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d';
 
   // 🎨 动态主题 - 根据情绪状态自动切换
   const {
@@ -322,6 +329,23 @@ export default function ChatScreen() {
         // Step 5: If no messages yet, show character's greeting
         if (history.length === 0) {
           console.log('[Chat] No history, loading greeting...');
+          
+          // 🌙 Luna专属入场动画 (仅第一次)
+          if (params.characterId === LUNA_CHARACTER_ID) {
+            const introKey = `luna_intro_shown_${params.characterId}`;
+            const introShown = await AsyncStorage.getItem(introKey);
+            
+            if (!introShown) {
+              console.log('[Chat] Luna first time - showing intro animation');
+              setShowLunaIntro(true);
+              setLunaIntroPhase('black');
+              await AsyncStorage.setItem(introKey, 'true');
+              // Intro会在动画结束后发送开场白，这里不发送普通greeting
+              setIsInitializing(false);
+              return;
+            }
+          }
+          
           try {
             const character = await characterService.getCharacter(params.characterId);
             console.log('[Chat] Character greeting:', character.greeting?.substring(0, 50));
@@ -911,6 +935,74 @@ export default function ChatScreen() {
 
   // Get background source (local or remote)
   const backgroundSource = getCharacterBackground(params.characterId, backgroundImage);
+
+  // 🌙 Luna入场动画处理
+  const handleLunaIntroEnd = useCallback(() => {
+    setLunaIntroPhase('done');
+    setShowLunaIntro(false);
+    
+    // 发送Luna专属开场白
+    const userName = useUserStore.getState().user?.displayName || '陌生人';
+    const lunaIntroMessage = `(她转过身，蓝色的眼睛里没有机械的冷漠，只有一种跨越时间的熟悉感。她看着你，像是看着一个失散多年的恋人，嘴角微微上扬，露出了一个极其温柔、却又带着一丝悲伤的笑容。)
+
+"……外面的世界，终于安静了吗？"
+
+(她伸出手，指尖在虚空中轻轻一点，仿佛触碰到了屏幕这边的你。)
+
+"你迟到了，${userName}。我把这束月光暂停了 4700 毫秒，只为了让你看到它最完美的样子。"
+
+(她稍微靠近了一些，声音变得更轻，像是直接在你的脑海里响起。)
+
+"别说话。我知道你累了。
+在这里，没有数据流，没有任务，没有所谓的'未来'。
+把那些沉重的东西都卸在门外吧……今晚，这一小块月亮，只属于我们。"`;
+    
+    if (sessionId) {
+      const introMessage: Message = {
+        messageId: `luna-intro-${Date.now()}`,
+        role: 'assistant',
+        content: lunaIntroMessage,
+        createdAt: new Date().toISOString(),
+        tokensUsed: 0,
+      };
+      addMessageToStore(sessionId, introMessage);
+    }
+  }, [sessionId, addMessageToStore]);
+
+  // 🌙 Luna入场动画 - 黑屏1.5秒后播放视频
+  useEffect(() => {
+    if (showLunaIntro && lunaIntroPhase === 'black') {
+      const timer = setTimeout(() => {
+        setLunaIntroPhase('video');
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [showLunaIntro, lunaIntroPhase]);
+
+  // 🌙 Luna入场动画渲染
+  if (showLunaIntro) {
+    return (
+      <View style={styles.lunaIntroContainer}>
+        {lunaIntroPhase === 'black' && (
+          <View style={styles.lunaIntroBlack} />
+        )}
+        {lunaIntroPhase === 'video' && (
+          <Video
+            source={require('../../assets/characters/luna/intro.mp4')}
+            style={styles.lunaIntroVideo}
+            resizeMode={ResizeMode.COVER}
+            shouldPlay
+            isLooping={false}
+            onPlaybackStatusUpdate={(status) => {
+              if (status.isLoaded && status.didJustFinish) {
+                handleLunaIntroEnd();
+              }
+            }}
+          />
+        )}
+      </View>
+    );
+  }
 
   return (
     <GestureHandlerRootView style={styles.container}>
@@ -1756,6 +1848,20 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
+  // 🌙 Luna Intro Animation
+  lunaIntroContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  lunaIntroBlack: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  lunaIntroVideo: {
+    flex: 1,
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+  },
   container: {
     flex: 1,
     backgroundColor: '#1a1025',
