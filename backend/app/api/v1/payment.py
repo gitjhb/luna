@@ -679,3 +679,117 @@ async def restore_iap_purchases(request: IAPVerifyRequest, req: Request):
     except Exception as e:
         logger.error(f"IAP restore error: {e}")
         raise HTTPException(status_code=500, detail="IAP restore error")
+
+
+# =============================================================================
+# RevenueCat Webhook
+# =============================================================================
+
+@router.post("/revenuecat/webhook")
+async def revenuecat_webhook(request: Request):
+    """
+    Handle RevenueCat webhook events.
+    
+    Configure in RevenueCat Dashboard:
+    1. Go to Project Settings → Integrations → Webhooks
+    2. Add webhook URL: https://your-domain.com/api/v1/payment/revenuecat/webhook
+    3. (Optional) Set Authorization header for security
+    
+    Events handled:
+    - INITIAL_PURCHASE: New subscription
+    - RENEWAL: Subscription renewed
+    - CANCELLATION: User cancelled (still active until period end)
+    - UNCANCELLATION: User resubscribed
+    - EXPIRATION: Subscription expired
+    - BILLING_ISSUE: Payment failed
+    - PRODUCT_CHANGE: User changed plans
+    - SUBSCRIBER_ALIAS: User identified
+    
+    Docs: https://www.revenuecat.com/docs/webhooks
+    """
+    try:
+        body = await request.json()
+        
+        event_type = body.get("event", {}).get("type")
+        app_user_id = body.get("event", {}).get("app_user_id")
+        
+        # Extract subscription info
+        subscriber_info = body.get("event", {}).get("subscriber_attributes", {})
+        entitlements = body.get("event", {}).get("entitlements", {})
+        product_id = body.get("event", {}).get("product_id")
+        expiration_at = body.get("event", {}).get("expiration_at_ms")
+        
+        logger.info(f"RevenueCat webhook: {event_type} for user {app_user_id}")
+        
+        if not app_user_id:
+            logger.warning("RevenueCat webhook: missing app_user_id")
+            return JSONResponse(content={"status": "no_user"}, status_code=200)
+        
+        # Import subscription service
+        from app.services.subscription_service import subscription_service
+        
+        # Handle different event types
+        if event_type in ["INITIAL_PURCHASE", "RENEWAL", "UNCANCELLATION"]:
+            # Activate/renew subscription
+            tier = "premium"  # Map product_id to tier if needed
+            if product_id and "vip" in product_id.lower():
+                tier = "vip"
+            
+            expiration_date = None
+            if expiration_at:
+                from datetime import datetime
+                expiration_date = datetime.fromtimestamp(expiration_at / 1000)
+            
+            await subscription_service.activate_subscription(
+                user_id=app_user_id,
+                tier=tier,
+                expiration_date=expiration_date,
+                source="revenuecat",
+                product_id=product_id,
+            )
+            logger.info(f"Subscription activated: {app_user_id} -> {tier}")
+            
+        elif event_type == "EXPIRATION":
+            # Subscription expired
+            await subscription_service.expire_subscription(
+                user_id=app_user_id,
+                source="revenuecat",
+            )
+            logger.info(f"Subscription expired: {app_user_id}")
+            
+        elif event_type == "CANCELLATION":
+            # User cancelled - still active until expiration
+            # Just log it, don't change tier yet
+            logger.info(f"Subscription cancelled (will expire): {app_user_id}")
+            
+        elif event_type == "BILLING_ISSUE":
+            # Payment failed - might need to notify user
+            logger.warning(f"Billing issue for user: {app_user_id}")
+            
+        elif event_type == "PRODUCT_CHANGE":
+            # User upgraded/downgraded - reactivate with new tier
+            new_product = body.get("event", {}).get("new_product_id")
+            tier = "premium"
+            if new_product and "vip" in new_product.lower():
+                tier = "vip"
+            
+            expiration_date = None
+            if expiration_at:
+                from datetime import datetime
+                expiration_date = datetime.fromtimestamp(expiration_at / 1000)
+            
+            await subscription_service.activate_subscription(
+                user_id=app_user_id,
+                tier=tier,
+                expiration_date=expiration_date,
+                source="revenuecat",
+                product_id=new_product,
+            )
+            logger.info(f"Subscription changed: {app_user_id} -> {tier}")
+        
+        return JSONResponse(content={"status": "ok", "event": event_type}, status_code=200)
+        
+    except Exception as e:
+        logger.error(f"RevenueCat webhook error: {e}", exc_info=True)
+        # Return 200 to prevent retries
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=200)
