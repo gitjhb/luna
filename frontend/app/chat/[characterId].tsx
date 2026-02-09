@@ -476,6 +476,9 @@ export default function ChatScreen() {
         intimacyLevel: relationshipLevel || 1,
       });
 
+      // Clear typing BEFORE adding message to avoid flicker
+      setTyping(false);
+
       addMessage({
         messageId: response.messageId,
         role: 'assistant',
@@ -609,6 +612,9 @@ export default function ChatScreen() {
         spicyMode: isSpicyMode,
         intimacyLevel: relationshipLevel || 1,
       });
+
+      // Clear typing BEFORE adding message to avoid flicker
+      setTyping(false);
 
       addMessage({
         messageId: response.messageId,
