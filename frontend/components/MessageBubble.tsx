@@ -46,6 +46,46 @@ interface MessageBubbleProps {
   messageReaction?: string | null;
 }
 
+// 解析 *动作/心理描写* 并渲染为斜体淡色
+const renderStyledContent = (text: string, isUserMessage: boolean) => {
+  // 匹配 *文字* 或 （文字） 或 (文字) 格式
+  const regex = /\*([^*]+)\*|（([^）]+)）|\(([^)]+)\)/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+
+  while ((match = regex.exec(text)) !== null) {
+    // 添加匹配前的普通文本
+    if (match.index > lastIndex) {
+      parts.push(
+        <Text key={key++} style={isUserMessage ? styles.messageTextUser : styles.messageTextAI}>
+          {text.slice(lastIndex, match.index)}
+        </Text>
+      );
+    }
+    // 添加动作/心理描写（斜体淡色）
+    const actionText = match[1] || match[2] || match[3];
+    parts.push(
+      <Text key={key++} style={styles.actionText}>
+        {match[1] ? `*${actionText}*` : match[2] ? `（${actionText}）` : `(${actionText})`}
+      </Text>
+    );
+    lastIndex = regex.lastIndex;
+  }
+
+  // 添加剩余的普通文本
+  if (lastIndex < text.length) {
+    parts.push(
+      <Text key={key++} style={isUserMessage ? styles.messageTextUser : styles.messageTextAI}>
+        {text.slice(lastIndex)}
+      </Text>
+    );
+  }
+
+  return parts.length > 0 ? parts : text;
+};
+
 export default function MessageBubble({
   content,
   isUser,
@@ -173,11 +213,8 @@ export default function MessageBubble({
             styles.bubble, 
             isUser ? styles.bubbleUser : styles.bubbleAI,
           ]}>
-            <Text style={[
-              styles.messageText, 
-              isUser ? styles.messageTextUser : styles.messageTextAI,
-            ]}>
-              {content}
+            <Text style={styles.messageText}>
+              {renderStyledContent(content, isUser)}
             </Text>
             
             {/* Reaction badge */}
@@ -291,6 +328,14 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.8)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  // 动作/心理描写样式 - 斜体淡色
+  actionText: {
+    fontStyle: 'italic',
+    color: 'rgba(255, 255, 255, 0.6)',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   
   // Locked
