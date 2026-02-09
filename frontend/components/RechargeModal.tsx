@@ -1,7 +1,5 @@
 /**
- * Recharge Modal - Shared coin purchase component
- * 
- * Used in both Profile and Chat screens
+ * Recharge Modal - Moon Shards purchase via RevenueCat
  */
 
 import React, { useState, useEffect } from 'react';
@@ -18,11 +16,31 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { pricingService, CoinPack } from '../services/pricingService';
-import { paymentService } from '../services/paymentService';
+import Constants from 'expo-constants';
+import { PurchasesPackage } from 'react-native-purchases';
+import { revenueCatService } from '../services/revenueCatService';
 import { useUserStore } from '../store/userStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Check if running in Expo Go
+const isExpoGo = Constants.appOwnership === 'expo';
+
+// Extract shard count from product ID (e.g., "com.luna.companion.6480moonshards" -> 6480)
+const getShardCount = (productId: string): number => {
+  const match = productId.match(/(\d+)(?:moon)?shards/i);
+  return match ? parseInt(match[1], 10) : 0;
+};
+
+// Bonus amounts for each tier (not stored in RevenueCat)
+const SHARD_BONUSES: { [key: number]: { bonus: number; tag?: string } } = {
+  60: { bonus: 0 },
+  300: { bonus: 30 },
+  980: { bonus: 110, tag: '热卖' },
+  1980: { bonus: 260 },
+  3280: { bonus: 600 },
+  6480: { bonus: 1600, tag: '超值' },
+};
 
 interface RechargeModalProps {
   visible: boolean;
@@ -36,54 +54,81 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
   onPurchaseSuccess,
 }) => {
   const { wallet, updateWallet } = useUserStore();
-  const [coinPacks, setCoinPacks] = useState<CoinPack[]>([]);
+  const [packages, setPackages] = useState<PurchasesPackage[]>([]);
   const [loading, setLoading] = useState(false);
   const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Load coin packs when modal opens
+  // Load packages when modal opens
   useEffect(() => {
     if (visible) {
-      loadCoinPacks();
+      loadPackages();
     }
   }, [visible]);
 
-  const loadCoinPacks = async () => {
+  const loadPackages = async () => {
+    if (isExpoGo) {
+      setError('IAP 在 Expo Go 中不可用，请使用 dev build');
+      return;
+    }
+
     try {
       setLoading(true);
-      const packs = await pricingService.getCoinPacks();
-      setCoinPacks(packs);
-    } catch (error) {
-      console.error('Failed to load coin packs:', error);
+      setError(null);
+      
+      // Get 'sale' offering for moon shards
+      const allOfferings = await revenueCatService.getAllOfferings();
+      const saleOffering = allOfferings['sale'];
+      
+      if (saleOffering && saleOffering.availablePackages.length > 0) {
+        // Sort by price
+        const sorted = [...saleOffering.availablePackages].sort(
+          (a, b) => a.product.price - b.product.price
+        );
+        setPackages(sorted);
+        console.log('[RechargeModal] Loaded', sorted.length, 'packages');
+      } else {
+        console.warn('[RechargeModal] No sale offering found');
+        setError('暂无可用商品');
+      }
+    } catch (err: any) {
+      console.error('[RechargeModal] Failed to load packages:', err);
+      setError(err.message || '加载商品失败');
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePurchase = (pack: CoinPack) => {
+  const handlePurchase = async (pkg: PurchasesPackage) => {
+    const shardCount = getShardCount(pkg.product.identifier);
+    const bonusInfo = SHARD_BONUSES[shardCount] || { bonus: 0 };
+    const totalShards = shardCount + bonusInfo.bonus;
+
     Alert.alert(
       '确认购买',
-      `购买 ${pack.coins.toLocaleString()} 碎片${pack.bonusCoins ? ` (+${pack.bonusCoins} 赠送)` : ''}，价格 $${pack.price.toFixed(2)}？`,
+      `购买 ${shardCount.toLocaleString()} 碎片${bonusInfo.bonus ? ` (+${bonusInfo.bonus} 赠送)` : ''}，价格 ${pkg.product.priceString}？`,
       [
         { text: '取消', style: 'cancel' },
         {
           text: '购买',
           onPress: async () => {
             try {
-              setPurchasing(pack.id);
-              const result = await paymentService.purchaseCredits(pack.id);
+              setPurchasing(pkg.identifier);
+              
+              const result = await revenueCatService.purchasePackage(pkg);
               
               if (result.success) {
-                // Update local wallet state
-                updateWallet({ totalCredits: result.wallet.total_credits });
-                
-                // Notify parent
-                onPurchaseSuccess?.(result.credits_added, result.wallet.total_credits);
-                
+                // Update wallet locally (backend should also be notified via webhook)
+                const newBalance = (wallet?.totalCredits || 0) + totalShards;
+                updateWallet({ totalCredits: newBalance });
+                onPurchaseSuccess?.(totalShards, newBalance);
                 onClose();
-                Alert.alert('🎉 购买成功！', `获得 ${result.credits_added.toLocaleString()} 碎片`);
+                Alert.alert('🎉 购买成功！', `获得 ${totalShards.toLocaleString()} 碎片`);
               }
-            } catch (error: any) {
-              Alert.alert('购买失败', error.message || '请稍后重试');
+            } catch (err: any) {
+              if (!err.userCancelled) {
+                Alert.alert('购买失败', err.message || '请稍后重试');
+              }
             } finally {
               setPurchasing(null);
             }
@@ -93,21 +138,41 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
     );
   };
 
-  const handleFreeCoins = async () => {
-    try {
-      setPurchasing('free');
-      const result = await paymentService.addCredits(500);
-      
-      if (result.success) {
-        updateWallet({ totalCredits: result.wallet.total_credits });
-        onPurchaseSuccess?.(500, result.wallet.total_credits);
-        Alert.alert('🎁 领取成功！', '获得 500 测试碎片');
-      }
-    } catch (error: any) {
-      Alert.alert('领取失败', error.message || '请稍后重试');
-    } finally {
-      setPurchasing(null);
-    }
+  const renderPackage = (pkg: PurchasesPackage) => {
+    const shardCount = getShardCount(pkg.product.identifier);
+    const bonusInfo = SHARD_BONUSES[shardCount] || { bonus: 0 };
+    const isPurchasing = purchasing === pkg.identifier;
+
+    return (
+      <TouchableOpacity
+        key={pkg.identifier}
+        style={[styles.packCard, isPurchasing && styles.packCardDisabled]}
+        onPress={() => handlePurchase(pkg)}
+        disabled={!!purchasing}
+      >
+        {bonusInfo.tag && (
+          <View style={styles.tagBadge}>
+            <Text style={styles.tagText}>{bonusInfo.tag}</Text>
+          </View>
+        )}
+        <View style={styles.shardRow}>
+          <Image 
+            source={require('../assets/icons/moon-shard.png')} 
+            style={styles.packShardIcon} 
+          />
+          <Text style={styles.shardAmount}>
+            {shardCount > 0 ? shardCount.toLocaleString() : '?'}
+          </Text>
+        </View>
+        {bonusInfo.bonus > 0 && (
+          <Text style={styles.bonusText}>+{bonusInfo.bonus} 赠送</Text>
+        )}
+        <Text style={styles.priceText}>{pkg.product.priceString}</Text>
+        {isPurchasing && (
+          <ActivityIndicator size="small" color="#00D4FF" style={styles.purchaseLoader} />
+        )}
+      </TouchableOpacity>
+    );
   };
 
   return (
@@ -121,12 +186,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
         <View style={styles.content}>
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.titleRow}>
-              <Text style={styles.title}>购买月光碎片</Text>
-              <View style={styles.testBadge}>
-                <Text style={styles.testBadgeText}>测试模式</Text>
-              </View>
-            </View>
+            <Text style={styles.title}>购买月光碎片</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
               <Ionicons name="close" size={24} color="#fff" />
             </TouchableOpacity>
@@ -136,90 +196,35 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
           <View style={styles.balanceRow}>
             <Text style={styles.balanceLabel}>当前余额</Text>
             <View style={styles.balanceValue}>
-              <Image source={require('../assets/icons/moon-shard.png')} style={styles.shardIcon} />
-              <Text style={styles.balanceAmount}>{wallet?.totalCredits?.toFixed(0) || '0'}</Text>
+              <Image 
+                source={require('../assets/icons/moon-shard.png')} 
+                style={styles.shardIcon} 
+              />
+              <Text style={styles.balanceAmount}>
+                {wallet?.totalCredits?.toFixed(0) || '0'}
+              </Text>
             </View>
           </View>
 
-          {/* Coin Packs */}
+          {/* Content */}
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#00D4FF" />
+              <Text style={styles.loadingText}>加载中...</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.errorContainer}>
+              <Ionicons name="alert-circle" size={48} color="#ff6b6b" />
+              <Text style={styles.errorText}>{error}</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={loadPackages}>
+                <Text style={styles.retryText}>重试</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
               <View style={styles.packsGrid}>
-                {coinPacks.map((pack) => (
-                  <TouchableOpacity
-                    key={pack.id}
-                    style={[
-                      styles.packCard,
-                      purchasing === pack.id && styles.packCardPurchasing,
-                    ]}
-                    onPress={() => handlePurchase(pack)}
-                    disabled={purchasing !== null}
-                  >
-                    {/* Popular Badge */}
-                    {pack.popular && (
-                      <View style={styles.popularBadge}>
-                        <Text style={styles.badgeText}>热卖</Text>
-                      </View>
-                    )}
-
-                    {/* Discount Badge */}
-                    {pack.discount && (
-                      <View style={styles.discountBadge}>
-                        <Text style={styles.badgeText}>{pack.discount}% OFF</Text>
-                      </View>
-                    )}
-
-                    {/* Coins */}
-                    <View style={styles.packCoinsRow}>
-                      <Image source={require('../assets/icons/moon-shard.png')} style={styles.packShardIcon} />
-                      <Text style={styles.packCoins}>
-                        {pack.coins.toLocaleString()}
-                      </Text>
-                    </View>
-
-                    {/* Bonus Coins */}
-                    {pack.bonusCoins && pack.bonusCoins > 0 && (
-                      <Text style={styles.packBonus}>
-                        +{pack.bonusCoins.toLocaleString()} 赠送
-                      </Text>
-                    )}
-
-                    {/* Price */}
-                    <Text style={styles.packPrice}>
-                      ${pack.price.toFixed(2)}
-                    </Text>
-
-                    {/* Loading indicator */}
-                    {purchasing === pack.id && (
-                      <View style={styles.purchasingOverlay}>
-                        <ActivityIndicator size="small" color="#fff" />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                ))}
+                {packages.map(renderPackage)}
               </View>
-
-              {/* Test: Free Coins Button */}
-              <TouchableOpacity
-                style={[
-                  styles.freeButton,
-                  purchasing === 'free' && styles.freeButtonDisabled,
-                ]}
-                onPress={handleFreeCoins}
-                disabled={purchasing !== null}
-              >
-                {purchasing === 'free' ? (
-                  <ActivityIndicator size="small" color="#00D4FF" />
-                ) : (
-                  <Text style={styles.freeButtonText}>🎁 领取 500 测试碎片</Text>
-                )}
-              </TouchableOpacity>
-
-              <View style={{ height: 20 }} />
             </ScrollView>
           )}
         </View>
@@ -231,44 +236,28 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'flex-end',
   },
   content: {
-    backgroundColor: '#1A1A2E',
+    backgroundColor: '#1a1a2e',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '75%',
-    paddingBottom: 34,
+    paddingTop: 20,
+    paddingBottom: 40,
+    maxHeight: '80%',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    paddingHorizontal: 20,
+    marginBottom: 16,
   },
   title: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: '#fff',
-  },
-  testBadge: {
-    backgroundColor: 'rgba(255, 165, 0, 0.2)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  testBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#FFA500',
   },
   closeButton: {
     padding: 4,
@@ -278,136 +267,126 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: 'rgba(255, 215, 0, 0.08)',
+    paddingVertical: 12,
+    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+    marginHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 16,
   },
   balanceLabel: {
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: '#aaa',
   },
   balanceValue: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  coinEmoji: {
-    fontSize: 18,
   },
   shardIcon: {
     width: 24,
     height: 24,
-    borderRadius: 12,
+    marginRight: 6,
   },
   balanceAmount: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '700',
     color: '#FFD700',
   },
   loadingContainer: {
-    height: 200,
-    justifyContent: 'center',
+    padding: 60,
     alignItems: 'center',
   },
+  loadingText: {
+    marginTop: 12,
+    color: '#888',
+    fontSize: 14,
+  },
+  errorContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  errorText: {
+    marginTop: 12,
+    color: '#ff6b6b',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(0, 212, 255, 0.2)',
+    borderRadius: 8,
+  },
+  retryText: {
+    color: '#00D4FF',
+    fontWeight: '600',
+  },
   scroll: {
-    maxHeight: 450,
+    paddingHorizontal: 16,
   },
   packsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    padding: 16,
-    gap: 12,
-    justifyContent: 'center',
+    justifyContent: 'space-between',
   },
   packCard: {
-    width: (SCREEN_WIDTH - 56) / 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    width: (SCREEN_WIDTH - 48) / 2,
+    backgroundColor: 'rgba(0, 212, 255, 0.08)',
     borderRadius: 16,
     padding: 16,
+    marginBottom: 12,
     alignItems: 'center',
-    position: 'relative',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(0, 212, 255, 0.2)',
   },
-  packCardPurchasing: {
-    opacity: 0.7,
+  packCardDisabled: {
+    opacity: 0.6,
   },
-  popularBadge: {
+  tagBadge: {
     position: 'absolute',
     top: -8,
-    right: -8,
-    backgroundColor: '#00D4FF',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
+    right: 8,
+    backgroundColor: '#FF6B6B',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
-  discountBadge: {
-    position: 'absolute',
-    top: -8,
-    left: -8,
-    backgroundColor: '#00D4FF',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  badgeText: {
+  tagText: {
+    color: '#fff',
     fontSize: 10,
     fontWeight: '700',
-    color: '#fff',
   },
-  packCoinsRow: {
+  shardRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 8,
     marginBottom: 4,
   },
   packShardIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    marginRight: 6,
   },
-  packCoins: {
-    fontSize: 22,
+  shardAmount: {
+    fontSize: 24,
     fontWeight: '700',
     color: '#FFD700',
   },
-  packBonus: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#00D4FF',
-    marginTop: 2,
+  bonusText: {
+    fontSize: 12,
+    color: '#4CAF50',
+    marginBottom: 4,
   },
-  packPrice: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#fff',
-    marginTop: 8,
-  },
-  purchasingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  freeButton: {
-    backgroundColor: 'rgba(0, 212, 255, 0.15)',
-    borderWidth: 1,
-    borderColor: '#00D4FF',
-    borderRadius: 12,
-    paddingVertical: 14,
-    marginHorizontal: 16,
-    marginTop: 16,
-    alignItems: 'center',
-  },
-  freeButtonDisabled: {
-    opacity: 0.6,
-  },
-  freeButtonText: {
+  priceText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#00D4FF',
+    color: '#fff',
+  },
+  purchaseLoader: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -10,
+    marginTop: -10,
   },
 });
 

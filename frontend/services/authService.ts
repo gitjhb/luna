@@ -21,6 +21,7 @@ const isExpoGo = Constants.appOwnership === 'expo';
 let GoogleSignin: any = null;
 let statusCodes: any = {};
 let firebaseAuth: any = null;
+let nativeFirebaseAuth: any = null;
 
 if (!isExpoGo) {
   try {
@@ -31,12 +32,20 @@ if (!isExpoGo) {
     console.warn('[Auth] Google Sign-In not available');
   }
   
+  // 优先使用 Native Firebase Auth (推荐用于 React Native)
   try {
-    firebaseAuth = require('firebase/auth');
-    const { initFirebase } = require('./firebaseConfig');
-    initFirebase();
+    nativeFirebaseAuth = require('@react-native-firebase/auth').default;
+    console.log('[Auth] Native Firebase Auth loaded');
   } catch (e) {
-    console.warn('[Auth] Firebase not available');
+    console.warn('[Auth] Native Firebase Auth not available, falling back to Web SDK');
+    // Fallback to Web SDK
+    try {
+      firebaseAuth = require('firebase/auth');
+      const { initFirebase } = require('./firebaseConfig');
+      initFirebase();
+    } catch (e2) {
+      console.warn('[Auth] Firebase not available');
+    }
   }
 }
 
@@ -157,8 +166,53 @@ export const authService = {
 
       console.log('[Auth] Apple credential received');
 
-      // 如果 Firebase 可用，使用 Firebase 验证
+      // 优先使用 Native Firebase Auth (推荐用于 dev build)
+      if (nativeFirebaseAuth && !isExpoGo) {
+        console.log('[Auth] Using Native Firebase Auth');
+        
+        // Create Apple credential for Firebase
+        const appleCredential = nativeFirebaseAuth.AppleAuthProvider.credential(
+          credential.identityToken!,
+          credential.authorizationCode!
+        );
+        
+        // Sign in to Firebase
+        const userCredential = await nativeFirebaseAuth().signInWithCredential(appleCredential);
+        const firebaseUser = userCredential.user;
+        const idToken = await firebaseUser.getIdToken();
+
+        console.log('[Auth] Native Firebase sign in successful:', firebaseUser.uid);
+
+        const response = await api.post<any>('/auth/firebase', {
+          id_token: idToken,
+          provider: 'apple',
+          display_name: credential.fullName
+            ? `${credential.fullName.givenName || ''} ${credential.fullName.familyName || ''}`.trim()
+            : undefined,
+        });
+
+        return {
+          user: {
+            userId: response.user_id,
+            email: firebaseUser.email || credential.email || undefined,
+            displayName: response.display_name || firebaseUser.displayName || 'User',
+            subscriptionTier: response.subscription_tier || 'free',
+            createdAt: response.created_at || new Date().toISOString(),
+          },
+          wallet: {
+            totalCredits: response.wallet?.total_credits || 100,
+            dailyFreeCredits: response.wallet?.daily_free_credits || 10,
+            purchedCredits: response.wallet?.purchased_credits || 0,
+            bonusCredits: response.wallet?.bonus_credits || 0,
+            dailyCreditsLimit: response.wallet?.daily_credits_limit || 50,
+          },
+          accessToken: response.access_token,
+        };
+      }
+      
+      // Fallback: 使用 Web Firebase SDK
       if (firebaseAuth && !isExpoGo) {
+        console.log('[Auth] Using Web Firebase SDK');
         const { getFirebaseAuth } = require('./firebaseConfig');
         const { signInWithCredential, OAuthProvider } = firebaseAuth;
         
@@ -173,7 +227,7 @@ export const authService = {
         const firebaseUser = userCredential.user;
         const idToken = await firebaseUser.getIdToken();
 
-        console.log('[Auth] Firebase sign in successful:', firebaseUser.uid);
+        console.log('[Auth] Web Firebase sign in successful:', firebaseUser.uid);
 
         const response = await api.post<any>('/auth/firebase', {
           id_token: idToken,

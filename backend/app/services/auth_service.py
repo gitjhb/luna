@@ -3,6 +3,7 @@ Authentication Service
 =====================
 
 Handles Firebase authentication and user management.
+Uses lightweight JWT verification for Vercel deployment.
 
 Author: Manus AI
 Date: January 28, 2026
@@ -13,26 +14,18 @@ from typing import Dict, Any
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-import firebase_admin
-from firebase_admin import auth, credentials
 
+from app.core.firebase_jwt import verify_firebase_token as _verify_token
 from app.core.config import settings
-from app.models.database import User, UserWallet
+from app.models.database.user_models import User
+from app.models.database.billing_models import UserWallet
 
 logger = logging.getLogger(__name__)
-
-# Initialize Firebase Admin SDK
-try:
-    cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS_PATH)
-    firebase_admin.initialize_app(cred)
-    logger.info("Firebase Admin SDK initialized")
-except Exception as e:
-    logger.warning(f"Firebase initialization failed: {str(e)}")
 
 
 async def verify_firebase_token(id_token: str) -> Dict[str, Any]:
     """
-    Verify Firebase ID token.
+    Verify Firebase ID token using lightweight JWT verification.
     
     Args:
         id_token: Firebase ID token
@@ -44,7 +37,7 @@ async def verify_firebase_token(id_token: str) -> Dict[str, Any]:
         Exception: If token verification fails
     """
     try:
-        decoded_token = auth.verify_id_token(id_token)
+        decoded_token = await _verify_token(id_token)
         return decoded_token
     except Exception as e:
         logger.error(f"Token verification failed: {str(e)}")

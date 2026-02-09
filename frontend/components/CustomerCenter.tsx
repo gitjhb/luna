@@ -18,10 +18,14 @@ import {
   Linking,
   Platform,
 } from 'react-native';
+import Constants from 'expo-constants';
 import RevenueCatUI from 'react-native-purchases-ui';
 import { Ionicons } from '@expo/vector-icons';
 import { revenueCatService, ENTITLEMENTS } from '../services/revenueCatService';
 import { CustomerInfo } from 'react-native-purchases';
+
+// Check if running in Expo Go
+const isExpoGo = Constants.appOwnership === 'expo';
 
 // ============================================================================
 // Types
@@ -49,6 +53,20 @@ export interface CustomerCenterProps {
 export async function presentCustomerCenter(options?: {
   onSubscriptionChanged?: (customerInfo: CustomerInfo) => void;
 }): Promise<CustomerCenterResult> {
+  // Mock customer center in Expo Go
+  if (isExpoGo) {
+    console.log('[CustomerCenter] Using mock (Expo Go)');
+    Alert.alert(
+      '订阅管理',
+      '测试模式 (Expo Go)\n\n当前状态: Luna Pro\n到期时间: 模拟数据\n自动续费: 已开启',
+      [
+        { text: '取消订阅 (模拟)', onPress: () => console.log('Mock cancel') },
+        { text: '关闭' },
+      ]
+    );
+    return { action: 'cancelled' };
+  }
+
   try {
     // Check if user has active subscription
     const hasSubscription = await revenueCatService.hasLunaPro();

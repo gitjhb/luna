@@ -39,6 +39,12 @@
           <string>com.googleusercontent.apps.1081215078404-67oravkof7blahfgsivjlka7uif3tsm4</string>
         </array>
       </dict>
+      <dict>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>exp+luna-companion</string>
+        </array>
+      </dict>
     </array>
     <key>CFBundleVersion</key>
     <string>2</string>

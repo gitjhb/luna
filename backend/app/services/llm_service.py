@@ -16,7 +16,12 @@ Architecture:
 import logging
 from typing import List, Dict, Optional, AsyncGenerator
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+
+# Use simple retry for Vercel (tenacity adds dependencies)
+try:
+    from tenacity import retry, stop_after_attempt, wait_exponential
+except ImportError:
+    from app.core.retry import retry, stop_after_attempt, wait_exponential
 
 from app.core.exceptions import LLMServiceError
 from app.config import settings

@@ -12,6 +12,19 @@ from app.core.exceptions import VectorDBError
 from app.services.llm_service import OpenAIEmbeddingService
 
 
+class MockVectorClient:
+    """Mock vector client for environments without vector DB"""
+    
+    async def upsert(self, *args, **kwargs):
+        pass
+    
+    async def query(self, *args, **kwargs):
+        return []
+    
+    async def delete(self, *args, **kwargs):
+        pass
+
+
 class VectorService:
     """
     Abstraction layer for vector database operations.
@@ -20,12 +33,15 @@ class VectorService:
     
     def __init__(self):
         self.embedding_service = OpenAIEmbeddingService()
-        self.provider = os.getenv("VECTOR_DB_PROVIDER", "chromadb")  # 'pinecone' or 'chromadb'
+        self.provider = os.getenv("VECTOR_DB_PROVIDER", "none")  # 'pinecone', 'chromadb', or 'none'
         
         if self.provider == "pinecone":
             self.client = PineconeClient()
-        else:
+        elif self.provider == "chromadb":
             self.client = ChromaDBClient()
+        else:
+            # Mock client for Vercel/serverless (no vector DB)
+            self.client = MockVectorClient()
     
     async def embed_text(self, text: str) -> List[float]:
         """

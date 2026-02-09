@@ -108,16 +108,43 @@ async def demo_login(request: DemoLoginRequest):
         )
     
     user_id = "demo-jhb-123"
+    user_email = "jhb@luna.app"
+    user_display_name = "JHB"
     
-    # Store/update user
+    # Store/update user in memory
     _users[user_id] = {
         "user_id": user_id,
-        "email": "jhb@luna.app",
-        "display_name": "JHB",
+        "email": user_email,
+        "display_name": user_display_name,
         "provider": "demo",
         "subscription_tier": "vip",  # VIP for full feature access
         "created_at": datetime.utcnow().isoformat(),
     }
+    
+    # Create user in database FIRST (wallet has FK constraint)
+    from app.core.database import get_db
+    from sqlalchemy import select
+    from app.models.database.user_models import User
+    
+    async with get_db() as db:
+        result = await db.execute(
+            select(User).where(User.user_id == user_id)
+        )
+        existing_user = result.scalar_one_or_none()
+        
+        if not existing_user:
+            new_user = User(
+                user_id=user_id,
+                firebase_uid=user_id,
+                email=user_email,
+                display_name=user_display_name,
+                is_subscribed=True,
+                subscription_tier="vip",
+                last_login_at=datetime.utcnow(),
+            )
+            db.add(new_user)
+            await db.commit()
+            logger.info(f"Created demo user in database: {user_id}")
     
     # Initialize wallet
     from app.services.payment_service import payment_service
@@ -157,16 +184,36 @@ async def guest_login():
         )
     
     user_id = f"guest-{str(uuid4())[:8]}"
+    user_email = f"{user_id}@guest.luna.app"
     
-    # Store user
+    # Store user in memory
     _users[user_id] = {
         "user_id": user_id,
-        "email": None,
+        "email": user_email,
         "display_name": "Guest",
         "provider": "guest",
         "subscription_tier": "free",
         "created_at": datetime.utcnow().isoformat(),
     }
+    
+    # Create user in database FIRST (wallet has FK constraint)
+    from app.core.database import get_db
+    from sqlalchemy import select
+    from app.models.database.user_models import User
+    
+    async with get_db() as db:
+        new_user = User(
+            user_id=user_id,
+            firebase_uid=user_id,
+            email=user_email,
+            display_name="Guest",
+            is_subscribed=False,
+            subscription_tier="free",
+            last_login_at=datetime.utcnow(),
+        )
+        db.add(new_user)
+        await db.commit()
+        logger.info(f"Created guest user in database: {user_id}")
     
     # Initialize wallet
     from app.services.payment_service import payment_service
@@ -208,16 +255,45 @@ async def authenticate_firebase(request: FirebaseAuthRequest):
     if MOCK_AUTH and not get_firebase_app():
         logger.info(f"Mock Firebase auth for provider: {request.provider}")
         user_id = f"mock-{request.provider}-{str(uuid4())[:8]}"
+        user_email = request.email or f"{user_id}@mock.luna.app"
+        user_display_name = request.display_name or "Mock User"
         
         _users[user_id] = {
             "user_id": user_id,
-            "email": request.email or f"{user_id}@mock.luna.app",
-            "display_name": request.display_name or "Mock User",
+            "email": user_email,
+            "display_name": user_display_name,
             "provider": request.provider,
             "photo_url": request.photo_url,
             "subscription_tier": "free",
             "created_at": datetime.utcnow().isoformat(),
         }
+        
+        # Create user in database FIRST (wallet has FK constraint)
+        from app.core.database import get_db
+        from sqlalchemy import select
+        from app.models.database.user_models import User
+        
+        async with get_db() as db:
+            # Check if user exists
+            result = await db.execute(
+                select(User).where(User.user_id == user_id)
+            )
+            existing_user = result.scalar_one_or_none()
+            
+            if not existing_user:
+                new_user = User(
+                    user_id=user_id,
+                    firebase_uid=user_id,  # Use user_id as firebase_uid for mock
+                    email=user_email,
+                    display_name=user_display_name,
+                    avatar_url=request.photo_url,
+                    is_subscribed=False,
+                    subscription_tier="free",
+                    last_login_at=datetime.utcnow(),
+                )
+                db.add(new_user)
+                await db.commit()
+                logger.info(f"Created mock user in database: {user_id}")
         
         from app.services.payment_service import payment_service
         wallet = await payment_service.get_or_create_wallet(user_id)
@@ -237,15 +313,23 @@ async def authenticate_firebase(request: FirebaseAuthRequest):
             )
         )
     
-    # Production: Verify with Firebase Admin SDK
+    # Production: Verify token (supports both Firebase and Apple tokens)
     try:
-        from firebase_admin import auth as firebase_auth
+        from app.core.apple_jwt import is_apple_token, verify_apple_token
+        from app.core.firebase_jwt import verify_firebase_token
         
-        # Verify the ID token
-        decoded_token = firebase_auth.verify_id_token(request.id_token)
-        firebase_uid = decoded_token["uid"]
+        # Detect token type and verify accordingly
+        if is_apple_token(request.id_token):
+            logger.info("Detected Apple token, verifying directly")
+            decoded_token = await verify_apple_token(request.id_token)
+            # Apple token 'sub' is the stable user identifier
+            firebase_uid = f"apple-{decoded_token['uid']}"
+        else:
+            logger.info("Detected Firebase token, verifying with Firebase")
+            decoded_token = await verify_firebase_token(request.id_token)
+            firebase_uid = decoded_token["uid"]
         
-        logger.info(f"Firebase token verified for UID: {firebase_uid}")
+        logger.info(f"Token verified for UID: {firebase_uid}")
         
         # Get or create user in DATABASE (persistent)
         user_id = f"fb-{firebase_uid}"

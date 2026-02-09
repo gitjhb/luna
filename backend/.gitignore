@@ -1,2 +1,6 @@
 firebase-credentials.json
 server.log*
+.vercel
+
+# Neon DB config (secrets)
+neon-luna_config.txt

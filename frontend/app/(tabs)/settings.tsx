@@ -26,7 +26,7 @@ import * as StoreReview from 'expo-store-review';
 import { useTheme, ThemeConfig } from '../../theme/config';
 import { useUserStore } from '../../store/userStore';
 import { useChatStore } from '../../store/chatStore';
-import { SubscriptionModal } from '../../components/SubscriptionModal';
+import { useRevenueCatContext } from '../../providers/RevenueCatProvider';
 import { InterestsSelector } from '../../components/InterestsSelector';
 import { settingsService } from '../../services/settingsService';
 import { paymentService } from '../../services/paymentService';
@@ -347,7 +347,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const { user, logout, isSubscribed, preferences, setPreferences } = useUserStore();
-  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const { isPro, showPaywall, showCustomerCenter } = useRevenueCatContext();
   const [nsfwLoading, setNsfwLoading] = useState(false);
 
   // Load settings on mount
@@ -369,9 +369,9 @@ export default function SettingsScreen() {
   };
 
   const handleNsfwToggle = async (value: boolean) => {
-    if (value && !isSubscribed) {
-      // Show subscription modal if trying to enable without subscription
-      setShowSubscriptionModal(true);
+    if (value && !isPro) {
+      // Show RevenueCat paywall if trying to enable without subscription
+      showPaywall();
       return;
     }
     
@@ -496,8 +496,8 @@ export default function SettingsScreen() {
             <SettingItem
               icon="diamond-outline"
               title="Subscription"
-              subtitle={isSubscribed ? 'Premium Member' : 'Free Plan - 点击升级'}
-              onPress={() => setShowSubscriptionModal(true)}
+              subtitle={isPro ? 'Luna Pro 会员' : 'Free Plan - 点击升级'}
+              onPress={() => isPro ? showCustomerCenter() : showPaywall()}
               theme={theme}
             />
             {isSubscribed && (
@@ -648,23 +648,6 @@ export default function SettingsScreen() {
         </ScrollView>
       </SafeAreaView>
 
-      {/* Subscription Modal */}
-      <SubscriptionModal
-        visible={showSubscriptionModal}
-        onClose={() => setShowSubscriptionModal(false)}
-        highlightFeature="nsfw"
-        onSubscribeSuccess={async (tier) => {
-          // After successful subscription, enable NSFW if that was the intent
-          if (tier !== 'free') {
-            try {
-              const updated = await settingsService.toggleNsfw(true);
-              setPreferences({ nsfwEnabled: updated.nsfwEnabled });
-            } catch (e) {
-              console.log('Failed to enable NSFW after subscription:', e);
-            }
-          }
-        }}
-      />
     </LinearGradient>
   );
 }

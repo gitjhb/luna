@@ -82,6 +82,14 @@ TIER_HIERARCHY = {"free": 0, "premium": 1, "vip": 2}
 # ============================================================================
 
 CREDIT_PACKAGES = {
+    # RevenueCat product IDs (com.luna.companion.XXXshards)
+    "com.luna.companion.60shards": {"id": "com.luna.companion.60shards", "coins": 60, "price": 0.99, "bonus": 0},
+    "com.luna.companion.300shards": {"id": "com.luna.companion.300shards", "coins": 300, "price": 4.99, "bonus": 30},
+    "com.luna.companion.980shards": {"id": "com.luna.companion.980shards", "coins": 980, "price": 14.99, "bonus": 110},
+    "com.luna.companion.1980shards": {"id": "com.luna.companion.1980shards", "coins": 1980, "price": 29.99, "bonus": 260},
+    "com.luna.companion.3280shards": {"id": "com.luna.companion.3280shards", "coins": 3280, "price": 49.99, "bonus": 600},
+    "com.luna.companion.6480shards": {"id": "com.luna.companion.6480shards", "coins": 6480, "price": 99.99, "bonus": 1600},
+    # Legacy IDs (for backward compatibility)
     "pack_60": {"id": "pack_60", "coins": 60, "price": 0.99, "bonus": 0},
     "pack_300": {"id": "pack_300", "coins": 300, "price": 4.99, "bonus": 30},
     "pack_980": {"id": "pack_980", "coins": 980, "price": 14.99, "bonus": 110},

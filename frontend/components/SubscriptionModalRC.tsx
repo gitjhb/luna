@@ -38,6 +38,8 @@ interface SubscriptionModalRCProps {
   onSubscribeSuccess?: () => void;
   /** Use RevenueCat's pre-built paywall instead of custom UI */
   useRevenueCatPaywall?: boolean;
+  /** Highlight a specific feature (ignored, for compatibility) */
+  highlightFeature?: string;
 }
 
 // ============================================================================

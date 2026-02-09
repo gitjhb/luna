@@ -25,7 +25,7 @@ import { useUserStore } from '../../store/userStore';
 import { walletService } from '../../services/walletService';
 import { paymentService } from '../../services/paymentService';
 import { RechargeModal } from '../../components/RechargeModal';
-import { SubscriptionModal } from '../../components/SubscriptionModal';
+import { SubscriptionModalRC as SubscriptionModal } from '../../components/SubscriptionModalRC';
 import { TransactionHistoryModal } from '../../components/TransactionHistoryModal';
 import { interestsService, InterestItem } from '../../services/interestsService';
 import { useLocale, tpl } from '../../i18n';

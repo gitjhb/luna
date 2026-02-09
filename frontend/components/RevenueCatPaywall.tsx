@@ -9,10 +9,14 @@
 
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import Constants from 'expo-constants';
 import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
 import { CustomerInfo } from 'react-native-purchases';
 import { revenueCatService, ENTITLEMENTS } from '../services/revenueCatService';
 import { useUserStore } from '../store/userStore';
+
+// Check if running in Expo Go (no native modules available)
+const isExpoGo = Constants.appOwnership === 'expo';
 
 // ============================================================================
 // Types
@@ -46,6 +50,39 @@ export interface RevenueCatPaywallProps {
 // ============================================================================
 
 /**
+ * Present a mock paywall for Expo Go testing
+ */
+function presentMockPaywall(): Promise<PaywallResult> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      '🔮 Luna Pro',
+      '测试模式 (Expo Go)\n\n月费 ¥28.00\n• 无限聊天\n• 解锁所有角色\n• NSFW内容',
+      [
+        {
+          text: '取消',
+          style: 'cancel',
+          onPress: () => resolve({
+            purchased: false,
+            restored: false,
+            cancelled: true,
+            error: false,
+          }),
+        },
+        {
+          text: '模拟购买',
+          onPress: () => resolve({
+            purchased: true,
+            restored: false,
+            cancelled: false,
+            error: false,
+          }),
+        },
+      ]
+    );
+  });
+}
+
+/**
  * Present the paywall as a modal sheet
  * This is the simplest way to show the paywall
  */
@@ -54,6 +91,12 @@ export async function presentPaywall(options?: {
   onPurchaseSuccess?: (customerInfo: CustomerInfo) => void;
   onRestoreSuccess?: (customerInfo: CustomerInfo) => void;
 }): Promise<PaywallResult> {
+  // Use mock paywall in Expo Go (native modules unavailable)
+  if (isExpoGo) {
+    console.log('[Paywall] Using mock paywall (Expo Go)');
+    return presentMockPaywall();
+  }
+
   try {
     const result = await RevenueCatUI.presentPaywall({
       offering: options?.offeringIdentifier ? 
@@ -103,6 +146,12 @@ export async function presentPaywallIfNeeded(
     onRestoreSuccess?: (customerInfo: CustomerInfo) => void;
   }
 ): Promise<PaywallResult> {
+  // Use mock paywall in Expo Go
+  if (isExpoGo) {
+    console.log('[Paywall] Using mock paywall if needed (Expo Go)');
+    return presentMockPaywall();
+  }
+
   try {
     const result = await RevenueCatUI.presentPaywallIfNeeded({
       requiredEntitlementIdentifier: requiredEntitlement,

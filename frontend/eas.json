@@ -20,12 +20,14 @@
         "simulator": false
       },
       "env": {
+        "EXPO_PUBLIC_API_URL": "https://luna-backend-1081215078404.us-west1.run.app/api/v1",
         "EXPO_PUBLIC_REVENUECAT_API_KEY": "@EXPO_PUBLIC_REVENUECAT_API_KEY_TEST"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
+        "EXPO_PUBLIC_API_URL": "https://luna-backend-1081215078404.us-west1.run.app/api/v1",
         "EXPO_PUBLIC_REVENUECAT_API_KEY": "@EXPO_PUBLIC_REVENUECAT_API_KEY_PROD"
       }
     }

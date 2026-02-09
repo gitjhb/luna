@@ -1,0 +1,36 @@
+# ============================================================================
+# Vercel Serverless - Ultra Minimal (< 50MB target)
+# ============================================================================
+
+# Core Framework
+fastapi==0.109.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-multipart==0.0.6
+
+# Database
+asyncpg==0.29.0
+sqlalchemy==2.0.25
+
+# LLM
+openai==1.10.0
+httpx==0.26.0
+
+# Auth (lightweight JWT verification, no firebase-admin)
+PyJWT[crypto]==2.8.0
+cryptography==42.0.0
+
+# Payment
+stripe==8.2.0
+
+# Utilities
+python-dotenv==1.0.0
+
+# ============================================================================
+# REMOVED for size:
+# - firebase-admin (100MB+, use PyJWT for token verification)
+# - uvicorn (Vercel handles ASGI)
+# - sentry-sdk (add later if needed)
+# - tenacity (use simple retry)
+# - passlib (not needed for JWT-only auth)
+# ============================================================================

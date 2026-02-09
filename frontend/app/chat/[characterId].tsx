@@ -42,7 +42,7 @@ import { emotionService } from '../../services/emotionService';
 import { GiftOverlay, useGiftEffect, GiftType } from '../../components/GiftEffects';
 import { paymentService } from '../../services/paymentService';
 import { RechargeModal } from '../../components/RechargeModal';
-import { SubscriptionModal } from '../../components/SubscriptionModal';
+import { SubscriptionModalRC as SubscriptionModal } from '../../components/SubscriptionModalRC';
 import { getCharacterAvatar, getCharacterBackground } from '../../assets/characters';
 import CharacterInfoPanel from '../../components/CharacterInfoPanel';
 import GiftBottomSheet from '../../components/GiftBottomSheet';

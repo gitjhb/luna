@@ -40,7 +40,7 @@ class IntimacyStatus(BaseModel):
     stage_name_cn: str  # Chinese name
 
     # Streak info
-    streak_days: int
+    streak_days: int = 0
     last_interaction_date: Optional[datetime] = None
 
     # Daily limits

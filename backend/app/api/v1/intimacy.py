@@ -56,7 +56,7 @@ async def get_intimacy_status(character_id: UUID, request: Request):
         progress_percent=status["progress_percent"],
         intimacy_stage=status["intimacy_stage"],
         stage_name_cn=status["stage_name_cn"],
-        streak_days=status["streak_days"],
+        streak_days=status["streak_days"] or 0,
         last_interaction_date=status["last_interaction_date"],
         daily_xp_earned=status["daily_xp_earned"],
         daily_xp_limit=status["daily_xp_limit"],
