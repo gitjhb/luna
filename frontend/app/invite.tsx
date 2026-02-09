@@ -237,7 +237,7 @@ export default function InviteScreen() {
                     ]}
                   >
                     <Image 
-                      source={{ uri: friend.avatar_url || 'https://i.pravatar.cc/200' }}
+                      source={friend.avatar_url ? { uri: friend.avatar_url } : require('../assets/images/default-avatar.png')}
                       style={styles.friendAvatar}
                     />
                     <View style={styles.friendInfo}>

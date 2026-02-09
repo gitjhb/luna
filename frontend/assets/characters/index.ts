@@ -52,16 +52,22 @@ export const characterBackgrounds: Record<string, any> = {
   'a7b8c9d0-e1f2-4a3b-5c6d-7e8f9a0b1c2d': require('./meiqiu.jpg'),
 };
 
+// Default avatar for unknown characters
+const defaultAvatar = require('../images/default-avatar.png');
+
 /**
  * Get character avatar source
- * Returns local require() for known characters, or fallback
+ * Returns local require() for known characters, or local default
  */
 export const getCharacterAvatar = (characterId: string, remoteUrl?: string | null) => {
   if (characterAvatars[characterId]) {
     return characterAvatars[characterId];
   }
-  // Fallback: use remote URL or default placeholder
-  return { uri: remoteUrl || 'https://i.pravatar.cc/300' };
+  // Fallback: use remote URL if provided, otherwise local default
+  if (remoteUrl) {
+    return { uri: remoteUrl };
+  }
+  return defaultAvatar;
 };
 
 /**

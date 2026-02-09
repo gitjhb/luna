@@ -114,7 +114,7 @@ export default function ChatScreen() {
     characterId: params.characterId,
     enabled: !isInitializing && !!sessionId,
   });
-  const [characterAvatar, setCharacterAvatar] = useState(params.avatarUrl || 'https://i.pravatar.cc/100?img=5');
+  const [characterAvatar, setCharacterAvatar] = useState(params.avatarUrl || '');
   const [backgroundImage, setBackgroundImage] = useState(params.backgroundUrl || DEFAULT_BACKGROUND);
   const [relationshipLevel, setRelationshipLevel] = useState<number | null>(null); // null = loading
   const [relationshipXp, setRelationshipXp] = useState(0);
