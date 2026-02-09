@@ -35,19 +35,8 @@ const PLAN_DISPLAY_INFO: Record<string, { name: string; features: string[]; dail
       '每日 100 碎片',
       '更快的回复速度',
       '高级角色解锁',
-      '优先客服支持',
-    ],
-  },
-  'luna_vip_monthly': {
-    name: 'VIP',
-    dailyCredits: 300,
-    features: [
-      '每日 300 碎片',
-      '最快回复速度',
-      '全部角色解锁',
-      '专属 VIP 角色',
       '成人内容解锁 🔞',
-      '优先新功能体验',
+      '优先客服支持',
     ],
   },
 };
@@ -172,8 +161,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
       
       if (restored.length > 0) {
         // Find highest tier
-        const hasVip = restored.some(p => p.tier === 'vip');
-        const tier = hasVip ? 'vip' : 'premium';
+        const tier = 'premium';
 
         // Verify with backend
         const latest = restored[restored.length - 1];
@@ -209,8 +197,6 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     switch (tier) {
       case 'premium':
         return ['#8B5CF6', '#00D4FF'];
-      case 'vip':
-        return ['#F59E0B', '#EF4444'];
       default:
         return ['#6B7280', '#4B5563'];
     }
@@ -221,7 +207,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     const isCurrentPlan = user?.subscriptionTier === product.tier;
     const isPurchasing = purchasing === product.productId;
     
-    const tierRank: Record<string, number> = { free: 0, premium: 1, vip: 2 };
+    const tierRank: Record<string, number> = { free: 0, premium: 1 };
     const currentRank = tierRank[user?.subscriptionTier || 'free'] || 0;
     const planRank = tierRank[product.tier] || 0;
     const canUpgrade = planRank > currentRank;
@@ -244,11 +230,6 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           {/* Header */}
           <View style={styles.planHeader}>
             <Text style={styles.planName}>{displayInfo?.name || product.title}</Text>
-            {product.tier === 'vip' && (
-              <View style={styles.popularBadge}>
-                <Text style={styles.popularBadgeText}>推荐</Text>
-              </View>
-            )}
             {isCurrentPlan && (
               <View style={styles.currentBadge}>
                 <Text style={styles.currentBadgeText}>当前</Text>

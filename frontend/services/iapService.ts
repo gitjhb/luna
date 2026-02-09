@@ -60,24 +60,19 @@ const {
 export const SUBSCRIPTION_SKUS = Platform.select({
   ios: [
     'luna_premium_monthly',
-    'luna_vip_monthly',
     // Add yearly if needed:
     // 'luna_premium_yearly',
-    // 'luna_vip_yearly',
   ],
   android: [
     'luna_premium_monthly',
-    'luna_vip_monthly',
   ],
   default: [],
 }) as string[];
 
 // Map product ID to tier
-export const SKU_TO_TIER: Record<string, 'premium' | 'vip'> = {
+export const SKU_TO_TIER: Record<string, 'premium'> = {
   'luna_premium_monthly': 'premium',
   'luna_premium_yearly': 'premium',
-  'luna_vip_monthly': 'vip',
-  'luna_vip_yearly': 'vip',
 };
 
 // ============================================================================
@@ -91,7 +86,7 @@ export interface IAPProduct {
   price: string;
   priceAmount: number;
   currency: string;
-  tier: 'premium' | 'vip';
+  tier: 'premium';
 }
 
 export interface IAPPurchaseResult {
@@ -99,7 +94,7 @@ export interface IAPPurchaseResult {
   productId: string;
   transactionId: string;
   receipt: string;
-  tier: 'premium' | 'vip';
+  tier: 'premium';
 }
 
 // ============================================================================
