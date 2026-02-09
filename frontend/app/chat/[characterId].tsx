@@ -253,10 +253,18 @@ export default function ChatScreen() {
   const initializeSession = async () => {
     try {
       setIsInitializing(true);
-      
-      // 🧪 DEBUG: 清除Vera intro标记以便测试
-      await AsyncStorage.removeItem('character_intro_shown_b6c7d8e9-f0a1-4b2c-3d4e-5f6a7b8c9d0e');
-      console.log('[DEBUG] Cleared Vera intro flag');
+
+      // Step 0: 检查是否需要播放intro (立即遮盖背景，防止泄露)
+      if (getCharacterIntroVideo(params.characterId)) {
+        const introKey = `character_intro_shown_${params.characterId}`;
+        const introShown = await AsyncStorage.getItem(introKey);
+        if (!introShown) {
+          // 立即显示intro overlay，遮盖背景
+          setShowCharacterIntro(true);
+          setIntroPhase('black');
+          setIntroVideoReady(false);
+        }
+      }
 
       // Step 1: Check for cached session first (instant load)
       const cachedSession = useChatStore.getState().getSessionByCharacterId(params.characterId);
@@ -347,21 +355,15 @@ export default function ChatScreen() {
           console.log('[Chat] No history, loading greeting...');
           
           // 🎬 角色专属入场动画 (仅第一次，支持Luna/Vera等)
-          if (getCharacterIntroVideo(params.characterId)) {
+          // 注意：showCharacterIntro 已在 Step 0 设置，这里只需要保存sessionId和标记
+          if (showCharacterIntro && getCharacterIntroVideo(params.characterId)) {
             const introKey = `character_intro_shown_${params.characterId}`;
-            const introShown = await AsyncStorage.getItem(introKey);
-            
-            if (!introShown) {
-              console.log('[Chat] Showing intro animation for', params.characterId);
-              introSessionIdRef.current = session.sessionId;
-              setShowCharacterIntro(true);
-              setIntroPhase('black');
-              setIntroVideoReady(false);
-              await AsyncStorage.setItem(introKey, 'true');
-              // Intro会在动画结束后发送开场白，这里不发送普通greeting
-              setIsInitializing(false);
-              return;
-            }
+            console.log('[Chat] Showing intro animation for', params.characterId);
+            introSessionIdRef.current = session.sessionId;
+            await AsyncStorage.setItem(introKey, 'true');
+            // Intro会在动画结束后发送开场白，这里不发送普通greeting
+            setIsInitializing(false);
+            return;
           }
           
           try {
