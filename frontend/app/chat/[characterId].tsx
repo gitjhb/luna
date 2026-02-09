@@ -1148,6 +1148,9 @@ export default function ChatScreen() {
           inverted
           onScroll={handleScroll}
           scrollEventThrottle={100}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
           // Load more when reaching the end (top of chat, since inverted)
           onEndReached={() => {
             if (hasNextPage && !isFetchingNextPage) {

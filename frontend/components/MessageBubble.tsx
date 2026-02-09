@@ -265,12 +265,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 6,
   },
-  // AI bubble: Semi-transparent with visible border
+  // AI bubble: Semi-transparent with frosted glass effect
   bubbleAI: {
-    backgroundColor: 'rgba(0, 0, 0, 0.15)',
-    borderRadius: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    // Frosted glass effect (iOS)
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
   messageText: {
     fontSize: 15,
