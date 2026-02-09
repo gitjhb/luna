@@ -14,6 +14,7 @@ import {
   RefreshControl,
   Image,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -35,7 +36,7 @@ export default function CompanionsScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const { t } = useLocale();
-  const { user, wallet } = useUserStore();
+  const { user, wallet, isSubscribed } = useUserStore();
   
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +71,26 @@ export default function CompanionsScreen() {
     char.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Check if character is locked (requires subscription)
+  const isCharacterLocked = (character: Character) => {
+    if (isSubscribed) return false;
+    return character.tierRequired === 'premium' || character.tierRequired === 'vip';
+  };
+
   const handleCharacterPress = (character: Character) => {
+    // Check if character requires subscription
+    if (isCharacterLocked(character)) {
+      Alert.alert(
+        '🔒 专属角色',
+        `${character.name} 是订阅专属角色\n\n订阅后即可解锁聊天`,
+        [
+          { text: '取消', style: 'cancel' },
+          { text: '去订阅', onPress: () => router.push('/(tabs)/profile') },
+        ]
+      );
+      return;
+    }
+    
     router.push({
       pathname: '/chat/[characterId]',
       params: {
@@ -163,6 +183,12 @@ export default function CompanionsScreen() {
                       <Text style={styles.buddyBadgeText}>{t.discover.buddy}</Text>
                     </View>
                   ) : null}
+                  {isCharacterLocked(character) && (
+                    <View style={styles.premiumBadge}>
+                      <Ionicons name="lock-closed" size={12} color="#FFD700" />
+                      <Text style={styles.premiumBadgeText}>订阅</Text>
+                    </View>
+                  )}
                   {/* Spicy badge hidden for App Store compliance */}
                 </View>
                 <Text style={styles.characterDesc} numberOfLines={2}>
@@ -325,6 +351,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#63C7FF',
+  },
+  premiumBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 215, 0, 0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  premiumBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFD700',
   },
   characterDesc: {
     fontSize: 14,

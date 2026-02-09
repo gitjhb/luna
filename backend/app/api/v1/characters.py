@@ -23,6 +23,7 @@ class CharacterResponse(BaseModel):
     greeting: Optional[str] = None  # 角色开场白
     is_active: bool = True
     created_at: datetime
+    tier_required: str = "free"  # free | premium | vip - 需要的订阅等级
     # Extended profile fields
     age: Optional[int] = None
     zodiac: Optional[str] = None  # 星座
@@ -400,6 +401,7 @@ CHARACTERS = [
         "is_spicy": True,
         "is_romanceable": True,
         "character_type": "romantic",
+        "tier_required": "premium",  # 需要订阅才能解锁
         "personality_traits": ["性感", "成熟", "野性", "通透", "自信"],
         "system_prompt": VERA_PROMPT,
         "personality": {"temperament": 5, "sensitivity": 6, "boundaries": 7, "forgiveness": 5, "jealousy": 3},
