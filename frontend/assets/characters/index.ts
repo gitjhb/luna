@@ -26,7 +26,7 @@ export const characterAvatars: Record<string, any> = {
 
 // Character background images
 export const characterBackgrounds: Record<string, any> = {
-  [CHARACTER_IDS.SAKURA]: require('./sakura/chat-background.jpeg'),
+  [CHARACTER_IDS.SAKURA]: require('./sakura/chat-background.png'),
   [CHARACTER_IDS.LUNA]: require('./luna/chat_background.png'),
   [CHARACTER_IDS.VERA]: require('./vera/chat_background.png'),
   [CHARACTER_IDS.MEI]: require('./mei/mei.jpg'), // 暂用头像
