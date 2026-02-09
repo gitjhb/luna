@@ -631,7 +631,7 @@ class SubscriptionService:
                 type_mapping = {
                     "subscription": TransactionType.PURCHASE,
                     "subscription_cancel": TransactionType.REFUND,
-                    "subscription_expired": TransactionType.DAILY_REFRESH,  # Use as placeholder
+                    "subscription_expired": TransactionType.DEDUCTION,  # 权益到期/失去
                 }
                 tx_type = type_mapping.get(transaction_type, TransactionType.PURCHASE)
                 
