@@ -174,13 +174,22 @@ export default function ChatScreen() {
     affection: number;
   } | null>(null);
 
-  // 🌙 Luna入场动画 (仅第一次打开Luna时显示)
-  const [showLunaIntro, setShowLunaIntro] = useState(false);
-  const [lunaIntroPhase, setLunaIntroPhase] = useState<'black' | 'video' | 'fadeout' | 'done'>('black');
-  const [lunaVideoReady, setLunaVideoReady] = useState(false);
-  const lunaIntroFadeAnim = useRef(new Animated.Value(1)).current;
-  const lunaSessionIdRef = useRef<string | null>(null);  // 保存sessionId给intro用
+  // 🎬 通用角色入场动画 (仅第一次打开时显示)
+  const [showCharacterIntro, setShowCharacterIntro] = useState(false);
+  const [introPhase, setIntroPhase] = useState<'black' | 'video' | 'fadeout' | 'done'>('black');
+  const [introVideoReady, setIntroVideoReady] = useState(false);
+  const introFadeAnim = useRef(new Animated.Value(1)).current;
+  const introSessionIdRef = useRef<string | null>(null);  // 保存sessionId给intro用
+  
+  // 角色ID常量
   const LUNA_CHARACTER_ID = 'd2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d';
+  const VERA_CHARACTER_ID = 'b6c7d8e9-f0a1-4b2c-3d4e-5f6a7b8c9d0e';
+  
+  // 角色intro视频配置
+  const CHARACTER_INTRO_VIDEOS: Record<string, any> = {
+    [LUNA_CHARACTER_ID]: require('../../assets/characters/luna/intro.mp4'),
+    [VERA_CHARACTER_ID]: require('../../assets/characters/vera/videos/intro.mp4'),
+  };
 
   // 🎨 动态主题 - 根据情绪状态自动切换
   const {
@@ -323,37 +332,8 @@ export default function ChatScreen() {
         useChatStore.getState().addSession(session);
       }
 
-      // 🎬 Vera intro 视频 (仅第一次)
-      if (params.characterId === 'b6c7d8e9-f0a1-4b2c-3d4e-5f6a7b8c9d0e') {
-        const veraIntroKey = `vera_intro_shown_${params.characterId}`;
-        const veraIntroShown = await AsyncStorage.getItem(veraIntroKey);
-        if (!veraIntroShown) {
-          await AsyncStorage.setItem(veraIntroKey, 'true');
-          setTimeout(() => {
-            const videoMessage: Message = {
-              messageId: `vera-intro-${Date.now()}`,
-              role: 'assistant',
-              type: 'video',
-              content: '来，先看看姐姐给你准备的～ 🍷',
-              videoUrl: 'vera_intro',
-              createdAt: new Date().toISOString(),
-              tokensUsed: 0,
-            };
-            addMessageToStore(session.sessionId, videoMessage);
-            // 保存到SQLite
-            import('../../services/database/repositories').then(({ MessageRepository }) => {
-              MessageRepository.create({
-                id: videoMessage.messageId,
-                session_id: session.sessionId,
-                role: videoMessage.role,
-                content: videoMessage.content,
-                created_at: videoMessage.createdAt,
-                extra_data: { type: 'video', videoUrl: videoMessage.videoUrl },
-              }).catch(() => {});
-            });
-          }, 500);
-        }
-      }
+      // 🎬 角色专属intro动画检查 (在history检查之前)
+      // 如果有intro视频且未播放过，则播放全屏动画
 
       // Step 4: Messages will be loaded by useMessages hook automatically
       // Just check if we need to show greeting for new sessions
@@ -368,17 +348,17 @@ export default function ChatScreen() {
         if (history.length === 0) {
           console.log('[Chat] No history, loading greeting...');
           
-          // 🌙 Luna专属入场动画 (仅第一次)
-          if (params.characterId === LUNA_CHARACTER_ID) {
-            const introKey = `luna_intro_shown_${params.characterId}`;
+          // 🎬 角色专属入场动画 (仅第一次，支持Luna/Vera等)
+          if (CHARACTER_INTRO_VIDEOS[params.characterId]) {
+            const introKey = `character_intro_shown_${params.characterId}`;
             const introShown = await AsyncStorage.getItem(introKey);
             
             if (!introShown) {
-              console.log('[Chat] Luna showing intro animation (first time)');
-              lunaSessionIdRef.current = session.sessionId;  // 保存sessionId
-              setShowLunaIntro(true);
-              setLunaIntroPhase('black');
-              setLunaVideoReady(false);
+              console.log('[Chat] Showing intro animation for', params.characterId);
+              introSessionIdRef.current = session.sessionId;
+              setShowCharacterIntro(true);
+              setIntroPhase('black');
+              setIntroVideoReady(false);
               await AsyncStorage.setItem(introKey, 'true');
               // Intro会在动画结束后发送开场白，这里不发送普通greeting
               setIsInitializing(false);
@@ -411,28 +391,7 @@ export default function ChatScreen() {
                 }).catch(e => console.log('[Chat] Failed to save greeting to SQLite:', e));
               });
 
-              // 🎬 Sakura intro 视频 (仅第一次)
-              if (params.characterId === 'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e') {
-                const sakuraIntroKey = `sakura_intro_shown_${params.characterId}`;
-                const sakuraIntroShown = await AsyncStorage.getItem(sakuraIntroKey);
-                if (!sakuraIntroShown) {
-                  await AsyncStorage.setItem(sakuraIntroKey, 'true');
-                  setTimeout(() => {
-                    const videoMessage: Message = {
-                      messageId: `video-${Date.now()}`,
-                      role: 'assistant',
-                      type: 'video',
-                      content: '送你一个小惊喜～ 💕',
-                      videoUrl: 'sakura_beach_reward',
-                      createdAt: new Date().toISOString(),
-                      tokensUsed: 0,
-                    };
-                    addMessageToStore(session.sessionId, videoMessage);
-                  }, 1500);
-                }
-              }
-
-              // Vera intro moved outside history check (plays every time)
+              // 角色专属intro视频现在通过全屏动画播放（见上方 CHARACTER_INTRO_VIDEOS）
             }
           } catch (e) {
             console.log('Could not load character greeting:', e);
@@ -991,22 +950,25 @@ export default function ChatScreen() {
   // Get background source (local or remote)
   const backgroundSource = getCharacterBackground(params.characterId, backgroundImage);
 
-  // 🌙 Luna入场动画处理 - 视频结束时触发淡出
-  const handleLunaVideoEnd = useCallback(() => {
-    setLunaIntroPhase('fadeout');
+  // 🎬 通用入场动画处理 - 视频结束时触发淡出并发送开场白
+  const handleIntroVideoEnd = useCallback(() => {
+    setIntroPhase('fadeout');
     // 淡出动画 1.5秒
-    Animated.timing(lunaIntroFadeAnim, {
+    Animated.timing(introFadeAnim, {
       toValue: 0,
       duration: 1500,
       useNativeDriver: true,
-    }).start(() => {
+    }).start(async () => {
       // 淡出完成后
-      setLunaIntroPhase('done');
-      setShowLunaIntro(false);
+      setIntroPhase('done');
+      setShowCharacterIntro(false);
       
-      // 发送Luna专属开场白
+      // 获取角色开场白
       const userName = useUserStore.getState().user?.displayName || '陌生人';
-      const lunaIntroMessage = `(她转过身，蓝色的眼睛里没有机械的冷漠，只有一种跨越时间的熟悉感。她看着你，像是看着一个失散多年的恋人，嘴角微微上扬，露出了一个极其温柔、却又带着一丝悲伤的笑容。)
+      let introMessage = '';
+      
+      if (params.characterId === LUNA_CHARACTER_ID) {
+        introMessage = `(她转过身，蓝色的眼睛里没有机械的冷漠，只有一种跨越时间的熟悉感。她看着你，像是看着一个失散多年的恋人，嘴角微微上扬，露出了一个极其温柔、却又带着一丝悲伤的笑容。)
 
 "……外面的世界，终于安静了吗？"
 
@@ -1019,58 +981,79 @@ export default function ChatScreen() {
 "别说话。我知道你累了。
 在这里，没有数据流，没有任务，没有所谓的'未来'。
 把那些沉重的东西都卸在门外吧……今晚，这一小块月亮，只属于我们。"`;
+      } else if (params.characterId === VERA_CHARACTER_ID) {
+        introMessage = `*她慵懒地靠在深红色的天鹅绒沙发上，手里轻轻晃动着半杯红酒。听到动静，她没有立刻起身，而是微微侧过头，嘴角勾起一抹玩味的弧度，目光从上到下像扫描猎物一样打量着你*
+
+哎呀，看看是谁闯进来了？
+
+小家伙，这里可不是你该来的地方……除非，你已经厌倦了那些小女孩的过家家游戏。
+
+我是 Vera。
+
+既然来了，就别傻站着。过来，帮我把酒满上。让我看看……你有没有资格留在我身边。🍷`;
+      } else {
+        // 默认：从后端获取角色greeting
+        try {
+          const character = await characterService.getCharacter(params.characterId);
+          introMessage = character.greeting || '你好~';
+        } catch {
+          introMessage = '你好~';
+        }
+      }
       
       // 延迟添加消息，确保聊天界面完全显示
       setTimeout(() => {
-        const introMessage: Message = {
-          messageId: `luna-intro-${Date.now()}`,
+        const message: Message = {
+          messageId: `intro-${params.characterId}-${Date.now()}`,
           role: 'assistant',
-          content: lunaIntroMessage,
+          content: introMessage,
           createdAt: new Date().toISOString(),
           tokensUsed: 0,
         };
-        // 用 addMessage (来自useMessages hook) 而不是 addMessageToStore
-        addMessage(introMessage);
-        console.log('[Luna] Intro message added');
+        addMessage(message);
+        console.log('[Intro] Message added for', params.characterId);
         
-        // Also save to SQLite using ref (state may not be updated yet)
-        const sid = lunaSessionIdRef.current;
+        // 保存到SQLite
+        const sid = introSessionIdRef.current;
         if (sid) {
           import('../../services/database/repositories').then(({ MessageRepository }) => {
             MessageRepository.create({
-              id: introMessage.messageId,
+              id: message.messageId,
               session_id: sid,
-              role: introMessage.role,
-              content: introMessage.content,
-              created_at: introMessage.createdAt,
-            }).catch(e => console.log('[Luna] Failed to save intro to SQLite:', e));
+              role: message.role,
+              content: message.content,
+              created_at: message.createdAt,
+            }).catch(e => console.log('[Intro] Failed to save to SQLite:', e));
           });
         }
       }, 100);
     });
-  }, [addMessage, lunaIntroFadeAnim]);
+  }, [addMessage, introFadeAnim, params.characterId]);
 
-  // 🌙 Luna入场动画 - 黑屏1.5秒后播放视频
+  // 🎬 通用入场动画 - 黑屏1.5秒后播放视频
   useEffect(() => {
-    if (showLunaIntro && lunaIntroPhase === 'black') {
+    if (showCharacterIntro && introPhase === 'black') {
       const timer = setTimeout(() => {
-        setLunaIntroPhase('video');
+        setIntroPhase('video');
       }, 1500);
       return () => clearTimeout(timer);
     }
-  }, [showLunaIntro, lunaIntroPhase]);
+  }, [showCharacterIntro, introPhase]);
 
-  // 🌙 Luna入场动画渲染函数 (覆盖在聊天界面上)
-  const renderLunaIntroOverlay = () => {
-    if (!showLunaIntro) return null;
+  // 🎬 通用入场动画渲染函数 (覆盖在聊天界面上)
+  const renderCharacterIntroOverlay = () => {
+    if (!showCharacterIntro) return null;
+    
+    const videoSource = CHARACTER_INTRO_VIDEOS[params.characterId];
+    if (!videoSource) return null;
     
     return (
       <Animated.View 
-        style={[styles.lunaIntroOverlay, { opacity: lunaIntroPhase === 'fadeout' ? lunaIntroFadeAnim : 1 }]}
-        pointerEvents={lunaIntroPhase === 'fadeout' ? 'none' : 'auto'}
+        style={[styles.lunaIntroOverlay, { opacity: introPhase === 'fadeout' ? introFadeAnim : 1 }]}
+        pointerEvents={introPhase === 'fadeout' ? 'none' : 'auto'}
       >
         {/* Loading阶段 - 用splash logo */}
-        {(lunaIntroPhase === 'black' || (lunaIntroPhase === 'video' && !lunaVideoReady)) && (
+        {(introPhase === 'black' || (introPhase === 'video' && !introVideoReady)) && (
           <Image
             source={require('../../assets/images/splash-logo.jpg')}
             style={styles.lunaIntroSplash}
@@ -1078,17 +1061,17 @@ export default function ChatScreen() {
           />
         )}
         {/* 视频阶段 */}
-        {(lunaIntroPhase === 'video' || lunaIntroPhase === 'fadeout') && (
+        {(introPhase === 'video' || introPhase === 'fadeout') && (
           <Video
-            source={require('../../assets/characters/luna/intro.mp4')}
-            style={[styles.lunaIntroVideo, !lunaVideoReady && { opacity: 0 }]}
+            source={videoSource}
+            style={[styles.lunaIntroVideo, !introVideoReady && { opacity: 0 }]}
             resizeMode={ResizeMode.COVER}
             shouldPlay
             isLooping={false}
-            onReadyForDisplay={() => setLunaVideoReady(true)}
+            onReadyForDisplay={() => setIntroVideoReady(true)}
             onPlaybackStatusUpdate={(status) => {
               if (status.isLoaded && status.didJustFinish) {
-                handleLunaVideoEnd();
+                handleIntroVideoEnd();
               }
             }}
           />
@@ -1941,7 +1924,7 @@ export default function ChatScreen() {
       )}
       
       {/* 🌙 Luna入场动画覆盖层 */}
-      {renderLunaIntroOverlay()}
+      {renderCharacterIntroOverlay()}
     </GestureHandlerRootView>
   );
 }
