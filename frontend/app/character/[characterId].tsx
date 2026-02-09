@@ -192,7 +192,7 @@ export default function CharacterProfileScreen() {
       }
       setDeleteModalVisible(false);
       Alert.alert(t.characterProfile.deleted, tpl(t.characterProfile.deletedMessage, { name: character?.name || '' }), [
-        { text: t.characterProfile.confirm, onPress: () => router.back() }
+        { text: t.characterProfile.confirm, onPress: () => router.replace('/(tabs)/') }
       ]);
     } catch (error) {
       console.error('Delete character data failed:', error);
