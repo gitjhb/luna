@@ -7,7 +7,7 @@
  * - Press feedback animation
  */
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -44,6 +44,7 @@ interface MessageBubbleProps {
   onReply?: (content: string) => void;
   showToast?: (message: string) => void;
   messageReaction?: string | null;
+  typewriter?: boolean;  // Enable typewriter effect for new AI messages
 }
 
 // 解析 *动作/心理描写* 并渲染为斜体淡色
@@ -86,6 +87,9 @@ const renderStyledContent = (text: string, isUserMessage: boolean) => {
   return parts.length > 0 ? parts : text;
 };
 
+// Typewriter effect duration in ms
+const TYPEWRITER_DURATION = 1800; // 1.8 seconds
+
 export default function MessageBubble({
   content,
   isUser,
@@ -96,9 +100,44 @@ export default function MessageBubble({
   onReply,
   showToast,
   messageReaction,
+  typewriter = false,
 }: MessageBubbleProps) {
   const [showPopup, setShowPopup] = useState(false);
   const [selectedReaction, setSelectedReaction] = useState<string | null>(messageReaction || null);
+  
+  // Typewriter effect state
+  const [displayedLength, setDisplayedLength] = useState(typewriter ? 0 : content.length);
+  const typewriterComplete = useRef(!typewriter);
+  
+  // Typewriter effect - complete in ~1.8s regardless of length
+  useEffect(() => {
+    if (!typewriter || typewriterComplete.current) {
+      setDisplayedLength(content.length);
+      return;
+    }
+    
+    const totalChars = content.length;
+    if (totalChars === 0) return;
+    
+    // Calculate interval to finish in TYPEWRITER_DURATION
+    // Use variable speed: faster for longer messages
+    const interval = Math.max(5, Math.min(50, TYPEWRITER_DURATION / totalChars));
+    
+    let currentLength = 0;
+    const timer = setInterval(() => {
+      // Add multiple chars per tick for longer messages
+      const charsPerTick = Math.max(1, Math.ceil(totalChars / (TYPEWRITER_DURATION / interval)));
+      currentLength = Math.min(currentLength + charsPerTick, totalChars);
+      setDisplayedLength(currentLength);
+      
+      if (currentLength >= totalChars) {
+        clearInterval(timer);
+        typewriterComplete.current = true;
+      }
+    }, interval);
+    
+    return () => clearInterval(timer);
+  }, [content, typewriter]);
   
   // Animation values
   const scale = useSharedValue(1);
@@ -214,7 +253,7 @@ export default function MessageBubble({
             isUser ? styles.bubbleUser : styles.bubbleAI,
           ]}>
             <Text style={styles.messageText}>
-              {renderStyledContent(content, isUser)}
+              {renderStyledContent(content.slice(0, displayedLength), isUser)}
             </Text>
             
             {/* Reaction badge */}

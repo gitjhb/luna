@@ -935,6 +935,7 @@ export default function ChatScreen() {
           onReply={!isUser ? handleReply : undefined}
           showToast={showToast}
           messageReaction={item.reaction}
+          typewriter={!isUser && (Date.now() - new Date(item.createdAt).getTime()) < 3000}
         />
       </View>
     );
