@@ -218,7 +218,13 @@ export default function ProfileScreen() {
             {/* Membership Badge - Clickable */}
             <TouchableOpacity 
               style={[styles.membershipBadge, isSubscribed && styles.membershipBadgePremium]}
-              onPress={() => setShowSubscriptionModal(true)}
+              onPress={() => {
+                if (isSubscribed) {
+                  handleManageSubscription();
+                } else {
+                  setShowSubscriptionModal(true);
+                }
+              }}
               activeOpacity={0.7}
             >
               <Ionicons 
