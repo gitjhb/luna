@@ -180,8 +180,11 @@ export default function ChatScreen() {
   } | null>(null);
 
   // 🎬 通用角色入场动画 (仅第一次打开时显示)
-  const [showCharacterIntro, setShowCharacterIntro] = useState(false);
-  const [introPhase, setIntroPhase] = useState<'black' | 'video' | 'fadeout' | 'done'>('black');
+  // 在useState初始化时就判断是否需要显示intro，避免闪烁
+  const hasIntroVideo = getCharacterIntroVideo(params.characterId);
+  const needsIntroOnMount = hasIntroVideo && (!cachedSession || !cachedSession.introShown);
+  const [showCharacterIntro, setShowCharacterIntro] = useState(needsIntroOnMount);
+  const [introPhase, setIntroPhase] = useState<'black' | 'video' | 'fadeout' | 'done'>(needsIntroOnMount ? 'black' : 'done');
   const [introVideoReady, setIntroVideoReady] = useState(false);
   const introFadeAnim = useRef(new Animated.Value(1)).current;
   const introSessionIdRef = useRef<string | null>(null);  // 保存sessionId给intro用
@@ -259,15 +262,7 @@ export default function ChatScreen() {
     try {
       setIsInitializing(true);
 
-      // Step 0: 检查缓存的session，决定是否需要黑屏遮盖
-      const cachedSession = useChatStore.getState().getSessionByCharacterId(params.characterId);
-      const hasIntroVideo = getCharacterIntroVideo(params.characterId);
-      
-      // 只有当：1) 有intro视频 2) 没有缓存session或introShown=false 时才显示黑屏
-      if (hasIntroVideo && (!cachedSession || !cachedSession.introShown)) {
-        setIntroPhase('black');
-        setIntroVideoReady(false);
-      }
+      // Step 0: intro遮盖已在useState初始化时处理，这里不需要再设置
 
       // Step 1: 使用缓存的session（如果有）
       if (cachedSession) {
