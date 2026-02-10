@@ -9,8 +9,8 @@ import { Character } from '../types';
 const mapCharacter = (data: any): Character => ({
   characterId: data.character_id || data.characterId,
   name: data.name,
-  avatarUrl: data.avatar_url || data.avatarUrl || 'https://i.pravatar.cc/300',
-  backgroundUrl: data.background_url || data.backgroundUrl,
+  avatarUrl: data.avatar_url || data.avatarUrl || null,  // null让前端用本地资源，不用placeholder
+  backgroundUrl: data.background_url || data.backgroundUrl || null,
   description: data.description,
   personalityTraits: data.personality_traits || data.personalityTraits || [],
   tierRequired: data.tier_required || data.tierRequired || 'free',
