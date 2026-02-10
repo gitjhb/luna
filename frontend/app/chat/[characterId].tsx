@@ -1067,7 +1067,8 @@ export default function ChatScreen() {
 
   // 🎬 通用入场动画渲染函数 (覆盖在聊天界面上)
   const renderCharacterIntroOverlay = () => {
-    if (!showCharacterIntro) return null;
+    // 不显示overlay的情况：关闭了、完成了、没有视频
+    if (!showCharacterIntro || introPhase === 'done') return null;
     
     const videoSource = getCharacterIntroVideo(params.characterId);
     if (!videoSource) return null;
