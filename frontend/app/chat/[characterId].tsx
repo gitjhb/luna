@@ -341,7 +341,8 @@ export default function ChatScreen() {
       if (needsIntro) {
         setShowCharacterIntro(true);
       } else if (hasIntroVideo) {
-        // 已播放过，取消黑屏遮盖
+        // 已播放过，取消黑屏遮盖（处理缓存没有introShown但后端有的情况）
+        setShowCharacterIntro(false);
         setIntroPhase('done');
       }
 
