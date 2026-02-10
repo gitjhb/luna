@@ -25,6 +25,7 @@ class ChatSession(Base):
     character_name = Column(String(100), nullable=False)
     character_avatar = Column(String(500), nullable=True)
     character_background = Column(String(500), nullable=True)
+    intro_shown = Column(Boolean, default=False)  # 是否已播放过intro动画
     total_messages = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -46,6 +47,7 @@ class ChatSession(Base):
             "character_name": self.character_name,
             "character_avatar": self.character_avatar,
             "character_background": self.character_background,
+            "intro_shown": self.intro_shown,
             "total_messages": self.total_messages,
             "is_active": self.is_active,
             "created_at": self.created_at,

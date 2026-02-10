@@ -80,6 +80,7 @@ class CreateSessionResponse(BaseModel):
     character_name: str
     character_avatar: Optional[str] = None
     character_background: Optional[str] = None
+    intro_shown: bool = False  # 是否已播放过intro动画
 
 
 class SessionInfo(BaseModel):

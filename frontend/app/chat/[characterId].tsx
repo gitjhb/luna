@@ -95,9 +95,14 @@ export default function ChatScreen() {
   } = useChatStore();
 
   const cachedIntimacy = useChatStore((s) => s.intimacyByCharacter[params.characterId]);
+  
+  // 立即获取缓存的session，让useMessages能尽快启用
+  const cachedSession = useChatStore.getState().getSessionByCharacterId(params.characterId);
 
   const [inputText, setInputText] = useState('');
-  const [sessionId, setSessionId] = useState<string | null>(params.sessionId || null);
+  const [sessionId, setSessionId] = useState<string | null>(
+    params.sessionId || cachedSession?.sessionId || null
+  );
   const [isInitializing, setIsInitializing] = useState(true);
   
   // Track message IDs that should show typewriter effect (just added via API response)
@@ -115,7 +120,7 @@ export default function ChatScreen() {
   } = useMessages({
     sessionId,
     characterId: params.characterId,
-    enabled: !isInitializing && !!sessionId,
+    enabled: !!sessionId,  // 只要有sessionId就立即加载，不等initializeSession完成
   });
   const [characterAvatar, setCharacterAvatar] = useState(params.avatarUrl || '');
   const [backgroundImage, setBackgroundImage] = useState(params.backgroundUrl || DEFAULT_BACKGROUND);
@@ -254,20 +259,17 @@ export default function ChatScreen() {
     try {
       setIsInitializing(true);
 
-      // Step 0: 检查是否需要播放intro (立即遮盖背景，防止泄露)
-      if (getCharacterIntroVideo(params.characterId)) {
-        const introKey = `character_intro_shown_${params.characterId}`;
-        const introShown = await AsyncStorage.getItem(introKey);
-        if (!introShown) {
-          // 立即显示intro overlay，遮盖背景
-          setShowCharacterIntro(true);
-          setIntroPhase('black');
-          setIntroVideoReady(false);
-        }
+      // Step 0: 检查缓存的session，决定是否需要黑屏遮盖
+      const cachedSession = useChatStore.getState().getSessionByCharacterId(params.characterId);
+      const hasIntroVideo = getCharacterIntroVideo(params.characterId);
+      
+      // 只有当：1) 有intro视频 2) 没有缓存session或introShown=false 时才显示黑屏
+      if (hasIntroVideo && (!cachedSession || !cachedSession.introShown)) {
+        setIntroPhase('black');
+        setIntroVideoReady(false);
       }
 
-      // Step 1: Check for cached session first (instant load)
-      const cachedSession = useChatStore.getState().getSessionByCharacterId(params.characterId);
+      // Step 1: 使用缓存的session（如果有）
       if (cachedSession) {
         setSessionId(cachedSession.sessionId);
         setActiveSession(cachedSession.sessionId, params.characterId);
@@ -338,8 +340,15 @@ export default function ChatScreen() {
         useChatStore.getState().addSession(session);
       }
 
-      // 🎬 角色专属intro动画检查 (在history检查之前)
+      // 🎬 角色专属intro动画检查 (从后端获取introShown状态)
       // 如果有intro视频且未播放过，则播放全屏动画
+      const needsIntro = hasIntroVideo && !session.introShown;
+      if (needsIntro) {
+        setShowCharacterIntro(true);
+      } else if (hasIntroVideo) {
+        // 已播放过，取消黑屏遮盖
+        setIntroPhase('done');
+      }
 
       // Step 4: Messages will be loaded by useMessages hook automatically
       // Just check if we need to show greeting for new sessions
@@ -350,22 +359,25 @@ export default function ChatScreen() {
         );
         console.log('[Chat] History check:', history.length, 'messages');
 
-        // Step 5: If no messages yet, show character's greeting
-        if (history.length === 0) {
-          console.log('[Chat] No history, loading greeting...');
+        // Step 5: If no messages yet AND intro not shown, show character's greeting
+        // introShown标记了是否已经展示过intro（包括greeting），避免重复
+        if (history.length === 0 && !session.introShown) {
+          console.log('[Chat] No history and intro not shown, loading greeting...');
           
           // 🎬 角色专属入场动画 (仅第一次，支持Luna/Vera等)
-          // 注意：showCharacterIntro 已在 Step 0 设置，这里只需要保存sessionId和标记
-          if (showCharacterIntro && getCharacterIntroVideo(params.characterId)) {
-            const introKey = `character_intro_shown_${params.characterId}`;
+          if (needsIntro) {
             console.log('[Chat] Showing intro animation for', params.characterId);
             introSessionIdRef.current = session.sessionId;
-            await AsyncStorage.setItem(introKey, 'true');
+            // 标记为已播放（存到后端）
+            chatService.markIntroShown(session.sessionId).catch(e => 
+              console.log('[Chat] Failed to mark intro shown:', e)
+            );
             // Intro会在动画结束后发送开场白，这里不发送普通greeting
             setIsInitializing(false);
             return;
           }
           
+          // 没有intro视频的角色，直接发送greeting
           try {
             const character = await characterService.getCharacter(params.characterId);
             console.log('[Chat] Character greeting:', character.greeting?.substring(0, 50));
@@ -377,10 +389,9 @@ export default function ChatScreen() {
                 createdAt: new Date().toISOString(),
                 tokensUsed: 0,
               };
-              // Use store method for initial greeting (before useMessages is ready)
               addMessageToStore(session.sessionId, greetingMessage);
               
-              // Also save to SQLite for persistence
+              // 保存到本地SQLite
               import('../../services/database/repositories').then(({ MessageRepository }) => {
                 MessageRepository.create({
                   id: greetingMessage.messageId,
@@ -390,8 +401,11 @@ export default function ChatScreen() {
                   created_at: greetingMessage.createdAt,
                 }).catch(e => console.log('[Chat] Failed to save greeting to SQLite:', e));
               });
-
-              // 角色专属intro视频现在通过全屏动画播放（见上方 CHARACTER_INTRO_VIDEOS）
+              
+              // 标记intro已完成（greeting也算intro的一部分）
+              chatService.markIntroShown(session.sessionId).catch(e => 
+                console.log('[Chat] Failed to mark intro shown:', e)
+              );
             }
           } catch (e) {
             console.log('Could not load character greeting:', e);

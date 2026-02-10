@@ -5,7 +5,7 @@
  * Implements Repository pattern for clean data access.
  */
 
-import { getDatabase } from '../index';
+import { getDatabaseAsync } from '../index';
 
 // ============================================================================
 // Types
@@ -45,7 +45,7 @@ export const MessageRepository = {
     sessionId: string,
     options: { limit?: number; offset?: number; order?: 'asc' | 'desc' } = {}
   ): Promise<Message[]> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     const { limit = 50, offset = 0, order = 'asc' } = options;
 
     const rows = await db.getAllAsync<{
@@ -81,7 +81,7 @@ export const MessageRepository = {
    * Get message count for a session
    */
   async getCountBySessionId(sessionId: string): Promise<number> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     const result = await db.getFirstAsync<{ count: number }>(
       'SELECT COUNT(*) as count FROM messages WHERE session_id = ?',
       [sessionId]
@@ -93,7 +93,7 @@ export const MessageRepository = {
    * Get a single message by ID
    */
   async getById(id: string): Promise<Message | null> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     const row = await db.getFirstAsync<any>(
       'SELECT * FROM messages WHERE id = ?',
       [id]
@@ -117,7 +117,7 @@ export const MessageRepository = {
    * Create a new message
    */
   async create(input: CreateMessageInput): Promise<Message> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     const now = new Date().toISOString();
 
     await db.runAsync(
@@ -151,7 +151,7 @@ export const MessageRepository = {
    * Create multiple messages in a transaction
    */
   async createMany(inputs: CreateMessageInput[]): Promise<void> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     const now = new Date().toISOString();
 
     await db.withTransactionAsync(async () => {
@@ -178,7 +178,7 @@ export const MessageRepository = {
    * Update message (e.g., unlock)
    */
   async update(id: string, updates: Partial<Message>): Promise<void> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     const fields: string[] = [];
     const values: any[] = [];
 
@@ -208,7 +208,7 @@ export const MessageRepository = {
    * Delete a message
    */
   async delete(id: string): Promise<void> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     await db.runAsync('DELETE FROM messages WHERE id = ?', [id]);
   },
 
@@ -216,7 +216,7 @@ export const MessageRepository = {
    * Delete all messages for a session
    */
   async deleteBySessionId(sessionId: string): Promise<void> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     await db.runAsync('DELETE FROM messages WHERE session_id = ?', [sessionId]);
   },
 
@@ -227,7 +227,7 @@ export const MessageRepository = {
     query: string,
     options: { sessionId?: string; limit?: number } = {}
   ): Promise<Message[]> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     const { sessionId, limit = 50 } = options;
 
     let sql = `SELECT * FROM messages WHERE content LIKE ?`;
@@ -259,7 +259,7 @@ export const MessageRepository = {
    * Get latest messages across all sessions
    */
   async getLatest(limit: number = 20): Promise<Message[]> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     const rows = await db.getAllAsync<any>(
       `SELECT * FROM messages ORDER BY created_at DESC LIMIT ?`,
       [limit]

@@ -6,7 +6,7 @@
  */
 
 // Core database functions
-export { initDatabase, getDatabase, closeDatabase } from './index';
+export { initDatabase, getDatabase, getDatabaseAsync, closeDatabase } from './index';
 
 // Repositories
 export { 

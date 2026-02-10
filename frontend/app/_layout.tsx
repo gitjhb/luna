@@ -37,6 +37,7 @@ function HydrationGate({ children }: { children: React.ReactNode }) {
   const giftHydrated = useGiftStore((s) => s._hasHydrated);
   const fetchGiftCatalog = useGiftStore((s) => s.fetchCatalog);
   const needsGiftRefresh = useGiftStore((s) => s.needsRefresh);
+  const [dbReady, setDbReady] = useState(false);
   
   // 初始化 RevenueCat
   const user = useUserStore((s) => s.user);
@@ -65,7 +66,7 @@ function HydrationGate({ children }: { children: React.ReactNode }) {
     initRevenueCat();
   }, [user?.userId]);
   
-  // 初始化 SQLite 数据库
+  // 初始化 SQLite 数据库（阻塞式，确保DB ready后才显示app）
   useEffect(() => {
     const initDB = async () => {
       try {
@@ -79,17 +80,14 @@ function HydrationGate({ children }: { children: React.ReactNode }) {
           console.log('[App] Migration result:', result);
         }
       } catch (error) {
-        // Don't crash app if database init fails
         console.error('[App] Database init failed (non-fatal):', error);
+      } finally {
+        // 即使失败也标记为ready，让app继续运行
+        setDbReady(true);
       }
     };
     
-    // Wrap in try-catch to prevent crash
-    try {
-      initDB();
-    } catch (e) {
-      console.error('[App] Database init threw:', e);
-    }
+    initDB();
   }, []);
   
   // 初始化推送服务
@@ -154,8 +152,8 @@ function HydrationGate({ children }: { children: React.ReactNode }) {
     }
   }, [giftHydrated]);
   
-  // Show splash screen while hydrating
-  if (!chatHydrated || !userHydrated || !giftHydrated) {
+  // Show splash screen while hydrating stores and initializing database
+  if (!chatHydrated || !userHydrated || !giftHydrated || !dbReady) {
     return <SplashScreen />;
   }
   

@@ -321,6 +321,9 @@ export default function CharacterInfoPanel({
     if (charId === 'd2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d') {
       return require('../assets/characters/luna/videos/profile_bg.mp4');
     }
+    if (charId === 'a7b8c9d0-e1f2-4a3b-5c6d-7e8f9a0b1c2d') {
+      return require('../assets/characters/meiqiu/video/profile_bg.mp4');
+    }
     return null;
   };
 

@@ -4,7 +4,7 @@
  * Handles all chat session-related database operations.
  */
 
-import { getDatabase } from '../index';
+import { getDatabaseAsync } from '../index';
 
 // ============================================================================
 // Types
@@ -38,7 +38,7 @@ export const SessionRepository = {
    * Get all sessions ordered by last message
    */
   async getAll(): Promise<ChatSession[]> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     const rows = await db.getAllAsync<ChatSession>(
       `SELECT * FROM sessions ORDER BY updated_at DESC`
     );
@@ -49,7 +49,7 @@ export const SessionRepository = {
    * Get session by ID
    */
   async getById(id: string): Promise<ChatSession | null> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     return await db.getFirstAsync<ChatSession>(
       'SELECT * FROM sessions WHERE id = ?',
       [id]
@@ -60,7 +60,7 @@ export const SessionRepository = {
    * Get session by character ID
    */
   async getByCharacterId(characterId: string): Promise<ChatSession | null> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     return await db.getFirstAsync<ChatSession>(
       'SELECT * FROM sessions WHERE character_id = ?',
       [characterId]
@@ -71,7 +71,7 @@ export const SessionRepository = {
    * Create a new session
    */
   async create(input: CreateSessionInput): Promise<ChatSession> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     const now = new Date().toISOString();
 
     await db.runAsync(
@@ -113,7 +113,7 @@ export const SessionRepository = {
    * Update session
    */
   async update(id: string, updates: Partial<ChatSession>): Promise<void> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     const fields: string[] = ['updated_at = ?'];
     const values: any[] = [new Date().toISOString()];
 
@@ -149,7 +149,7 @@ export const SessionRepository = {
    * Update last message info
    */
   async updateLastMessage(sessionId: string, message: string): Promise<void> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     const now = new Date().toISOString();
     await db.runAsync(
       `UPDATE sessions SET last_message = ?, last_message_at = ?, updated_at = ? WHERE id = ?`,
@@ -161,7 +161,7 @@ export const SessionRepository = {
    * Increment unread count
    */
   async incrementUnread(sessionId: string): Promise<void> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     await db.runAsync(
       `UPDATE sessions SET unread_count = unread_count + 1, updated_at = ? WHERE id = ?`,
       [new Date().toISOString(), sessionId]
@@ -172,7 +172,7 @@ export const SessionRepository = {
    * Clear unread count
    */
   async clearUnread(sessionId: string): Promise<void> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     await db.runAsync(
       `UPDATE sessions SET unread_count = 0, updated_at = ? WHERE id = ?`,
       [new Date().toISOString(), sessionId]
@@ -183,7 +183,7 @@ export const SessionRepository = {
    * Delete session and all its messages (cascade)
    */
   async delete(id: string): Promise<void> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     await db.runAsync('DELETE FROM sessions WHERE id = ?', [id]);
   },
 
@@ -191,7 +191,7 @@ export const SessionRepository = {
    * Delete session by character ID
    */
   async deleteByCharacterId(characterId: string): Promise<void> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     await db.runAsync('DELETE FROM sessions WHERE character_id = ?', [characterId]);
   },
 
@@ -199,7 +199,7 @@ export const SessionRepository = {
    * Get total message count across all sessions
    */
   async getTotalMessageCount(): Promise<number> {
-    const db = getDatabase();
+    const db = await getDatabaseAsync();
     const result = await db.getFirstAsync<{ count: number }>(
       'SELECT COUNT(*) as count FROM messages'
     );

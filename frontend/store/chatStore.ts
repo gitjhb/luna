@@ -108,6 +108,7 @@ export interface ChatSession {
   characterName: string;
   characterAvatar: string;
   characterBackground?: string;
+  introShown?: boolean;  // 是否已播放过intro动画
   title: string;
   totalMessages: number;
   totalCreditsSpent: number;

@@ -64,6 +64,7 @@ async def create_session(request: CreateSessionRequest, req: Request):
             character_name=existing["character_name"],
             character_avatar=existing.get("character_avatar"),
             character_background=existing.get("character_background"),
+            intro_shown=existing.get("intro_shown", False),
         )
     
     # Create new session
@@ -113,6 +114,7 @@ async def list_sessions(
             "character_name": s["character_name"],
             "character_avatar": s.get("character_avatar"),
             "character_background": s.get("character_background"),
+            "intro_shown": s.get("intro_shown", False),
             "total_messages": s.get("total_messages", 0),
             "last_message": s.get("last_message"),
             "last_message_at": s.get("last_message_at"),
@@ -144,6 +146,20 @@ async def list_sessions(
         }
     
     return session_list
+
+
+@router.post("/sessions/{session_id}/intro-shown")
+async def mark_intro_shown(session_id: UUID, req: Request):
+    """
+    Mark that the intro animation has been shown for this session.
+    Called after intro video finishes playing.
+    """
+    user_id = _get_user_id(req)
+    
+    # Update session to mark intro as shown
+    await chat_repo.update_session(str(session_id), intro_shown=True)
+    
+    return {"success": True}
 
 
 @router.get("/sessions/{session_id}/messages")

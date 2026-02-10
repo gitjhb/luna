@@ -9,6 +9,7 @@ import * as SQLite from 'expo-sqlite';
 
 // Database instance (singleton)
 let db: SQLite.SQLiteDatabase | null = null;
+let initPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 // Current schema version
 const SCHEMA_VERSION = 1;
@@ -18,28 +19,43 @@ const SCHEMA_VERSION = 1;
  */
 export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (db) return db;
+  
+  // 防止并发初始化
+  if (initPromise) return initPromise;
 
-  console.log('[DB] Opening database...');
-  db = await SQLite.openDatabaseAsync('luna.db');
+  initPromise = (async () => {
+    console.log('[DB] Opening database...');
+    db = await SQLite.openDatabaseAsync('luna.db');
+    
+    // Enable WAL mode for better performance
+    await db.execAsync('PRAGMA journal_mode = WAL;');
+    
+    // Run migrations
+    await runMigrations(db);
+    
+    console.log('[DB] Database initialized');
+    return db;
+  })();
   
-  // Enable WAL mode for better performance
-  await db.execAsync('PRAGMA journal_mode = WAL;');
-  
-  // Run migrations
-  await runMigrations(db);
-  
-  console.log('[DB] Database initialized');
-  return db;
+  return initPromise;
 }
 
 /**
- * Get database instance (must call initDatabase first)
+ * Get database instance (waits for init if needed)
  */
 export function getDatabase(): SQLite.SQLiteDatabase {
   if (!db) {
     throw new Error('Database not initialized. Call initDatabase() first.');
   }
   return db;
+}
+
+/**
+ * Get database instance async (auto-initializes if needed)
+ */
+export async function getDatabaseAsync(): Promise<SQLite.SQLiteDatabase> {
+  if (db) return db;
+  return initDatabase();
 }
 
 /**
@@ -150,5 +166,6 @@ async function migration_v1(database: SQLite.SQLiteDatabase): Promise<void> {
 export default {
   initDatabase,
   getDatabase,
+  getDatabaseAsync,
   closeDatabase,
 };

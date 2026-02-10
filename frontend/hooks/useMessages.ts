@@ -47,6 +47,7 @@ const fetchMessages = async ({
   // First page (pageParam = null) - try SQLite first for instant display
   if (!pageParam) {
     try {
+      console.log('[useMessages] Checking SQLite for session:', sessionId);
       const { MessageRepository } = await import('../services/database/repositories');
       // Get NEWEST messages first (desc order), then reverse to asc to match API format
       const cachedMessages = await MessageRepository.getBySessionId(sessionId, { 
@@ -54,8 +55,10 @@ const fetchMessages = async ({
         order: 'desc' 
       });
       
+      console.log('[useMessages] SQLite returned:', cachedMessages?.length || 0, 'messages');
+      
       if (cachedMessages && cachedMessages.length > 0) {
-        console.log('[useMessages] Loaded', cachedMessages.length, 'messages from SQLite');
+        console.log('[useMessages] ✅ Loaded', cachedMessages.length, 'messages from SQLite');
         
         // Convert SQLite format to Message format
         // extra_data may contain type, imageUrl, videoUrl, reaction

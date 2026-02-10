@@ -38,6 +38,7 @@ const mapSession = (data: any): ChatSession => ({
   characterName: data.character_name || data.characterName || 'Unknown',
   characterAvatar: data.character_avatar || data.characterAvatar || 'https://i.pravatar.cc/100',
   characterBackground: data.character_background || data.characterBackground,
+  introShown: data.intro_shown || data.introShown || false,
   title: data.title || 'New Chat',
   totalMessages: data.total_messages || data.totalMessages || 0,
   totalCreditsSpent: data.total_credits_spent || data.totalCreditsSpent || 0,
@@ -206,5 +207,13 @@ export const chatService = {
     };
   }> => {
     return api.delete(`/characters/${characterId}/user-data`);
+  },
+
+  /**
+   * Mark intro animation as shown for a session
+   * Call this after intro video finishes playing
+   */
+  markIntroShown: async (sessionId: string): Promise<void> => {
+    await api.post(`/chat/sessions/${sessionId}/intro-shown`);
   },
 };
