@@ -20,7 +20,7 @@ export const characterAvatars: Record<string, any> = {
   [CHARACTER_IDS.SAKURA]: require('./sakura/avatar.jpeg'),
   [CHARACTER_IDS.LUNA]: require('./luna/avatar.jpg'),
   [CHARACTER_IDS.VERA]: require('./vera/avatar.png'),
-  [CHARACTER_IDS.MEI]: require('./mei/mei.jpg'),
+  [CHARACTER_IDS.MEI]: require('./mei/avatar.jpg'),
   [CHARACTER_IDS.MEIQIU]: require('./meiqiu/avatar.png'),
 };
 
