@@ -49,7 +49,6 @@ const fetchMessages = async ({
     try {
       console.log('[useMessages] Checking SQLite for session:', sessionId);
       const { MessageRepository } = await import('../services/database/repositories');
-      // Get NEWEST messages first (desc order), then reverse to asc to match API format
       const cachedMessages = await MessageRepository.getBySessionId(sessionId, { 
         limit, 
         order: 'desc' 
@@ -60,9 +59,6 @@ const fetchMessages = async ({
       if (cachedMessages && cachedMessages.length > 0) {
         console.log('[useMessages] ✅ Loaded', cachedMessages.length, 'messages from SQLite');
         
-        // Convert SQLite format to Message format
-        // extra_data may contain type, imageUrl, videoUrl, reaction
-        // Reverse to get chronological order (asc) to match API format
         const messages: Message[] = cachedMessages.reverse().map(m => {
           const extra = m.extra_data || {};
           return {
@@ -78,9 +74,8 @@ const fetchMessages = async ({
           };
         });
 
-        // Background sync: fetch latest from backend and merge
-        // Don't await - let it happen in background
-        syncFromBackend(sessionId, messages[0]?.createdAt);
+        // Background sync
+        syncFromBackend(sessionId);
         
         return {
           messages,
@@ -95,7 +90,7 @@ const fetchMessages = async ({
   }
 
   // Fallback to backend (for initial load if SQLite empty, or for pagination)
-  console.log('[useMessages] Fetching from backend, cursor:', pageParam);
+  console.log('[useMessages] Fetching from backend, cursor:', pageParam, 'sessionId:', sessionId);
   const { messages, hasMore, oldestId } = await chatService.getSessionHistory(
     sessionId,
     limit,
@@ -107,6 +102,7 @@ const fetchMessages = async ({
     saveToSQLite(sessionId, messages);
   }
 
+  console.log('[useMessages] Backend returned:', messages.length, 'messages, hasMore:', hasMore);
   return {
     messages,
     nextCursor: hasMore ? oldestId : null,
@@ -115,24 +111,15 @@ const fetchMessages = async ({
 };
 
 /**
- * Background sync: fetch any new messages from backend since last cached message
+ * Background sync: fetch all messages from backend and save to SQLite
+ * SQLite handles duplicates via messageId primary key
  */
-const syncFromBackend = async (sessionId: string, latestCachedTime?: string) => {
+const syncFromBackend = async (sessionId: string) => {
   try {
-    // Fetch latest messages from backend
     const { messages } = await chatService.getSessionHistory(sessionId, 20);
-    
     if (messages.length > 0) {
-      // Find messages newer than our cache
-      const newMessages = latestCachedTime 
-        ? messages.filter(m => new Date(m.createdAt) > new Date(latestCachedTime))
-        : messages;
-      
-      if (newMessages.length > 0) {
-        console.log('[useMessages] Background sync found', newMessages.length, 'new messages');
-        saveToSQLite(sessionId, newMessages);
-        // Note: React Query will pick up changes on next render
-      }
+      console.log('[useMessages] Background sync: saving', messages.length, 'messages to SQLite');
+      saveToSQLite(sessionId, messages);
     }
   } catch (e) {
     console.log('[useMessages] Background sync failed:', e);
@@ -175,10 +162,13 @@ export function useMessages({ sessionId, characterId, enabled = true }: UseMessa
 
   const query = useInfiniteQuery<MessagesPage, Error>({
     queryKey: ['messages', characterId, sessionId],
-    queryFn: ({ pageParam }) => fetchMessages({ 
-      sessionId: sessionId!, 
-      pageParam: pageParam as string | null,
-    }),
+    queryFn: ({ pageParam }) => {
+      console.log('[useMessages] queryFn called with sessionId:', sessionId, 'characterId:', characterId);
+      return fetchMessages({ 
+        sessionId: sessionId!, 
+        pageParam: pageParam as string | null,
+      });
+    },
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: MessagesPage) => lastPage.nextCursor,
     enabled: enabled && !!sessionId,
@@ -272,6 +262,16 @@ export function useMessages({ sessionId, characterId, enabled = true }: UseMessa
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['messages', characterId, sessionId] });
   };
+
+  // Debug logging
+  console.log('[useMessages] Hook state:', {
+    sessionId,
+    enabled: enabled && !!sessionId,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    pagesCount: query.data?.pages?.length || 0,
+    messagesCount: allMessages.length,
+  });
 
   return {
     messages: allMessages,

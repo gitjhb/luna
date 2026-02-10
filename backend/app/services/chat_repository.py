@@ -124,18 +124,33 @@ class ChatRepository:
     @staticmethod
     async def list_sessions(user_id: str, character_id: Optional[str] = None) -> List[dict]:
         """List all sessions for a user, optionally filtered by character"""
+        
+        def _add_last_message_to_sessions(sessions_list):
+            """Helper to add last_message from memory messages"""
+            result = []
+            for s in sessions_list:
+                session_dict = dict(s)  # Copy
+                session_id = s.get("session_id")
+                msgs = _memory_messages.get(session_id, [])
+                if msgs:
+                    last_msg = msgs[-1]  # Last message
+                    session_dict["last_message"] = last_msg["content"][:100] if last_msg.get("content") else None
+                    session_dict["last_message_at"] = last_msg["created_at"].isoformat() if last_msg.get("created_at") else None
+                result.append(session_dict)
+            return result
+        
         if MOCK_MODE:
             sessions = [s for s in _memory_sessions.values() if s.get("user_id") == user_id]
             if character_id:
                 sessions = [s for s in sessions if str(s.get("character_id")) == str(character_id)]
-            return sessions
+            return _add_last_message_to_sessions(sessions)
         
         async with get_db() as db:
             if hasattr(db, '_data'):  # MockDB
                 sessions = [s for s in _memory_sessions.values() if s.get("user_id") == user_id]
                 if character_id:
                     sessions = [s for s in sessions if str(s.get("character_id")) == str(character_id)]
-                return sessions
+                return _add_last_message_to_sessions(sessions)
             
             query = select(ChatSession).where(ChatSession.user_id == user_id)
             if character_id:

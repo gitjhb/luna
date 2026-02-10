@@ -4,6 +4,7 @@ Chat API Routes - with SQLite persistence
 
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 from uuid import UUID, uuid4
 from datetime import datetime
 import os
@@ -35,6 +36,40 @@ def get_character_info(character_id: str) -> dict:
     return {"name": "AI Companion", "avatar_url": None, "background_url": None}
 
 
+async def ensure_session_has_greeting(session_id: str, character_id: str) -> bool:
+    """
+    确保session有greeting消息。如果没有，自动补上。
+    返回True表示补上了greeting，False表示已有greeting。
+    
+    这是greeting存储的唯一入口，统一处理：
+    - 新创建的session
+    - 旧session缺失greeting的情况
+    """
+    character = get_character_info(character_id)
+    greeting = character.get("greeting")
+    if not greeting:
+        return False
+    
+    # 获取session的消息
+    messages = await chat_repo.get_all_messages(session_id)
+    
+    # 检查是否已有greeting（检查前3条消息是否有相似内容）
+    greeting_prefix = greeting[:50]
+    for msg in messages[:5]:
+        if msg["role"] == "assistant" and greeting_prefix in msg["content"][:60]:
+            return False  # 已有greeting
+    
+    # 没有greeting，插入
+    await chat_repo.add_message(
+        session_id=session_id,
+        role="assistant",
+        content=greeting,
+        tokens_used=0,
+    )
+    logger.info(f"[Greeting] Auto-inserted greeting for session {session_id}")
+    return True
+
+
 def _get_user_id(request: Request) -> str:
     """从请求中获取用户ID，支持认证和header fallback"""
     user = getattr(request.state, "user", None)
@@ -59,6 +94,7 @@ async def create_session(request: CreateSessionRequest, req: Request):
     # Check if session already exists for this user + character
     existing = await chat_repo.get_session_by_character(user_id, str(request.character_id))
     if existing:
+        # Greeting由前端调用greeting API时插入，这里不处理
         return CreateSessionResponse(
             session_id=UUID(existing["session_id"]),
             character_name=existing["character_name"],
@@ -75,6 +111,7 @@ async def create_session(request: CreateSessionRequest, req: Request):
         character_avatar=character.get("avatar_url"),
         character_background=character.get("background_url"),
     )
+    # Greeting由前端调用greeting API时插入
 
     return CreateSessionResponse(
         session_id=UUID(session["session_id"]),
@@ -148,18 +185,72 @@ async def list_sessions(
     return session_list
 
 
-@router.post("/sessions/{session_id}/intro-shown")
-async def mark_intro_shown(session_id: UUID, req: Request):
+@router.post("/sessions/{session_id}/greeting")
+async def send_greeting(session_id: UUID, req: Request = None):
     """
-    Mark that the intro animation has been shown for this session.
-    Called after intro video finishes playing.
-    """
-    user_id = _get_user_id(req)
+    Send greeting message for a session.
+    Called by frontend after intro video ends (or immediately if no video).
     
-    # Update session to mark intro as shown
+    1. Inserts greeting message if not exists
+    2. Marks intro_shown = true
+    3. Returns the greeting message
+    """
+    session = await chat_repo.get_session(str(session_id))
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    character = get_character_info(session["character_id"])
+    greeting_content = character.get("greeting")
+    
+    if not greeting_content:
+        # 没有greeting的角色，只标记intro_shown
+        await chat_repo.update_session(str(session_id), intro_shown=True)
+        return {"success": True, "message": None}
+    
+    # 检查是否已有greeting（避免重复）
+    messages = await chat_repo.get_all_messages(str(session_id))
+    greeting_prefix = greeting_content[:50]
+    has_greeting = any(
+        m["role"] == "assistant" and greeting_prefix in m["content"][:60]
+        for m in messages[:5]
+    )
+    
+    greeting_message = None
+    if not has_greeting:
+        # 插入greeting消息
+        greeting_message = await chat_repo.add_message(
+            session_id=str(session_id),
+            role="assistant",
+            content=greeting_content,
+            tokens_used=0,
+        )
+        logger.info(f"[Greeting] Inserted greeting for session {session_id}")
+    else:
+        # 已有greeting，返回它
+        for m in messages:
+            if m["role"] == "assistant" and greeting_prefix in m["content"][:60]:
+                greeting_message = m
+                break
+    
+    # 标记intro_shown
     await chat_repo.update_session(str(session_id), intro_shown=True)
     
-    return {"success": True}
+    return {
+        "success": True,
+        "message": {
+            "message_id": greeting_message["message_id"] if greeting_message else None,
+            "role": "assistant",
+            "content": greeting_content,
+            "created_at": greeting_message["created_at"].isoformat() if greeting_message and hasattr(greeting_message.get("created_at"), 'isoformat') else None,
+        } if greeting_message else None
+    }
+
+
+# 保留旧的endpoint作为别名，兼容旧版本
+@router.post("/sessions/{session_id}/intro-shown")
+async def mark_intro_shown(session_id: UUID, req: Request = None):
+    """Alias for send_greeting for backward compatibility"""
+    return await send_greeting(session_id, req)
 
 
 @router.get("/sessions/{session_id}/messages")

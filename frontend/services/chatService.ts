@@ -210,8 +210,24 @@ export const chatService = {
   },
 
   /**
-   * Mark intro animation as shown for a session
-   * Call this after intro video finishes playing
+   * Send greeting for a session
+   * Call this after intro video ends (or immediately if no video)
+   * Returns the greeting message from backend
+   */
+  sendGreeting: async (sessionId: string): Promise<{
+    success: boolean;
+    message: {
+      message_id: string;
+      role: string;
+      content: string;
+      created_at: string;
+    } | null;
+  }> => {
+    return await api.post(`/chat/sessions/${sessionId}/greeting`);
+  },
+
+  /**
+   * @deprecated Use sendGreeting instead
    */
   markIntroShown: async (sessionId: string): Promise<void> => {
     await api.post(`/chat/sessions/${sessionId}/intro-shown`);

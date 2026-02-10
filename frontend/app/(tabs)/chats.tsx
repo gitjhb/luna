@@ -211,10 +211,14 @@ export default function ChatsScreen() {
       onLongPress={() => handleClearMessages(item)}
       activeOpacity={0.8}
     >
-      <Image
-        source={getCharacterAvatar(item.characterId, item.characterAvatar)}
-        style={styles.avatar}
-      />
+      <View style={styles.avatarContainer}>
+        <Text style={styles.avatarPlaceholder}>?</Text>
+        <Image
+          source={getCharacterAvatar(item.characterId, item.characterAvatar)}
+          style={styles.avatar}
+          fadeDuration={0}
+        />
+      </View>
       <View style={styles.sessionInfo}>
         <View style={styles.sessionHeader}>
           <Text style={styles.characterName}>{item.characterName}</Text>
@@ -324,12 +328,26 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
   },
-  avatar: {
+  avatarContainer: {
     width: 50,
     height: 50,
     borderRadius: 25,
     marginRight: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  avatarPlaceholder: {
+    position: 'absolute',
+    fontSize: 20,
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontWeight: '600',
+  },
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
   },
   sessionInfo: { flex: 1 },
   sessionHeader: {
