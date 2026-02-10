@@ -29,7 +29,7 @@ export const characterBackgrounds: Record<string, any> = {
   [CHARACTER_IDS.SAKURA]: require('./sakura/chat-background.png'),
   [CHARACTER_IDS.LUNA]: require('./luna/chat_background.png'),
   [CHARACTER_IDS.VERA]: require('./vera/chat_background.png'),
-  [CHARACTER_IDS.MEI]: require('./mei/mei.jpg'), // 暂用头像
+  [CHARACTER_IDS.MEI]: require('./mei/chat-background.png'),
   [CHARACTER_IDS.MEIQIU]: require('./meiqiu/chat-background.jpg'),
 };
 
@@ -38,7 +38,7 @@ export const characterIntroVideos: Record<string, any> = {
   [CHARACTER_IDS.SAKURA]: require('./sakura/videos/intro.mp4'),
   [CHARACTER_IDS.LUNA]: require('./luna/intro.mp4'),
   [CHARACTER_IDS.VERA]: require('./vera/videos/intro.mp4'),
-  // Mei, Meiqiu 暂无intro视频
+  [CHARACTER_IDS.MEI]: require('./mei/video/intro.mp4'),
 };
 
 // Default avatar for unknown characters
