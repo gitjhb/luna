@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Luna Admin Dashboard</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        h1 { 
+            color: #00d4ff; 
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        h1::before { content: '🌙'; }
+        h2 { color: #00d4ff; margin: 20px 0 15px; font-size: 1.2em; }
+        h3 { color: #888; margin: 15px 0 10px; font-size: 1em; }
+        
+        /* Stats */
+        .stats {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }
+        .stat-card {
+            background: #16213e;
+            padding: 15px 25px;
+            border-radius: 12px;
+            text-align: center;
+            min-width: 100px;
+        }
+        .stat-card .number { font-size: 1.8em; color: #00d4ff; }
+        .stat-card .label { color: #888; margin-top: 5px; font-size: 0.9em; }
+        
+        /* Layout */
+        .layout {
+            display: flex;
+            gap: 20px;
+        }
+        .sidebar {
+            width: 300px;
+            flex-shrink: 0;
+        }
+        .main {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        /* User list */
+        .user-list {
+            background: #16213e;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .user-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #333;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .user-item:hover { background: #1f4068; }
+        .user-item.active { background: #0f3460; border-left: 3px solid #00d4ff; }
+        .user-item .user-id {
+            font-size: 0.85em;
+            color: #aaa;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .user-item .user-meta {
+            font-size: 0.75em;
+            color: #666;
+            margin-top: 4px;
+        }
+        
+        /* Table */
+        .table-container {
+            background: #16213e;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+            font-size: 0.9em;
+        }
+        th { 
+            background: #0f3460; 
+            color: #00d4ff;
+            font-weight: 500;
+        }
+        tr:hover { background: #1f4068; }
+        
+        /* Buttons */
+        .btn {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: #00d4ff; color: #000; }
+        .btn-danger { background: #e94560; color: #fff; }
+        .btn-secondary { background: #333; color: #fff; }
+        .btn:hover { opacity: 0.8; }
+        
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: #16213e;
+            padding: 25px;
+            border-radius: 12px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        
+        /* Message */
+        .message {
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 8px;
+            max-width: 85%;
+            font-size: 0.9em;
+        }
+        .message.user {
+            background: #00d4ff;
+            color: #000;
+            margin-left: auto;
+        }
+        .message.assistant {
+            background: #333;
+        }
+        .message .meta {
+            font-size: 10px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        /* Form */
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #888;
+            font-size: 0.9em;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 8px 12px;
+            background: #1a1a2e;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #fff;
+        }
+        
+        /* Badge */
+        .badge {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        .badge-blue { background: #00d4ff33; color: #00d4ff; }
+        .badge-green { background: #00ff8833; color: #00ff88; }
+        
+        /* Empty state */
+        .empty {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        /* Truncate */
+        .truncate {
+            max-width: 200px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+        .tab {
+            padding: 8px 15px;
+            background: #1a1a2e;
+            border: 1px solid #333;
+            color: #888;
+            cursor: pointer;
+            border-radius: 6px;
+            font-size: 0.85em;
+        }
+        .tab:hover { background: #1f4068; color: #fff; }
+        .tab.active { background: #00d4ff; color: #000; border-color: #00d4ff; }
+        
+        @media (max-width: 768px) {
+            .layout { flex-direction: column; }
+            .sidebar { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Luna Admin Dashboard</h1>
+        
+        <!-- Stats -->
+        <div class="stats" id="stats">
+            <div class="stat-card">
+                <div class="number" id="stat-users">-</div>
+                <div class="label">用户</div>
+            </div>
+            <div class="stat-card">
+                <div class="number" id="stat-sessions">-</div>
+                <div class="label">会话</div>
+            </div>
+            <div class="stat-card">
+                <div class="number" id="stat-messages">-</div>
+                <div class="label">消息</div>
+            </div>
+        </div>
+        
+        <!-- Global Tabs -->
+        <div class="tabs" style="margin-bottom:20px;">
+            <button class="tab active" id="tab-users" onclick="showSection('users')">👥 用户管理</button>
+            <button class="tab" id="tab-characters" onclick="showSection('characters')">🎭 角色管理</button>
+        </div>
+        
+        <!-- Users Section -->
+        <div id="section-users" class="layout">
+            <!-- Sidebar: User List -->
+            <div class="sidebar">
+                <h2>👥 用户列表</h2>
+                <div class="user-list" id="user-list">
+                    <div class="empty">加载中...</div>
+                </div>
+            </div>
+            
+            <!-- Main: User Detail -->
+            <div class="main">
+                <div id="user-detail">
+                    <div class="empty">← 选择一个用户查看详情</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Characters Section -->
+        <div id="section-characters" style="display:none;">
+            <h2>🎭 角色列表</h2>
+            <div id="characters-list">
+                <div class="empty">加载中...</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal -->
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">详情</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+    
+    <script>
+        const API = '/api/v1/admin';
+        let selectedUserId = null;
+        let currentTab = 'sessions';
+        
+        // Init
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+            loadUsers();
+            loadCharacters();
+        });
+        
+        // Show section
+        function showSection(section) {
+            document.getElementById('section-users').style.display = section === 'users' ? 'flex' : 'none';
+            document.getElementById('section-characters').style.display = section === 'characters' ? 'block' : 'none';
+            document.getElementById('tab-users').classList.toggle('active', section === 'users');
+            document.getElementById('tab-characters').classList.toggle('active', section === 'characters');
+        }
+        
+        // Load characters
+        async function loadCharacters() {
+            try {
+                const data = await fetch(`${API}/characters`).then(r => r.json());
+                const container = document.getElementById('characters-list');
+                
+                if (!data.characters || data.characters.length === 0) {
+                    container.innerHTML = '<div class="empty">暂无角色</div>';
+                    return;
+                }
+                
+                container.innerHTML = `
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>名称</th>
+                                    <th>描述</th>
+                                    <th>状态</th>
+                                    <th>类型</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.characters.map(c => `
+                                    <tr>
+                                        <td><strong>${c.name}</strong></td>
+                                        <td class="truncate">${c.description || '-'}</td>
+                                        <td>${c.is_active ? '<span class="badge badge-green">启用</span>' : '<span class="badge" style="background:#66666633;color:#888;">隐藏</span>'}</td>
+                                        <td>${c.is_spicy ? '<span class="badge" style="background:#e9456033;color:#e94560;">🔥 Spicy</span>' : '<span class="badge badge-blue">普通</span>'}</td>
+                                        <td>
+                                            <button class="btn btn-primary" onclick="viewCharacter('${c.character_id}')">详情</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } catch (e) {
+                document.getElementById('characters-list').innerHTML = '<div class="empty">加载失败: ' + e.message + '</div>';
+            }
+        }
+        
+        // View character detail
+        async function viewCharacter(characterId) {
+            try {
+                const c = await fetch(`${API}/characters/${characterId}`).then(r => r.json());
+                
+                document.getElementById('modal-title').textContent = `🎭 ${c.name}`;
+                document.getElementById('modal-body').innerHTML = `
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
+                        <div class="form-group">
+                            <label>名称</label>
+                            <input type="text" value="${c.name}" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label>ID</label>
+                            <input type="text" value="${c.character_id}" readonly style="font-size:0.8em;">
+                        </div>
+                        <div class="form-group">
+                            <label>年龄</label>
+                            <input type="text" value="${c.age || '-'}">
+                        </div>
+                        <div class="form-group">
+                            <label>身高</label>
+                            <input type="text" value="${c.height || '-'}">
+                        </div>
+                        <div class="form-group">
+                            <label>星座</label>
+                            <input type="text" value="${c.zodiac || '-'}">
+                        </div>
+                        <div class="form-group">
+                            <label>MBTI</label>
+                            <input type="text" value="${c.mbti || '-'}">
+                        </div>
+                        <div class="form-group">
+                            <label>生日</label>
+                            <input type="text" value="${c.birthday || '-'}">
+                        </div>
+                        <div class="form-group">
+                            <label>职业</label>
+                            <input type="text" value="${c.occupation || '-'}">
+                        </div>
+                        <div class="form-group">
+                            <label>位置</label>
+                            <input type="text" value="${c.location || '-'}">
+                        </div>
+                        <div class="form-group">
+                            <label>状态</label>
+                            <input type="text" value="${c.is_active ? '启用' : '隐藏'}" readonly>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group" style="margin-top:15px;">
+                        <label>描述</label>
+                        <textarea style="min-height:60px;">${c.description || ''}</textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>性格标签</label>
+                        <input type="text" value="${(c.personality_traits || []).join(', ')}" placeholder="温柔, 善解人意, 可爱">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>爱好</label>
+                        <input type="text" value="${(c.hobbies || []).join(', ')}" placeholder="烘焙, 看电影, 养猫">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>性格参数</label>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:5px;">
+                            ${Object.entries(c.personality || {}).map(([k, v]) => `
+                                <span class="badge badge-blue">${k}: ${v}</span>
+                            `).join('')}
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Greeting</label>
+                        <textarea style="min-height:100px;">${c.greeting || ''}</textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>System Prompt (预览)</label>
+                        <textarea style="min-height:120px;font-size:0.8em;color:#888;" readonly>${c.system_prompt_preview || '(无)'}</textarea>
+                    </div>
+                    
+                    <p style="color:#666;font-size:0.8em;margin-top:15px;">
+                        ⚠️ 角色数据目前存储在代码中，修改需要编辑 characters.py 文件
+                    </p>
+                `;
+                openModal();
+            } catch (e) {
+                alert('加载失败: ' + e.message);
+            }
+        }
+        
+        // Load stats
+        async function loadStats() {
+            try {
+                const data = await fetch(`${API}/stats`).then(r => r.json());
+                document.getElementById('stat-users').textContent = data.total_users || 0;
+                document.getElementById('stat-sessions').textContent = data.total_sessions || 0;
+                document.getElementById('stat-messages').textContent = data.total_messages || 0;
+            } catch (e) {
+                console.error('Failed to load stats:', e);
+            }
+        }
+        
+        // Load users
+        async function loadUsers() {
+            try {
+                const data = await fetch(`${API}/users`).then(r => r.json());
+                const list = document.getElementById('user-list');
+                
+                if (!data.users || data.users.length === 0) {
+                    list.innerHTML = '<div class="empty">暂无用户</div>';
+                    return;
+                }
+                
+                list.innerHTML = data.users.map(u => `
+                    <div class="user-item" onclick="selectUser('${u.user_id}')">
+                        <div class="user-id">${u.user_id}</div>
+                        <div class="user-meta">${u.session_count} 会话 · ${formatTime(u.last_active)}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                document.getElementById('user-list').innerHTML = '<div class="empty">加载失败</div>';
+            }
+        }
+        
+        // Select user
+        async function selectUser(userId) {
+            selectedUserId = userId;
+            
+            // Update active state
+            document.querySelectorAll('.user-item').forEach(el => {
+                el.classList.toggle('active', el.querySelector('.user-id').textContent === userId);
+            });
+            
+            // Load user detail
+            await loadUserDetail(userId);
+        }
+        
+        // Load user detail
+        async function loadUserDetail(userId) {
+            const container = document.getElementById('user-detail');
+            container.innerHTML = '<div class="empty">加载中...</div>';
+            
+            try {
+                const data = await fetch(`${API}/users/${encodeURIComponent(userId)}`).then(r => r.json());
+                
+                container.innerHTML = `
+                    <h2>📋 用户详情</h2>
+                    <p style="color:#888;font-size:0.85em;margin-bottom:15px;word-break:break-all;">${userId}</p>
+                    
+                    <div class="tabs">
+                        <button class="tab active" onclick="switchTab('sessions', '${userId}')">💬 会话 (${data.sessions?.length || 0})</button>
+                        <button class="tab" onclick="switchTab('intimacy', '${userId}')">💕 亲密度 (${data.intimacy?.length || 0})</button>
+                    </div>
+                    
+                    <div id="tab-content"></div>
+                `;
+                
+                // Store data for tabs
+                window.userData = data;
+                switchTab('sessions', userId);
+            } catch (e) {
+                container.innerHTML = '<div class="empty">加载失败: ' + e.message + '</div>';
+            }
+        }
+        
+        // Switch tab
+        function switchTab(tab, userId) {
+            currentTab = tab;
+            
+            // Update active tab (only in user detail tabs)
+            document.querySelectorAll('#user-detail .tab').forEach(el => {
+                el.classList.toggle('active', el.textContent.includes(
+                    tab === 'sessions' ? '会话' : '亲密度'
+                ));
+            });
+            
+            const content = document.getElementById('tab-content');
+            const data = window.userData;
+            
+            if (tab === 'sessions') {
+                if (!data.sessions || data.sessions.length === 0) {
+                    content.innerHTML = '<div class="empty">暂无会话</div>';
+                    return;
+                }
+                content.innerHTML = `
+                    <div class="table-container">
+                        <table>
+                            <thead><tr><th>角色</th><th>创建时间</th><th>Intro</th><th>操作</th></tr></thead>
+                            <tbody>
+                                ${data.sessions.map(s => `
+                                    <tr>
+                                        <td>${s.character_name}</td>
+                                        <td>${formatTime(s.created_at)}</td>
+                                        <td>${s.intro_shown ? '✅' : '❌'}</td>
+                                        <td>
+                                            <button class="btn btn-primary" onclick="viewMessages('${s.session_id}')">消息</button>
+                                            <button class="btn btn-danger" onclick="deleteSession('${s.session_id}', '${userId}')">删除</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } else if (tab === 'intimacy') {
+                if (!data.intimacy || data.intimacy.length === 0) {
+                    content.innerHTML = '<div class="empty">暂无亲密度数据</div>';
+                    return;
+                }
+                content.innerHTML = `
+                    <div class="table-container">
+                        <table>
+                            <thead><tr><th>角色</th><th>等级</th><th>总XP</th><th>操作</th></tr></thead>
+                            <tbody>
+                                ${data.intimacy.map(i => `
+                                    <tr>
+                                        <td class="truncate">${i.character_id}</td>
+                                        <td><span class="badge badge-blue">Lv.${i.level}</span></td>
+                                        <td>${i.total_xp}</td>
+                                        <td>
+                                            <button class="btn btn-primary" onclick="editIntimacy('${userId}', '${i.character_id}', ${i.level}, ${i.total_xp})">编辑</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+        }
+        
+        // View messages
+        async function viewMessages(sessionId) {
+            try {
+                const data = await fetch(`${API}/sessions/${sessionId}/messages`).then(r => r.json());
+                
+                document.getElementById('modal-title').textContent = `消息 (${data.total || 0})`;
+                document.getElementById('modal-body').innerHTML = data.messages && data.messages.length > 0 ? `
+                    <div style="display:flex;flex-direction:column;gap:8px;">
+                        ${data.messages.map(m => `
+                            <div class="message ${m.role}">
+                                <div>${m.content}</div>
+                                <div class="meta">${m.role} · ${formatTime(m.created_at)}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : '<div class="empty">暂无消息</div>';
+                openModal();
+            } catch (e) {
+                alert('加载失败: ' + e.message);
+            }
+        }
+        
+        // Delete session
+        async function deleteSession(sessionId, userId) {
+            if (!confirm('确定删除此会话及所有消息？')) return;
+            
+            try {
+                await fetch(`${API}/sessions/${sessionId}`, { method: 'DELETE' });
+                loadStats();
+                loadUserDetail(userId);
+            } catch (e) {
+                alert('删除失败: ' + e.message);
+            }
+        }
+        
+        // Edit intimacy
+        function editIntimacy(userId, characterId, level, totalXp) {
+            document.getElementById('modal-title').textContent = '编辑亲密度';
+            document.getElementById('modal-body').innerHTML = `
+                <div class="form-group">
+                    <label>等级</label>
+                    <input type="number" id="edit-level" value="${level}" min="1" max="50">
+                </div>
+                <div class="form-group">
+                    <label>总XP</label>
+                    <input type="number" id="edit-xp" value="${totalXp}" min="0">
+                </div>
+                <button class="btn btn-primary" onclick="saveIntimacy('${userId}', '${characterId}')">保存</button>
+            `;
+            openModal();
+        }
+        
+        async function saveIntimacy(userId, characterId) {
+            const level = document.getElementById('edit-level').value;
+            const totalXp = document.getElementById('edit-xp').value;
+            
+            try {
+                await fetch(`${API}/intimacy/${encodeURIComponent(userId)}/${characterId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ level: parseInt(level), total_xp: parseInt(totalXp) })
+                });
+                
+                closeModal();
+                loadUserDetail(userId);
+            } catch (e) {
+                alert('保存失败: ' + e.message);
+            }
+        }
+        
+        // Modal
+        function openModal() {
+            document.getElementById('modal').classList.add('active');
+        }
+        function closeModal() {
+            document.getElementById('modal').classList.remove('active');
+        }
+        
+        // Utils
+        function formatTime(isoString) {
+            if (!isoString) return '-';
+            const d = new Date(isoString);
+            return d.toLocaleString('zh-CN', { 
+                month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit'
+            });
+        }
+    </script>
+</body>
+</html>

@@ -2029,6 +2029,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
   },
   messagesList: {
+    flexGrow: 1,  // 让内容区域填满，inverted 时消息才能靠近输入框
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 4,
