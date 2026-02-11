@@ -371,97 +371,170 @@
             }
         }
         
-        // View character detail
+        // View/Edit character detail
+        let currentCharacterId = null;
+        
         async function viewCharacter(characterId) {
             try {
+                currentCharacterId = characterId;
                 const c = await fetch(`${API}/characters/${characterId}`).then(r => r.json());
                 
-                document.getElementById('modal-title').textContent = `🎭 ${c.name}`;
+                document.getElementById('modal-title').textContent = `🎭 编辑角色: ${c.name}`;
                 document.getElementById('modal-body').innerHTML = `
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
                         <div class="form-group">
                             <label>名称</label>
-                            <input type="text" value="${c.name}" readonly>
+                            <input type="text" id="char-name" value="${c.name || ''}">
                         </div>
                         <div class="form-group">
-                            <label>ID</label>
-                            <input type="text" value="${c.character_id}" readonly style="font-size:0.8em;">
-                        </div>
-                        <div class="form-group">
-                            <label>年龄</label>
-                            <input type="text" value="${c.age || '-'}">
-                        </div>
-                        <div class="form-group">
-                            <label>身高</label>
-                            <input type="text" value="${c.height || '-'}">
-                        </div>
-                        <div class="form-group">
-                            <label>星座</label>
-                            <input type="text" value="${c.zodiac || '-'}">
-                        </div>
-                        <div class="form-group">
-                            <label>MBTI</label>
-                            <input type="text" value="${c.mbti || '-'}">
-                        </div>
-                        <div class="form-group">
-                            <label>生日</label>
-                            <input type="text" value="${c.birthday || '-'}">
-                        </div>
-                        <div class="form-group">
-                            <label>职业</label>
-                            <input type="text" value="${c.occupation || '-'}">
-                        </div>
-                        <div class="form-group">
-                            <label>位置</label>
-                            <input type="text" value="${c.location || '-'}">
+                            <label>ID (只读)</label>
+                            <input type="text" value="${c.character_id}" readonly style="font-size:0.8em;color:#666;">
                         </div>
                         <div class="form-group">
                             <label>状态</label>
-                            <input type="text" value="${c.is_active ? '启用' : '隐藏'}" readonly>
+                            <select id="char-is_active">
+                                <option value="true" ${c.is_active ? 'selected' : ''}>启用</option>
+                                <option value="false" ${!c.is_active ? 'selected' : ''}>隐藏</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>类型</label>
+                            <select id="char-is_spicy">
+                                <option value="false" ${!c.is_spicy ? 'selected' : ''}>普通</option>
+                                <option value="true" ${c.is_spicy ? 'selected' : ''}>🔥 Spicy</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>排序权重</label>
+                            <input type="number" id="char-sort_order" value="${c.sort_order || 0}">
+                        </div>
+                        <div class="form-group">
+                            <label>年龄</label>
+                            <input type="number" id="char-age" value="${c.age || ''}">
+                        </div>
+                        <div class="form-group">
+                            <label>身高</label>
+                            <input type="text" id="char-height" value="${c.height || ''}">
+                        </div>
+                        <div class="form-group">
+                            <label>星座</label>
+                            <input type="text" id="char-zodiac" value="${c.zodiac || ''}">
+                        </div>
+                        <div class="form-group">
+                            <label>MBTI</label>
+                            <input type="text" id="char-mbti" value="${c.mbti || ''}">
+                        </div>
+                        <div class="form-group">
+                            <label>生日</label>
+                            <input type="text" id="char-birthday" value="${c.birthday || ''}">
+                        </div>
+                        <div class="form-group">
+                            <label>职业</label>
+                            <input type="text" id="char-occupation" value="${c.occupation || ''}">
+                        </div>
+                        <div class="form-group">
+                            <label>位置</label>
+                            <input type="text" id="char-location" value="${c.location || ''}">
                         </div>
                     </div>
                     
                     <div class="form-group" style="margin-top:15px;">
                         <label>描述</label>
-                        <textarea style="min-height:60px;">${c.description || ''}</textarea>
+                        <textarea id="char-description" style="min-height:60px;">${c.description || ''}</textarea>
                     </div>
                     
                     <div class="form-group">
-                        <label>性格标签</label>
-                        <input type="text" value="${(c.personality_traits || []).join(', ')}" placeholder="温柔, 善解人意, 可爱">
+                        <label>性格标签 (逗号分隔)</label>
+                        <input type="text" id="char-personality_traits" value="${(c.personality_traits || []).join(', ')}" placeholder="温柔, 善解人意, 可爱">
                     </div>
                     
                     <div class="form-group">
-                        <label>爱好</label>
-                        <input type="text" value="${(c.hobbies || []).join(', ')}" placeholder="烘焙, 看电影, 养猫">
+                        <label>爱好 (逗号分隔)</label>
+                        <input type="text" id="char-hobbies" value="${(c.hobbies || []).join(', ')}" placeholder="烘焙, 看电影, 养猫">
                     </div>
                     
                     <div class="form-group">
-                        <label>性格参数</label>
-                        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:5px;">
-                            ${Object.entries(c.personality || {}).map(([k, v]) => `
-                                <span class="badge badge-blue">${k}: ${v}</span>
-                            `).join('')}
-                        </div>
+                        <label>性格参数 (JSON)</label>
+                        <input type="text" id="char-personality" value='${JSON.stringify(c.personality || {})}' style="font-family:monospace;font-size:0.85em;">
                     </div>
                     
                     <div class="form-group">
                         <label>Greeting</label>
-                        <textarea style="min-height:100px;">${c.greeting || ''}</textarea>
+                        <textarea id="char-greeting" style="min-height:100px;">${c.greeting || ''}</textarea>
                     </div>
                     
                     <div class="form-group">
-                        <label>System Prompt (预览)</label>
-                        <textarea style="min-height:120px;font-size:0.8em;color:#888;" readonly>${c.system_prompt_preview || '(无)'}</textarea>
+                        <label>System Prompt</label>
+                        <textarea id="char-system_prompt" style="min-height:150px;font-size:0.85em;">${c.system_prompt || ''}</textarea>
                     </div>
                     
-                    <p style="color:#666;font-size:0.8em;margin-top:15px;">
-                        ⚠️ 角色数据目前存储在代码中，修改需要编辑 characters.py 文件
-                    </p>
+                    <div style="display:flex;gap:10px;margin-top:20px;">
+                        <button class="btn btn-primary" onclick="saveCharacter()">💾 保存</button>
+                        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+                    </div>
                 `;
                 openModal();
             } catch (e) {
                 alert('加载失败: ' + e.message);
+            }
+        }
+        
+        async function saveCharacter() {
+            if (!currentCharacterId) return;
+            
+            const getValue = (id) => document.getElementById(id)?.value || null;
+            const getArray = (id) => {
+                const val = getValue(id);
+                return val ? val.split(',').map(s => s.trim()).filter(s => s) : null;
+            };
+            
+            const data = {
+                name: getValue('char-name'),
+                description: getValue('char-description'),
+                greeting: getValue('char-greeting'),
+                system_prompt: getValue('char-system_prompt'),
+                is_active: getValue('char-is_active') === 'true',
+                is_spicy: getValue('char-is_spicy') === 'true',
+                sort_order: parseInt(getValue('char-sort_order')) || 0,
+                age: parseInt(getValue('char-age')) || null,
+                height: getValue('char-height'),
+                zodiac: getValue('char-zodiac'),
+                mbti: getValue('char-mbti'),
+                birthday: getValue('char-birthday'),
+                occupation: getValue('char-occupation'),
+                location: getValue('char-location'),
+                personality_traits: getArray('char-personality_traits'),
+                hobbies: getArray('char-hobbies'),
+            };
+            
+            // Parse personality JSON
+            try {
+                const personalityStr = getValue('char-personality');
+                if (personalityStr) {
+                    data.personality = JSON.parse(personalityStr);
+                }
+            } catch (e) {
+                alert('性格参数 JSON 格式错误');
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${API}/characters/${currentCharacterId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || '保存失败');
+                }
+                
+                alert('✅ 保存成功');
+                closeModal();
+                loadCharacters();
+            } catch (e) {
+                alert('保存失败: ' + e.message);
             }
         }
         

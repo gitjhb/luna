@@ -17,6 +17,7 @@ from .event_memory_models import EventMemory, EventType
 from .date_models import DateSessionDB, DateCooldownDB
 from .memory_v2_models import SemanticMemory, EpisodicMemory, MemoryExtractionLog
 from .stamina_models import UserStamina, StaminaConstants
+from .character_models import Character
 
 __all__ = [
     "Base",

@@ -4,7 +4,7 @@ Admin API - 数据库管理工具
 """
 
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 from pydantic import BaseModel
 from app.services.chat_repository import chat_repo
@@ -488,8 +488,11 @@ async def update_emotion(user_id: str, character_id: str, score: int, state: str
 # ============================================================================
 
 @router.get("/characters")
-async def list_characters():
-    """列出所有角色"""
+async def list_characters(include_inactive: bool = True):
+    """列出所有角色（从数据库）"""
+    from app.services.character_service import character_service
+    
+    characters = await character_service.get_all(include_inactive=include_inactive)
     return {
         "characters": [
             {
@@ -498,37 +501,90 @@ async def list_characters():
                 "description": c.get("description", ""),
                 "is_active": c.get("is_active", True),
                 "is_spicy": c.get("is_spicy", False),
+                "sort_order": c.get("sort_order", 0),
             }
-            for c in CHARACTERS
+            for c in characters
         ]
     }
 
 
 @router.get("/characters/{character_id}")
 async def get_character_detail(character_id: str):
-    """获取角色完整详情"""
-    for c in CHARACTERS:
-        if c["character_id"] == character_id:
-            return {
-                "character_id": c["character_id"],
-                "name": c["name"],
-                "description": c.get("description", ""),
-                "greeting": c.get("greeting", ""),
-                "is_active": c.get("is_active", True),
-                "is_spicy": c.get("is_spicy", False),
-                "personality_traits": c.get("personality_traits", []),
-                "personality": c.get("personality", {}),
-                "age": c.get("age"),
-                "zodiac": c.get("zodiac"),
-                "occupation": c.get("occupation"),
-                "hobbies": c.get("hobbies", []),
-                "mbti": c.get("mbti"),
-                "birthday": c.get("birthday"),
-                "height": c.get("height"),
-                "location": c.get("location"),
-                "system_prompt_preview": c.get("system_prompt", "")[:500] + "..." if c.get("system_prompt") else None,
-            }
-    raise HTTPException(status_code=404, detail="Character not found")
+    """获取角色完整详情（从数据库）"""
+    from app.services.character_service import character_service
+    
+    c = await character_service.get_by_id(character_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Character not found")
+    
+    return {
+        "character_id": c["character_id"],
+        "name": c["name"],
+        "description": c.get("description", ""),
+        "greeting": c.get("greeting", ""),
+        "system_prompt": c.get("system_prompt", ""),
+        "is_active": c.get("is_active", True),
+        "is_spicy": c.get("is_spicy", False),
+        "sort_order": c.get("sort_order", 0),
+        "personality_traits": c.get("personality_traits", []),
+        "personality": c.get("personality", {}),
+        "age": c.get("age"),
+        "zodiac": c.get("zodiac"),
+        "occupation": c.get("occupation"),
+        "hobbies": c.get("hobbies", []),
+        "mbti": c.get("mbti"),
+        "birthday": c.get("birthday"),
+        "height": c.get("height"),
+        "location": c.get("location"),
+    }
+
+
+class CharacterUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    greeting: Optional[str] = None
+    system_prompt: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_spicy: Optional[bool] = None
+    sort_order: Optional[int] = None
+    personality_traits: Optional[List[str]] = None
+    personality: Optional[dict] = None
+    age: Optional[int] = None
+    zodiac: Optional[str] = None
+    occupation: Optional[str] = None
+    hobbies: Optional[List[str]] = None
+    mbti: Optional[str] = None
+    birthday: Optional[str] = None
+    height: Optional[str] = None
+    location: Optional[str] = None
+
+
+@router.put("/characters/{character_id}")
+async def update_character(character_id: str, data: CharacterUpdate):
+    """更新角色"""
+    from app.services.character_service import character_service
+    
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    result = await character_service.update(character_id, update_data)
+    if not result:
+        raise HTTPException(status_code=404, detail="Character not found")
+    
+    return {"success": True, "character": result}
+
+
+@router.delete("/characters/{character_id}")
+async def delete_character(character_id: str):
+    """删除角色"""
+    from app.services.character_service import character_service
+    
+    success = await character_service.delete(character_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Character not found")
+    
+    return {"success": True}
 
 
 # ============================================================================
