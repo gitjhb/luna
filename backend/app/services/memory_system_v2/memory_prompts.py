@@ -124,7 +124,25 @@ class MemoryPromptGenerator:
         if interests:
             lines.append(f"• 兴趣: {', '.join(interests[:5])}")
         
-        # 关系相关（高亲密度才展示）
+        # 关系状态（重要！始终显示）
+        relationship_status = memory.get("relationship_status")
+        if relationship_status:
+            status_display = {
+                "dating": "💑 恋爱中",
+                "engaged": "💍 已订婚",
+                "married": "💒 已结婚",
+                "single": "单身",
+                "complicated": "复杂",
+            }.get(relationship_status, relationship_status)
+            lines.append(f"• 关系状态: {status_display}")
+        
+        # 重要日期
+        important_dates = memory.get("important_dates", {})
+        if important_dates:
+            dates_str = ", ".join([f"{k}: {v}" for k, v in list(important_dates.items())[:3]])
+            lines.append(f"• 重要日期: {dates_str}")
+        
+        # 其他关系相关（高亲密度才展示）
         if intimacy_level >= 20:
             pet_names = memory.get("pet_names", [])
             if pet_names:

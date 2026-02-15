@@ -330,7 +330,9 @@ class MemoryExtractor:
 
 请提取:
 1. 新的用户信息（名字、生日、职业、喜好等）
-2. 是否发生了重要事件（表白、吵架、和好、里程碑等）
+2. 关系状态变化（求婚、确定关系、分手等）
+3. 重要日期（纪念日、第一次约会等）
+4. 是否发生了重要事件
 
 用 JSON 格式回复:
 {{
@@ -340,16 +342,25 @@ class MemoryExtractor:
         "occupation": "职业或null",
         "likes": ["喜欢的东西"],
         "dislikes": ["不喜欢的东西"],
-        "new_info": "其他重要信息或null"
+        "relationship_status": "engaged/dating/married/single/complicated 或 null（仅在明确提及关系变化时填写）",
+        "important_dates": {{"纪念日名称": "MM-DD 或完整日期"}},
+        "pet_names": ["对方给的昵称"]
     }},
     "episodic": {{
         "is_important": true/false,
-        "event_type": "confession/fight/reconciliation/milestone/gift/emotional_peak/other",
+        "event_type": "proposal/confession/dating_start/fight/reconciliation/milestone/anniversary/gift/emotional_peak/other",
         "summary": "一句话描述这个事件",
-        "importance": 1-4的数字,
+        "importance": 1-4的数字（求婚/确定关系=4，表白=3，普通事件=2）,
         "key_quote": "最关键的一句话"
     }}
 }}
+
+重要：
+- proposal = 求婚（"嫁给我吧"、"我们结婚吧"等）
+- confession = 表白（"我喜欢你"、"做我女朋友"等）
+- dating_start = 确定恋爱关系
+- anniversary = 纪念日相关
+- 这些事件的importance应该是4（最高级）
 
 只返回 JSON，null 的字段可以省略。"""
 
@@ -685,6 +696,17 @@ class MemoryManager:
                 semantic.dislikes = list(set(semantic.dislikes + value))[:20]
             elif field == "interests" and isinstance(value, list):
                 semantic.interests = list(set(semantic.interests + value))[:20]
+            elif field == "pet_names" and isinstance(value, list):
+                semantic.pet_names = list(set(semantic.pet_names + value))[:10]
+            elif field == "important_dates" and isinstance(value, dict):
+                # 合并重要日期
+                if not semantic.important_dates:
+                    semantic.important_dates = {}
+                semantic.important_dates.update(value)
+            elif field == "relationship_status" and value:
+                # 关系状态只在有值时更新（不覆盖为空）
+                semantic.relationship_status = value
+                logger.info(f"Relationship status updated: {value} for user {user_id}")
             elif hasattr(semantic, field):
                 setattr(semantic, field, value)
         

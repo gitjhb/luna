@@ -2,7 +2,9 @@
 Characters API Routes
 """
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.database import get_db_session
 from uuid import UUID, uuid4
 from datetime import datetime
 from typing import List, Optional
@@ -770,3 +772,78 @@ async def delete_user_character_data(character_id: UUID, request: Request):
     except Exception as e:
         logger.error(f"Failed to delete user-character data: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete data: {str(e)}")
+
+
+# ============================================================================
+# Semantic Memory API - 获取AI记住的用户信息
+# ============================================================================
+
+@router.get("/{character_id}/user-memory")
+async def get_user_memory(
+    character_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    获取AI角色记住的用户信息（语义记忆）
+    
+    Returns:
+        关系状态、重要日期、喜好等
+    """
+    user_id = _get_user_id(request)
+    
+    try:
+        from app.services.memory_db_service import memory_db_service
+        
+        data = await memory_db_service.get_semantic_memory(user_id, character_id)
+        
+        if not data:
+            return {
+                "success": True,
+                "memory": {
+                    "relationship_status": None,
+                    "important_dates": {},
+                    "likes": [],
+                    "dislikes": [],
+                    "pet_names": [],
+                    "shared_experiences": [],
+                }
+            }
+        
+        # 格式化返回
+        return {
+            "success": True,
+            "memory": {
+                "relationship_status": data.get("relationship_status"),
+                "relationship_display": _format_relationship_status(data.get("relationship_status")),
+                "important_dates": data.get("important_dates", {}),
+                "likes": data.get("likes", []),
+                "dislikes": data.get("dislikes", []),
+                "pet_names": data.get("pet_names", []),
+                "shared_experiences": data.get("shared_jokes", []),
+                "user_name": data.get("user_name"),
+                "user_nickname": data.get("user_nickname"),
+            }
+        }
+    except Exception as e:
+        logger.error(f"Failed to get user memory: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "memory": None,
+        }
+
+
+def _format_relationship_status(status: str) -> str:
+    """格式化关系状态显示"""
+    if not status:
+        return None
+    
+    mapping = {
+        "dating": "💑 恋爱中",
+        "engaged": "💍 已订婚",
+        "married": "💒 已结婚",
+        "single": "单身",
+        "complicated": "复杂",
+    }
+    return mapping.get(status, status)
