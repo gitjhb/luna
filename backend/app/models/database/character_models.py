@@ -4,11 +4,20 @@ Character Models - 角色数据库模型
 存储所有角色的配置信息，支持动态管理
 """
 
+import os
 import uuid
 import enum
 from datetime import datetime
 from sqlalchemy import Column, String, Text, Boolean, Integer, Float, DateTime, JSON
-from sqlalchemy.dialects.postgresql import JSONB
+
+# Use JSONB for PostgreSQL, JSON for SQLite
+# Check DATABASE_URL to determine which to use
+_db_url = os.getenv("DATABASE_URL", "")
+if "postgresql" in _db_url:
+    from sqlalchemy.dialects.postgresql import JSONB as JSONType
+else:
+    # For SQLite and other databases, use generic JSON
+    JSONType = JSON
 
 from app.models.database.billing_models import Base
 
@@ -48,13 +57,13 @@ class Character(Base):
     location = Column(String(64), nullable=True)
     
     # 性格标签和爱好 (JSON 数组)
-    personality_traits = Column(JSONB, default=list, nullable=False)  # ["温柔", "善解人意"]
-    personality_traits_en = Column(JSONB, default=list, nullable=True)
-    hobbies = Column(JSONB, default=list, nullable=False)  # ["烘焙", "看电影"]
-    hobbies_en = Column(JSONB, default=list, nullable=True)
+    personality_traits = Column(JSONType, default=list, nullable=False)  # ["温柔", "善解人意"]
+    personality_traits_en = Column(JSONType, default=list, nullable=True)
+    hobbies = Column(JSONType, default=list, nullable=False)  # ["烘焙", "看电影"]
+    hobbies_en = Column(JSONType, default=list, nullable=True)
     
     # 性格参数 (JSON 对象)
-    personality = Column(JSONB, default=dict, nullable=False)
+    personality = Column(JSONType, default=dict, nullable=False)
     # {
     #   "temperament": 3,   # 脾气 1-10
     #   "sensitivity": 5,   # 敏感度 1-10

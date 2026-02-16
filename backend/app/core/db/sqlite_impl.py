@@ -62,7 +62,7 @@ async def init_sqlite():
     from app.models.database import (
         intimacy_models, gift_models, payment_models,
         emotion_models, stats_models, user_settings_models,
-        referral_models, date_models
+        referral_models, date_models, memory_v2_models  # Added memory models
     )
     
     async with _engine.begin() as conn:
@@ -312,7 +312,12 @@ class SQLiteSessionRepository:
 
 
 class SQLiteMemoryRepository:
-    """SQLite implementation of MemoryRepositoryProtocol"""
+    """
+    SQLite implementation of MemoryRepositoryProtocol
+    
+    Uses EpisodicMemory model for storing conversation memories.
+    Semantic memories (user profile) are handled separately.
+    """
     
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -326,24 +331,33 @@ class SQLiteMemoryRepository:
         importance: float = 0.5,
         metadata: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
-        # For now, use a simple table or JSON file
-        # This would be replaced with proper memory model
+        """Store a new episodic memory"""
+        from app.models.database.memory_v2_models import EpisodicMemory
         from uuid import uuid4
         
-        memory = {
-            "memory_id": str(uuid4()),
-            "user_id": user_id,
-            "character_id": character_id,
-            "content": content,
-            "memory_type": memory_type,
-            "importance": importance,
-            "metadata": metadata or {},
-            "created_at": datetime.utcnow().isoformat(),
-        }
+        memory_id = str(uuid4())[:8]  # Short ID
         
-        # TODO: Implement proper memory storage
-        logger.debug(f"Memory stored: {memory['memory_id']}")
-        return memory
+        # Map importance float (0-1) to integer (1-4)
+        importance_int = max(1, min(4, int(importance * 4) + 1))
+        
+        memory = EpisodicMemory(
+            memory_id=memory_id,
+            user_id=user_id,
+            character_id=character_id,
+            event_type=memory_type,
+            summary=content,
+            key_dialogue=metadata.get("key_dialogue", []) if metadata else [],
+            emotion_state=metadata.get("emotion_state") if metadata else None,
+            importance=importance_int,
+            strength=importance,
+            created_at=datetime.utcnow(),
+        )
+        
+        self.session.add(memory)
+        await self.session.flush()
+        
+        logger.debug(f"Memory stored: {memory_id} for user {user_id}")
+        return memory.to_dict()
     
     async def get_by_user_character(
         self,
@@ -352,20 +366,106 @@ class SQLiteMemoryRepository:
         limit: int = 20,
         memory_type: str = None,
     ) -> List[Dict[str, Any]]:
-        # TODO: Implement proper memory retrieval
-        return []
+        """Get memories for a user-character pair"""
+        from app.models.database.memory_v2_models import EpisodicMemory
+        
+        query = (
+            select(EpisodicMemory)
+            .where(EpisodicMemory.user_id == user_id)
+            .where(EpisodicMemory.character_id == character_id)
+        )
+        
+        if memory_type:
+            query = query.where(EpisodicMemory.event_type == memory_type)
+        
+        query = query.order_by(EpisodicMemory.importance.desc(), EpisodicMemory.created_at.desc()).limit(limit)
+        
+        result = await self.session.execute(query)
+        memories = result.scalars().all()
+        return [m.to_dict() for m in memories]
     
     async def delete(self, memory_id: str) -> bool:
-        # TODO: Implement
-        return True
+        """Delete a memory by ID"""
+        from app.models.database.memory_v2_models import EpisodicMemory
+        
+        result = await self.session.execute(
+            delete(EpisodicMemory).where(EpisodicMemory.memory_id == memory_id)
+        )
+        return result.rowcount > 0
     
     async def update_importance(
         self,
         memory_id: str,
         importance: float,
     ) -> bool:
-        # TODO: Implement
-        return True
+        """Update memory importance/strength"""
+        from app.models.database.memory_v2_models import EpisodicMemory
+        
+        importance_int = max(1, min(4, int(importance * 4) + 1))
+        
+        result = await self.session.execute(
+            update(EpisodicMemory)
+            .where(EpisodicMemory.memory_id == memory_id)
+            .values(importance=importance_int, strength=importance)
+        )
+        return result.rowcount > 0
+    
+    async def recall(
+        self,
+        memory_id: str,
+    ) -> bool:
+        """Record that a memory was recalled (increases recall_count)"""
+        from app.models.database.memory_v2_models import EpisodicMemory
+        
+        result = await self.session.execute(
+            update(EpisodicMemory)
+            .where(EpisodicMemory.memory_id == memory_id)
+            .values(
+                recall_count=EpisodicMemory.recall_count + 1,
+                last_recalled=datetime.utcnow()
+            )
+        )
+        return result.rowcount > 0
+    
+    async def get_recent(
+        self,
+        user_id: str,
+        character_id: str,
+        limit: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """Get most recent memories"""
+        from app.models.database.memory_v2_models import EpisodicMemory
+        
+        result = await self.session.execute(
+            select(EpisodicMemory)
+            .where(EpisodicMemory.user_id == user_id)
+            .where(EpisodicMemory.character_id == character_id)
+            .order_by(EpisodicMemory.created_at.desc())
+            .limit(limit)
+        )
+        memories = result.scalars().all()
+        return [m.to_dict() for m in memories]
+    
+    async def get_important(
+        self,
+        user_id: str,
+        character_id: str,
+        min_importance: int = 3,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """Get important memories (importance >= min_importance)"""
+        from app.models.database.memory_v2_models import EpisodicMemory
+        
+        result = await self.session.execute(
+            select(EpisodicMemory)
+            .where(EpisodicMemory.user_id == user_id)
+            .where(EpisodicMemory.character_id == character_id)
+            .where(EpisodicMemory.importance >= min_importance)
+            .order_by(EpisodicMemory.importance.desc(), EpisodicMemory.created_at.desc())
+            .limit(limit)
+        )
+        memories = result.scalars().all()
+        return [m.to_dict() for m in memories]
 
 
 class SQLiteVectorRepository:

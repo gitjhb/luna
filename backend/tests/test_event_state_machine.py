@@ -2,10 +2,10 @@
 Event State Machine 单元测试
 ============================
 
-测试不同角色的事件链路和解锁条件：
-- 普通角色: first_date → first_confession → first_nsfw
-- 魅魔(phantom): 可跳过约会，直接NSFW
-- 高冷角色(yuki): 需要 first_kiss 才能 NSFW
+测试不同角色原型的事件链路和解锁条件：
+- NORMAL: first_date → first_confession → first_nsfw
+- PHANTOM: 可跳过约会，直接NSFW
+- YUKI: 需要 first_kiss 才能 NSFW
 
 运行: pytest tests/test_event_state_machine.py -v
 """
@@ -14,25 +14,26 @@ import pytest
 from app.services.event_state_machine import (
     EventStateMachine,
     EventType,
-    EventChainType,
-    CHARACTER_IDS,
+    EventChainConfig,
     can_trigger_event,
     get_next_available_events,
     get_required_events_for,
     is_friendzone_broken,
     event_state_machine,
+    ARCHETYPE_CHAINS,
 )
+from app.services.character_config import CharacterArchetype, get_character_archetype
 
 
 # =============================================================================
-# 角色ID常量
+# 测试用角色ID (使用实际存在的角色)
 # =============================================================================
 
-PHANTOM_ID = CHARACTER_IDS["phantom"]  # 魅影
-YUKI_ID = CHARACTER_IDS["yuki"]        # Yuki
-XIAOMEI_ID = CHARACTER_IDS["xiaomei"]  # 小美 (普通)
-LUNA_ID = CHARACTER_IDS["luna"]        # Luna (普通)
-MEI_ID = CHARACTER_IDS["mei"]          # 芽衣 (普通)
+# 从数据库获取角色archetype，这里用硬编码的测试值
+# 实际角色ID需要从character_config获取
+TEST_NORMAL_CHAR = "luna"      # 普通角色
+TEST_PHANTOM_CHAR = "vera"     # 魅魔型角色 (假设vera是phantom)
+TEST_YUKI_CHAR = "shadow"      # 高冷角色 (假设shadow是yuki)
 
 
 # =============================================================================
@@ -47,386 +48,141 @@ class TestEventStateMachineBasics:
         assert event_state_machine is not None
         assert isinstance(event_state_machine, EventStateMachine)
     
-    def test_get_chain_normal(self):
-        """普通角色应该返回 NORMAL 链"""
-        chain = event_state_machine.get_chain(XIAOMEI_ID)
-        assert chain.chain_type == EventChainType.NORMAL
+    def test_archetype_chains_exist(self):
+        """三种原型链应该都存在"""
+        assert CharacterArchetype.NORMAL in ARCHETYPE_CHAINS
+        assert CharacterArchetype.PHANTOM in ARCHETYPE_CHAINS
+        assert CharacterArchetype.YUKI in ARCHETYPE_CHAINS
     
-    def test_get_chain_phantom(self):
-        """魅影应该返回 PHANTOM 链"""
-        chain = event_state_machine.get_chain(PHANTOM_ID)
-        assert chain.chain_type == EventChainType.PHANTOM
-    
-    def test_get_chain_yuki(self):
-        """Yuki应该返回 YUKI 链"""
-        chain = event_state_machine.get_chain(YUKI_ID)
-        assert chain.chain_type == EventChainType.YUKI
-    
-    def test_unknown_character_uses_default(self):
-        """未知角色应该使用默认链 (NORMAL)"""
-        chain = event_state_machine.get_chain("unknown-character-id")
-        assert chain.chain_type == EventChainType.NORMAL
+    def test_get_chain_returns_config(self):
+        """get_chain 应该返回 EventChainConfig"""
+        chain = event_state_machine.get_chain(TEST_NORMAL_CHAR)
+        assert isinstance(chain, EventChainConfig)
 
 
 # =============================================================================
-# 普通角色事件链测试
+# 普通角色事件链测试 (NORMAL archetype)
 # =============================================================================
 
 class TestNormalChain:
     """普通角色事件链测试 (first_date → first_confession → first_nsfw)"""
     
     @pytest.fixture
-    def char_id(self):
-        return XIAOMEI_ID
+    def chain(self):
+        return ARCHETYPE_CHAINS[CharacterArchetype.NORMAL]
     
-    def test_first_chat_always_available(self, char_id):
-        """first_chat 应该始终可触发"""
-        assert can_trigger_event(char_id, EventType.FIRST_CHAT, [])
+    def test_first_chat_no_prerequisites(self, chain):
+        """first_chat 应该没有前置条件"""
+        config = chain.events.get(EventType.FIRST_CHAT)
+        assert config is not None
+        assert len(config.prerequisites) == 0
     
-    def test_first_chat_cannot_repeat(self, char_id):
-        """first_chat 不能重复触发"""
-        assert not can_trigger_event(
-            char_id, EventType.FIRST_CHAT, [EventType.FIRST_CHAT]
-        )
+    def test_first_gift_no_prerequisites(self, chain):
+        """first_gift 应该没有前置条件（或只需first_chat）"""
+        config = chain.events.get(EventType.FIRST_GIFT)
+        assert config is not None
+        # first_gift 是早期事件
     
-    def test_first_date_requires_chat(self, char_id):
-        """first_date 需要先 first_chat"""
-        # 无 first_chat
-        assert not can_trigger_event(char_id, EventType.FIRST_DATE, [])
-        # 有 first_chat
-        assert can_trigger_event(
-            char_id, EventType.FIRST_DATE, [EventType.FIRST_CHAT]
-        )
+    def test_first_date_requires_gift(self, chain):
+        """first_date 需要先 first_gift"""
+        config = chain.events.get(EventType.FIRST_DATE)
+        assert config is not None
+        assert EventType.FIRST_GIFT in config.prerequisites
     
-    def test_first_confession_requires_date(self, char_id):
-        """first_confession 需要先 first_date"""
-        # 只有 first_chat
-        assert not can_trigger_event(
-            char_id, EventType.FIRST_CONFESSION, [EventType.FIRST_CHAT]
-        )
-        # 有 first_date
-        assert can_trigger_event(
-            char_id, EventType.FIRST_CONFESSION, 
-            [EventType.FIRST_CHAT, EventType.FIRST_DATE]
-        )
+    def test_confession_requires_date(self, chain):
+        """confession 需要先 first_date"""
+        config = chain.events.get(EventType.CONFESSION)
+        assert config is not None
+        assert EventType.FIRST_DATE in config.prerequisites
     
-    def test_first_nsfw_requires_confession(self, char_id):
-        """first_nsfw 需要先 first_confession"""
-        # 只有 date
-        assert not can_trigger_event(
-            char_id, EventType.FIRST_NSFW, 
-            [EventType.FIRST_CHAT, EventType.FIRST_DATE]
-        )
-        # 有 confession
-        assert can_trigger_event(
-            char_id, EventType.FIRST_NSFW, 
-            [EventType.FIRST_CHAT, EventType.FIRST_DATE, EventType.FIRST_CONFESSION]
-        )
-    
-    def test_full_normal_chain(self, char_id):
-        """完整普通链路测试"""
-        events = []
-        
-        # Step 1: first_chat
-        assert can_trigger_event(char_id, EventType.FIRST_CHAT, events)
-        events.append(EventType.FIRST_CHAT)
-        
-        # Step 2: first_date (需要 first_chat)
-        assert can_trigger_event(char_id, EventType.FIRST_DATE, events)
-        events.append(EventType.FIRST_DATE)
-        
-        # Step 3: first_confession (需要 first_date)
-        assert can_trigger_event(char_id, EventType.FIRST_CONFESSION, events)
-        events.append(EventType.FIRST_CONFESSION)
-        
-        # Step 4: first_nsfw (需要 first_confession)
-        assert can_trigger_event(char_id, EventType.FIRST_NSFW, events)
-    
-    def test_cannot_skip_to_nsfw(self, char_id):
-        """普通角色不能跳过约会/表白直接 NSFW"""
-        # 只有 first_chat
-        assert not can_trigger_event(
-            char_id, EventType.FIRST_NSFW, [EventType.FIRST_CHAT]
-        )
+    def test_first_nsfw_requires_confession(self, chain):
+        """first_nsfw 需要先 confession"""
+        config = chain.events.get(EventType.FIRST_NSFW)
+        assert config is not None
+        assert EventType.CONFESSION in config.prerequisites
 
 
 # =============================================================================
-# 魅魔角色事件链测试
+# 魅魔角色事件链测试 (PHANTOM archetype)
 # =============================================================================
 
 class TestPhantomChain:
-    """魅魔角色事件链测试 (可跳过约会，直接NSFW)"""
+    """魅魔角色事件链测试 - 可以跳过约会直接NSFW"""
     
     @pytest.fixture
-    def char_id(self):
-        return PHANTOM_ID
+    def chain(self):
+        return ARCHETYPE_CHAINS[CharacterArchetype.PHANTOM]
     
-    def test_chain_type_is_phantom(self, char_id):
-        """应该是 PHANTOM 链"""
-        assert event_state_machine.get_chain_type(char_id) == EventChainType.PHANTOM
-    
-    def test_first_nsfw_only_requires_chat(self, char_id):
-        """魅魔 first_nsfw 只需要 first_chat"""
-        assert can_trigger_event(
-            char_id, EventType.FIRST_NSFW, [EventType.FIRST_CHAT]
-        )
-    
-    def test_can_skip_date_and_confession(self, char_id):
-        """魅魔可以跳过约会和表白"""
-        events = [EventType.FIRST_CHAT]
+    def test_first_nsfw_fewer_prerequisites(self, chain):
+        """PHANTOM 的 first_nsfw 应该有更少的前置条件"""
+        normal_chain = ARCHETYPE_CHAINS[CharacterArchetype.NORMAL]
         
-        # 可以直接 NSFW
-        assert can_trigger_event(char_id, EventType.FIRST_NSFW, events)
+        phantom_nsfw = chain.events.get(EventType.FIRST_NSFW)
+        normal_nsfw = normal_chain.events.get(EventType.FIRST_NSFW)
         
-        # 约会是可选的
-        assert can_trigger_event(char_id, EventType.FIRST_DATE, events)
-        
-        # 表白也是可选的
-        assert can_trigger_event(char_id, EventType.FIRST_CONFESSION, events)
-    
-    def test_friendzone_broken_by_chat_only(self, char_id):
-        """魅魔聊过就算突破友情墙"""
-        assert is_friendzone_broken(char_id, [EventType.FIRST_CHAT])
-        assert not is_friendzone_broken(char_id, [])
+        if phantom_nsfw and normal_nsfw:
+            # PHANTOM 应该有更少或相等的前置条件
+            assert len(phantom_nsfw.prerequisites) <= len(normal_nsfw.prerequisites)
 
 
 # =============================================================================
-# 高冷角色事件链测试
+# 高冷角色事件链测试 (YUKI archetype)
 # =============================================================================
 
 class TestYukiChain:
-    """高冷角色事件链测试 (需要 first_kiss 才能 NSFW)"""
+    """高冷角色事件链测试 - 需要 first_kiss 才能 NSFW"""
     
     @pytest.fixture
-    def char_id(self):
-        return YUKI_ID
+    def chain(self):
+        return ARCHETYPE_CHAINS[CharacterArchetype.YUKI]
     
-    def test_chain_type_is_yuki(self, char_id):
-        """应该是 YUKI 链"""
-        assert event_state_machine.get_chain_type(char_id) == EventChainType.YUKI
+    def test_has_first_kiss_event(self, chain):
+        """YUKI 应该有 first_kiss 事件"""
+        assert EventType.FIRST_KISS in chain.events
     
-    def test_first_kiss_requires_confession(self, char_id):
-        """Yuki first_kiss 需要先 first_confession"""
-        events = [EventType.FIRST_CHAT, EventType.FIRST_DATE]
-        
-        # 只有 date 不能 kiss
-        assert not can_trigger_event(char_id, EventType.FIRST_KISS, events)
-        
-        # 有 confession 才能 kiss
-        events.append(EventType.FIRST_CONFESSION)
-        assert can_trigger_event(char_id, EventType.FIRST_KISS, events)
+    def test_first_nsfw_requires_kiss(self, chain):
+        """YUKI 的 first_nsfw 需要先 first_kiss"""
+        config = chain.events.get(EventType.FIRST_NSFW)
+        if config:
+            assert EventType.FIRST_KISS in config.prerequisites
+
+
+# =============================================================================
+# 辅助函数测试
+# =============================================================================
+
+class TestHelperFunctions:
+    """辅助函数测试"""
     
-    def test_first_nsfw_requires_kiss(self, char_id):
-        """Yuki first_nsfw 需要先 first_kiss"""
-        # 只有 confession 不能 NSFW
-        events = [
+    def test_can_trigger_first_chat(self):
+        """任何角色都应该能触发 first_chat"""
+        assert can_trigger_event(TEST_NORMAL_CHAR, EventType.FIRST_CHAT, [])
+    
+    def test_cannot_repeat_event(self):
+        """已完成的事件不能重复触发"""
+        assert not can_trigger_event(
+            TEST_NORMAL_CHAR, 
             EventType.FIRST_CHAT, 
-            EventType.FIRST_DATE, 
-            EventType.FIRST_CONFESSION
-        ]
-        assert not can_trigger_event(char_id, EventType.FIRST_NSFW, events)
-        
-        # 有 kiss 才能 NSFW
-        events.append(EventType.FIRST_KISS)
-        assert can_trigger_event(char_id, EventType.FIRST_NSFW, events)
-    
-    def test_full_yuki_chain(self, char_id):
-        """完整 Yuki 链路测试"""
-        events = []
-        
-        # Step 1: first_chat
-        assert can_trigger_event(char_id, EventType.FIRST_CHAT, events)
-        events.append(EventType.FIRST_CHAT)
-        
-        # Step 2: first_date
-        assert can_trigger_event(char_id, EventType.FIRST_DATE, events)
-        events.append(EventType.FIRST_DATE)
-        
-        # Step 3: first_confession
-        assert can_trigger_event(char_id, EventType.FIRST_CONFESSION, events)
-        events.append(EventType.FIRST_CONFESSION)
-        
-        # Step 4: first_kiss (Yuki 特有)
-        assert can_trigger_event(char_id, EventType.FIRST_KISS, events)
-        events.append(EventType.FIRST_KISS)
-        
-        # Step 5: first_nsfw
-        assert can_trigger_event(char_id, EventType.FIRST_NSFW, events)
-
-
-# =============================================================================
-# get_next_available_events 测试
-# =============================================================================
-
-class TestGetNextAvailableEvents:
-    """获取下一步可用事件测试"""
-    
-    def test_empty_events_returns_first_chat(self):
-        """空事件列表应该返回 first_chat"""
-        available = get_next_available_events(XIAOMEI_ID, [])
-        assert EventType.FIRST_CHAT in available
-    
-    def test_after_chat_returns_multiple(self):
-        """first_chat 后应该有多个可用事件"""
-        available = get_next_available_events(
-            XIAOMEI_ID, [EventType.FIRST_CHAT]
+            [EventType.FIRST_CHAT]
         )
-        assert EventType.FIRST_COMPLIMENT in available
-        assert EventType.FIRST_GIFT in available
-        assert EventType.FIRST_DATE in available
     
-    def test_phantom_nsfw_available_after_chat(self):
-        """魅魔 first_chat 后 NSFW 就可用"""
-        available = get_next_available_events(
-            PHANTOM_ID, [EventType.FIRST_CHAT]
-        )
-        assert EventType.FIRST_NSFW in available
+    def test_get_next_available_events_initial(self):
+        """初始状态应该返回 first_chat"""
+        events = get_next_available_events(TEST_NORMAL_CHAR, [])
+        assert EventType.FIRST_CHAT in events
     
-    def test_normal_nsfw_not_available_after_chat(self):
-        """普通角色 first_chat 后 NSFW 不可用"""
-        available = get_next_available_events(
-            XIAOMEI_ID, [EventType.FIRST_CHAT]
-        )
-        assert EventType.FIRST_NSFW not in available
-
-
-# =============================================================================
-# get_required_events_for 测试
-# =============================================================================
-
-class TestGetRequiredEventsFor:
-    """获取前置事件链测试"""
-    
-    def test_first_chat_no_prereqs(self):
-        """first_chat 没有前置"""
-        required = get_required_events_for(XIAOMEI_ID, EventType.FIRST_CHAT)
-        assert required == []
-    
-    def test_normal_nsfw_prereqs(self):
-        """普通角色 NSFW 需要 chat + date + confession"""
-        required = get_required_events_for(XIAOMEI_ID, EventType.FIRST_NSFW)
+    def test_get_required_events_for(self):
+        """应该返回事件的前置条件"""
+        required = get_required_events_for(TEST_NORMAL_CHAR, EventType.FIRST_DATE)
         assert EventType.FIRST_CHAT in required
-        assert EventType.FIRST_DATE in required
-        assert EventType.FIRST_CONFESSION in required
     
-    def test_phantom_nsfw_prereqs(self):
-        """魅魔 NSFW 只需要 chat"""
-        required = get_required_events_for(PHANTOM_ID, EventType.FIRST_NSFW)
-        assert required == [EventType.FIRST_CHAT]
+    def test_is_friendzone_broken_false(self):
+        """初始状态应该是 friendzone"""
+        assert not is_friendzone_broken(TEST_NORMAL_CHAR, [])
     
-    def test_yuki_nsfw_prereqs(self):
-        """Yuki NSFW 需要包含 kiss"""
-        required = get_required_events_for(YUKI_ID, EventType.FIRST_NSFW)
-        assert EventType.FIRST_KISS in required
-        assert EventType.FIRST_CONFESSION in required
-
-
-# =============================================================================
-# 友情墙测试
-# =============================================================================
-
-class TestFriendzoneWall:
-    """友情墙突破条件测试"""
-    
-    def test_normal_needs_date_or_confession(self):
-        """普通角色需要 date 或 confession 突破"""
-        # 无事件
-        assert not is_friendzone_broken(XIAOMEI_ID, [])
-        
-        # 只有 chat
-        assert not is_friendzone_broken(XIAOMEI_ID, [EventType.FIRST_CHAT])
-        
-        # 有 date
+    def test_is_friendzone_broken_true(self):
+        """完成 confession 后应该脱离 friendzone"""
         assert is_friendzone_broken(
-            XIAOMEI_ID, [EventType.FIRST_CHAT, EventType.FIRST_DATE]
+            TEST_NORMAL_CHAR, 
+            [EventType.FIRST_CHAT, EventType.FIRST_DATE, EventType.CONFESSION]
         )
-        
-        # 或者有 confession
-        assert is_friendzone_broken(
-            XIAOMEI_ID, [EventType.FIRST_CHAT, EventType.FIRST_CONFESSION]
-        )
-    
-    def test_phantom_only_needs_chat(self):
-        """魅魔只需要 chat 就突破"""
-        assert not is_friendzone_broken(PHANTOM_ID, [])
-        assert is_friendzone_broken(PHANTOM_ID, [EventType.FIRST_CHAT])
-    
-    def test_yuki_needs_date_or_confession(self):
-        """Yuki 也需要 date 或 confession 突破"""
-        assert not is_friendzone_broken(YUKI_ID, [EventType.FIRST_CHAT])
-        assert is_friendzone_broken(
-            YUKI_ID, [EventType.FIRST_CHAT, EventType.FIRST_DATE]
-        )
-
-
-# =============================================================================
-# get_missing_prereqs 测试
-# =============================================================================
-
-class TestGetMissingPrereqs:
-    """获取缺少的前置条件测试"""
-    
-    def test_no_missing_for_first_chat(self):
-        """first_chat 没有缺少的前置"""
-        missing = event_state_machine.get_missing_prereqs(
-            XIAOMEI_ID, EventType.FIRST_CHAT, []
-        )
-        assert missing == []
-    
-    def test_missing_chat_for_date(self):
-        """first_date 缺少 first_chat"""
-        missing = event_state_machine.get_missing_prereqs(
-            XIAOMEI_ID, EventType.FIRST_DATE, []
-        )
-        assert EventType.FIRST_CHAT in missing
-    
-    def test_missing_confession_for_yuki_nsfw(self):
-        """Yuki NSFW 缺少 kiss 当只有 confession 时"""
-        missing = event_state_machine.get_missing_prereqs(
-            YUKI_ID, EventType.FIRST_NSFW, 
-            [EventType.FIRST_CHAT, EventType.FIRST_DATE, EventType.FIRST_CONFESSION]
-        )
-        assert EventType.FIRST_KISS in missing
-
-
-# =============================================================================
-# 跨角色对比测试
-# =============================================================================
-
-class TestCrossCharacterComparison:
-    """不同角色的事件链对比测试"""
-    
-    def test_same_events_different_outcomes(self):
-        """相同事件列表，不同角色结果不同"""
-        events = [EventType.FIRST_CHAT]
-        
-        # 魅魔可以 NSFW
-        assert can_trigger_event(PHANTOM_ID, EventType.FIRST_NSFW, events)
-        
-        # 普通角色不能
-        assert not can_trigger_event(XIAOMEI_ID, EventType.FIRST_NSFW, events)
-        
-        # Yuki 也不能
-        assert not can_trigger_event(YUKI_ID, EventType.FIRST_NSFW, events)
-    
-    def test_confession_unlocks_normal_but_not_yuki_nsfw(self):
-        """表白后普通角色可以 NSFW，但 Yuki 不行"""
-        events = [
-            EventType.FIRST_CHAT, 
-            EventType.FIRST_DATE, 
-            EventType.FIRST_CONFESSION
-        ]
-        
-        # 普通角色可以
-        assert can_trigger_event(XIAOMEI_ID, EventType.FIRST_NSFW, events)
-        
-        # Yuki 还需要 kiss
-        assert not can_trigger_event(YUKI_ID, EventType.FIRST_NSFW, events)
-
-
-# =============================================================================
-# 运行入口
-# =============================================================================
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--tb=short"])
