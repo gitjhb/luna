@@ -234,7 +234,7 @@ export default function DateSceneModal({
   
   // Bottom sheet ref and snap points
   const bottomSheetRef = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => ['15%', '50%', '85%'], []);
+  const snapPoints = useMemo(() => ['15%', '50%', '95%'], []); // 增加到95%以适应键盘
   
   // TextInput ref for free input focus
   const freeInputRef = useRef<TextInput>(null);
@@ -1011,9 +1011,10 @@ export default function DateSceneModal({
         snapPoints={snapPoints}
         backgroundStyle={styles.bottomSheetBackground}
         handleIndicatorStyle={styles.bottomSheetIndicator}
-        keyboardBehavior="interactive"
+        keyboardBehavior="extend"
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
+        enablePanDownToClose={false}
       >
         <BottomSheetScrollView 
           contentContainerStyle={styles.bottomSheetContent}
