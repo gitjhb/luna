@@ -19,16 +19,104 @@ logger = logging.getLogger(__name__)
 
 # 约会场景（复用 scenarios 系统）
 DATE_SCENARIOS = [
-    "cafe_paris",      # 巴黎咖啡厅
-    "beach_sunset",    # 海边日落
-    "rooftop_city",    # 城市天台
-    "forest_walk",     # 林间漫步
-    "stargazing",      # 星空露营
+    # 原有场景
+    "cafe_paris",           # 巴黎咖啡厅
+    "beach_sunset",         # 海边日落
+    "rooftop_city",         # 城市天台
+    "forest_walk",          # 林间漫步
+    "stargazing",           # 星空露营
+    
+    # 浪漫类场景
+    "candlelight_dinner",   # 烛光晚餐
+    "riverside_walk",       # 河边漫步
+    "mountain_sunrise",     # 山顶日出
+    "flower_garden",        # 花园约会
+    
+    # 活动类场景
+    "amusement_park",       # 游乐园
+    "escape_room",          # 密室逃脱
+    "cooking_class",        # 料理课堂
+    "picnic_park",          # 公园野餐
+    "gaming_arcade",        # 电玩中心
+    "art_gallery",          # 艺术画廊
+    
+    # 日常类场景
+    "movie_night",          # 看电影
+    "video_call",           # 视频通话
+    "supermarket_date",     # 超市购物
+    "bedtime_chat",         # 睡前聊天
+    "bookstore_browse",     # 书店闲逛
+    
+    # 特殊类场景
+    "christmas_date",       # 圣诞节约会
+    "birthday_surprise",    # 生日惊喜
+    "rainy_day",           # 雨天约会
+    "travel_adventure",     # 旅行探索
+    "hot_spring",          # 温泉度假
+    "winter_skiing",       # 滑雪度假
+    "festival_night",      # 节日庆典
 ]
 
 # 角色专属约会场景配置（照片解锁场景）
 # 注意：key 要用前端的 characterId (UUID 格式)
 CHARACTER_EXCLUSIVE_SCENES: Dict[str, Dict[str, dict]] = {
+    # 小美 - 邻家女孩
+    "c1a2b3c4-d5e6-4f7a-8b9c-0d1e2f3a4b5c": {
+        "xiaomei_home": {
+            "name": "小美的家",
+            "icon": "🏠",
+            "description": "温馨的小屋，一起做家务看电视",
+            "required_level": 15,
+            "is_exclusive": True,
+        },
+        "xiaomei_kitchen": {
+            "name": "厨房约会",
+            "icon": "🍳",
+            "description": "和小美一起做菜，温馨的厨房时光",
+            "required_level": 25,
+            "is_exclusive": True,
+        },
+        "xiaomei_garden": {
+            "name": "后院花园",
+            "icon": "🌻",
+            "description": "小美亲手种的花园，午后阳光正好",
+            "required_level": 30,
+            "is_exclusive": True,
+        },
+    },
+    
+    # Luna - 神秘AI伴侣
+    "d2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d": {
+        "luna_space": {
+            "name": "虚拟空间",
+            "icon": "✨",
+            "description": "Luna的数字世界，充满科幻色彩",
+            "required_level": 1,
+            "is_exclusive": True,
+        },
+        "luna_observatory": {
+            "name": "虚拟天文台",
+            "icon": "🔭",
+            "description": "在数字星空中探索宇宙奥秘",
+            "required_level": 20,
+            "is_exclusive": True,
+        },
+        "luna_lab": {
+            "name": "实验室",
+            "icon": "🧪",
+            "description": "Luna的私人实验室，充满未来科技",
+            "required_level": 35,
+            "is_exclusive": True,
+        },
+        "luna_matrix": {
+            "name": "数据矩阵",
+            "icon": "🌐",
+            "description": "穿越数据流，感受数字世界的浪漫",
+            "required_level": 40,
+            "is_exclusive": True,
+        },
+    },
+    
     # Sakura - 元气少女
     "e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e": {
         "bedroom": {
@@ -57,6 +145,38 @@ CHARACTER_EXCLUSIVE_SCENES: Dict[str, Dict[str, dict]] = {
             "icon": "🏫",
             "description": "只有你们两个的秘密时光",
             "required_level": 20,
+            "is_exclusive": True,
+        },
+    },
+    
+    # Yuki - 冷艳御姐
+    "f4d5e6f7-a8b9-4c0d-1e2f-3a4b5c6d7e8f": {
+        "yuki_office": {
+            "name": "高级办公室",
+            "icon": "🏢",
+            "description": "Yuki的私人办公室，都市精英风",
+            "required_level": 18,
+            "is_exclusive": True,
+        },
+        "yuki_penthouse": {
+            "name": "顶层公寓",
+            "icon": "🏙️",
+            "description": "俯瞰都市夜景的奢华公寓",
+            "required_level": 30,
+            "is_exclusive": True,
+        },
+        "yuki_spa": {
+            "name": "私人温泉",
+            "icon": "♨️",
+            "description": "Yuki的私人温泉，放松身心的秘密空间",
+            "required_level": 35,
+            "is_exclusive": True,
+        },
+        "yuki_wine_cellar": {
+            "name": "酒窖品酒",
+            "icon": "🍷",
+            "description": "私人酒窖中品味红酒人生",
+            "required_level": 40,
             "is_exclusive": True,
         },
     },
