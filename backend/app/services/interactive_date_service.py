@@ -1388,7 +1388,27 @@ class InteractiveDateService:
             # 确定是否是最后阶段
             is_final = stage_num >= DATE_STAGES
             
-            # 构建 prompt（包含亲密度阶段）
+            # === 获取场景事件 ===
+            from app.services.scenario_events import scenario_event_service
+            
+            # 收集已触发的事件ID
+            triggered_events = []
+            for s in session.stages:
+                if hasattr(s, 'event_id') and s.event_id:
+                    triggered_events.append(s.event_id)
+            
+            # 获取本阶段的事件
+            event, event_context = scenario_event_service.build_event_context(
+                scenario_id=session.scenario_id,
+                stage_num=stage_num,
+                current_affection=session.affection_score,
+                triggered_events=triggered_events,
+            )
+            
+            if event:
+                logger.info(f"📅 [DATE] Stage {stage_num} event triggered: {event.name} ({event.event_type})")
+            
+            # 构建 prompt（包含亲密度阶段和场景事件）
             prompt = self._build_stage_prompt(
                 character_name=character.name if character else "角色",
                 character_personality=character.system_prompt if character else "",
@@ -1402,6 +1422,7 @@ class InteractiveDateService:
                 is_final=is_final,
                 intimacy_level=intimacy_level,
                 intimacy_stage=intimacy_stage,
+                event_context=event_context,  # 场景事件注入
             )
             
             # 日志：打印 prompt 长度和估算 token 数
@@ -1514,6 +1535,7 @@ class InteractiveDateService:
         is_final: bool,
         intimacy_level: int = 1,
         intimacy_stage: str = "strangers",
+        event_context: str = "",  # 场景事件上下文
     ) -> str:
         """
         构建 LLM prompt - 三层架构：
@@ -1623,6 +1645,12 @@ class InteractiveDateService:
 - 写一个浪漫/紧张的场景，让用户面临关键选择
 - 选项应该影响约会的结局走向
 - 好感度高时可以设计更亲密的选项"""
+
+        # =====================================================================
+        # 场景事件注入（如果有）
+        # =====================================================================
+        if event_context:
+            task_layer += f"\n\n{event_context}"
 
         # =====================================================================
         # Output Format（输出格式）
