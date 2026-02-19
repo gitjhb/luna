@@ -1057,7 +1057,7 @@ export default function DateSceneModal({
         enablePanDownToClose={false}
       >
         <BottomSheetScrollView 
-          contentContainerStyle={styles.bottomSheetContent}
+          contentContainerStyle={[styles.bottomSheetContent, { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 20 : 20 }]}
           keyboardShouldPersistTaps="handled"
         >
           {/* 角色名 */}
@@ -1089,7 +1089,7 @@ export default function DateSceneModal({
               <ActivityIndicator size="large" color="#FF6B9D" style={{ marginVertical: 20 }} />
             ) : !showOptions ? null : showFreeInput ? (
               /* 自由输入模式 */
-              <View style={[styles.freeInputContainer, { paddingBottom: keyboardHeight > 0 ? keyboardHeight - 100 : 0 }]}>
+              <View style={styles.freeInputContainer}>
                 <TextInput
                   ref={freeInputRef}
                   style={styles.freeInputField}
