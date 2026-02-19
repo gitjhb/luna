@@ -20,7 +20,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ExtraData, GameDebugInfo } from '../store/chatStore';
-import { apiClient } from '../services/api';
+import { apiClient, API_BASE_URL } from '../services/api';
 
 // Stage name mapping
 const getStageNameCN = (stage: string): string => {
@@ -126,6 +126,12 @@ export const DebugButton: React.FC<DebugPanelProps> = (props) => {
               {/* Current State (Before This Message) */}
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>📊 Current State</Text>
+                <View style={styles.row}>
+                  <Text style={styles.label}>Server:</Text>
+                  <Text style={[styles.value, styles.monoText]} numberOfLines={1}>
+                    {API_BASE_URL.replace('/api/v1', '')}
+                  </Text>
+                </View>
                 <View style={styles.row}>
                   <Text style={styles.label}>Emotion:</Text>
                   <View style={[styles.badge, { backgroundColor: getEmotionColor(emotionState) }]}>
@@ -584,6 +590,11 @@ const styles = StyleSheet.create({
   },
   grayText: {
     color: 'rgba(255, 255, 255, 0.4)',
+  },
+  monoText: {
+    fontFamily: 'monospace',
+    fontSize: 11,
+    color: '#00D4FF',
   },
   deltaText: {
     fontSize: 12,

@@ -53,9 +53,10 @@ class EventMemory(Base):
     generated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     
     # Composite index for efficient lookups
+    # Note: removed unique=True to allow multiple memories of same event_type (e.g., multiple dates)
     __table_args__ = (
         Index('idx_event_memory_user_character', 'user_id', 'character_id'),
-        Index('idx_event_memory_unique_event', 'user_id', 'character_id', 'event_type', unique=True),
+        Index('idx_event_memory_event_type', 'user_id', 'character_id', 'event_type'),
     )
     
     def __repr__(self):

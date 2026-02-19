@@ -203,6 +203,21 @@ export const useChatStore = create<ChatState>()(
   
   addMessage: (sessionId, message) => {
     const currentMessages = get().messagesBySession[sessionId] || [];
+    
+    // 去重：检查是否已存在相同内容的消息（10秒内）
+    const isDuplicate = currentMessages.some(m => {
+      if (m.content !== message.content || m.role !== message.role) return false;
+      // 检查时间差（10秒内算重复）
+      const existingTime = new Date(m.createdAt).getTime();
+      const newTime = new Date(message.createdAt).getTime();
+      return Math.abs(existingTime - newTime) < 10000;
+    });
+    
+    if (isDuplicate) {
+      console.log('[chatStore] Skipping duplicate message:', message.content.substring(0, 30));
+      return;
+    }
+    
     set({
       messagesBySession: {
         ...get().messagesBySession,
@@ -213,10 +228,25 @@ export const useChatStore = create<ChatState>()(
   
   addMessages: (sessionId, messages) => {
     const currentMessages = get().messagesBySession[sessionId] || [];
+    
+    // 去重：过滤掉已存在的消息
+    const newMessages = messages.filter(newMsg => {
+      return !currentMessages.some(m => {
+        if (m.content !== newMsg.content || m.role !== newMsg.role) return false;
+        const existingTime = new Date(m.createdAt).getTime();
+        const newTime = new Date(newMsg.createdAt).getTime();
+        return Math.abs(existingTime - newTime) < 10000;
+      });
+    });
+    
+    if (newMessages.length < messages.length) {
+      console.log('[chatStore] Filtered', messages.length - newMessages.length, 'duplicate messages');
+    }
+    
     set({
       messagesBySession: {
         ...get().messagesBySession,
-        [sessionId]: [...currentMessages, ...messages],
+        [sessionId]: [...currentMessages, ...newMessages],
       },
     });
   },

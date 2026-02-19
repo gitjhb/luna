@@ -200,6 +200,26 @@ class StatsService:
         return result.scalars().all()
     
     @staticmethod
+    async def count_events_by_type(
+        db: AsyncSession,
+        user_id: str,
+        character_id: str,
+        event_type: str
+    ) -> int:
+        """Count events of a specific type for a character."""
+        from sqlalchemy import func
+        result = await db.execute(
+            select(func.count())
+            .select_from(UserCharacterEvent)
+            .where(
+                UserCharacterEvent.user_id == user_id,
+                UserCharacterEvent.character_id == character_id,
+                UserCharacterEvent.event_type == event_type
+            )
+        )
+        return result.scalar() or 0
+    
+    @staticmethod
     async def add_memory(
         db: AsyncSession,
         user_id: str,

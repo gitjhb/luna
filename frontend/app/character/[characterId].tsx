@@ -100,12 +100,14 @@ export default function CharacterProfileScreen() {
     streakDays: number;
     totalMessages: number;
     totalGifts: number;
+    totalDates: number;
     specialEvents: number;
     daysKnown: number;
   }>({
     streakDays: 0,
     totalMessages: 0,
     totalGifts: 0,
+    totalDates: 0,
     specialEvents: 0,
     daysKnown: 0,
   });
@@ -131,14 +133,7 @@ export default function CharacterProfileScreen() {
           totalGifts: intimacyStatus.giftsCount || 0,
           specialEvents: intimacyStatus.specialEvents || 0,
         }));
-        
-        // Calculate days known from first interaction
-        if (intimacyStatus.lastInteractionDate) {
-          const firstDay = new Date(intimacyStatus.lastInteractionDate);
-          const today = new Date();
-          const diffDays = Math.floor((today.getTime() - firstDay.getTime()) / (1000 * 60 * 60 * 24));
-          setStats(prev => ({ ...prev, daysKnown: Math.max(1, diffDays) }));
-        }
+        // daysKnown 现在从 /stats API 的 first_interaction_date 计算
       } catch (e) {
         setIntimacy({ currentLevel: 1, streakDays: 0, dailyXpEarned: 0, totalXp: 0, progressPercent: 0, xpProgressInLevel: 0, xpForNextLevel: 100, stageNameCn: '陌生人' } as IntimacyStatus);
       }
@@ -155,12 +150,24 @@ export default function CharacterProfileScreen() {
       try {
         const { api } = await import('../../services/api');
         const statsData = await api.get<any>(`/characters/${params.characterId}/stats`);
+        
+        // 计算认识天数（从第一次互动到今天）
+        let daysKnown = 1;
+        if (statsData.first_interaction_date) {
+          const firstDay = new Date(statsData.first_interaction_date);
+          const today = new Date();
+          const diffDays = Math.floor((today.getTime() - firstDay.getTime()) / (1000 * 60 * 60 * 24));
+          daysKnown = Math.max(1, diffDays + 1); // +1 因为包含当天
+        }
+        
         setStats(prev => ({
           ...prev,
           streakDays: statsData.streak_days || prev.streakDays,
           totalMessages: statsData.total_messages || prev.totalMessages,
           totalGifts: statsData.total_gifts || prev.totalGifts,
+          totalDates: statsData.total_dates || 0,
           specialEvents: statsData.special_events || prev.specialEvents,
+          daysKnown: daysKnown,
         }));
       } catch (e) {
         console.log('Stats not available');
@@ -354,6 +361,12 @@ export default function CharacterProfileScreen() {
               title={t.characterProfile.giftsReceived} 
               value={tpl(t.characterProfile.giftsCount, { count: stats.totalGifts })}
               iconColor="#9B59B6"
+            />
+            <ProfileItem 
+              icon="heart" 
+              title="约会次数"
+              value={`${stats.totalDates} 次`}
+              iconColor="#EC4899"
             />
             {stats.daysKnown > 0 && (
               <ProfileItem 

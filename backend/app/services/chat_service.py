@@ -903,6 +903,13 @@ IMPORTANT GUIDELINES:
                 session_id = row[0]
                 
                 # 保存为系统消息
+                # 如果 memory_content 是 JSON 格式，直接保存（前端会解析 type: "event"）
+                # 否则加上 [memory_type] 前缀
+                if memory_content.strip().startswith('{'):
+                    content = memory_content  # 纯 JSON
+                else:
+                    content = f"[{memory_type}] {memory_content}"
+                    
                 message_id = str(uuid4())
                 await db.execute(
                     text("""
@@ -914,7 +921,7 @@ IMPORTANT GUIDELINES:
                         "id": message_id,
                         "session_id": session_id,
                         "role": "system",
-                        "content": f"[{memory_type}] {memory_content}",
+                        "content": content,
                         "tokens": 0,
                         "created_at": datetime.utcnow().isoformat()
                     }

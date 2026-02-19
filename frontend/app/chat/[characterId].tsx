@@ -867,9 +867,17 @@ export default function ChatScreen() {
     }
 
     // 🆕 检测新版通用事件消息 (JSON格式，type: "event")
+    // 支持两种格式：纯 JSON 或 "[type] {...json...}"
     if (isSystem) {
       try {
-        const eventData = JSON.parse(item.content);
+        // 去掉可能的 [date]/[gift] 等前缀
+        let jsonContent = item.content;
+        const prefixMatch = jsonContent.match(/^\[(\w+)\]\s*(\{.+\})$/s);
+        if (prefixMatch) {
+          jsonContent = prefixMatch[2];
+        }
+        
+        const eventData = JSON.parse(jsonContent);
         if (eventData.type === 'event') {
           // 使用新的 EventBubble 组件渲染
           return (
@@ -1559,7 +1567,7 @@ export default function ChatScreen() {
             const reactions = giftReactions[gift.gift_type] || giftReactions.rose;
             const reactionMessage = giftResult.ai_response || reactions[Math.floor(Math.random() * reactions.length)];
 
-            // 乐观更新 UI（后端 /gifts/send 会自动保存消息到聊天记录）
+            // 乐观更新 UI（即时反馈），后端同时保存到数据库（持久化）
             if (sessionId) {
               // 添加礼物事件消息到 UI
               const giftEventMessage: Message = {

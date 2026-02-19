@@ -478,7 +478,9 @@ class CharacterStatsResponse(BaseModel):
     streak_days: int = 0
     total_messages: int = 0
     total_gifts: int = 0
+    total_dates: int = 0  # 约会次数
     special_events: int = 0
+    first_interaction_date: Optional[str] = None  # 第一次互动日期 (ISO format)
 
 
 def _get_user_id(request: Request) -> str:
@@ -503,21 +505,35 @@ async def get_character_stats(character_id: UUID, request: Request):
     try:
         async with get_db() as db:
             stats = await stats_service.get_or_create_stats(db, user_id, str(character_id))
+            
+            # 获取约会次数（从 events 表统计 type='date' 的数量）
+            total_dates = await stats_service.count_events_by_type(db, user_id, str(character_id), "date")
+            
+            # 获取第一次互动日期
+            first_date_str = None
+            if stats.created_at:
+                first_date_str = stats.created_at.isoformat() if hasattr(stats.created_at, 'isoformat') else str(stats.created_at)
+            
             return CharacterStatsResponse(
                 character_id=character_id,
                 streak_days=stats.streak_days,
                 total_messages=stats.total_messages,
                 total_gifts=stats.total_gifts,
+                total_dates=total_dates,
                 special_events=stats.special_events,
+                first_interaction_date=first_date_str,
             )
     except Exception as e:
+        logger.error(f"Failed to get stats: {e}")
         # Return zeros if database not ready
         return CharacterStatsResponse(
             character_id=character_id,
             streak_days=0,
             total_messages=0,
             total_gifts=0,
+            total_dates=0,
             special_events=0,
+            first_interaction_date=None,
         )
 
 

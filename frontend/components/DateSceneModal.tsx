@@ -614,24 +614,22 @@ export default function DateSceneModal({
           setRemainingExtends(result.remaining_extends);
           setProgress(result.progress);
           setPhase('checkpoint');
-        } else if (result.completed) {
-          // Date completed - first show finale, then ending
-          // Store result for later
+        } else if (result.completed || result.is_finished) {
+          // Date completed (正常完成或强制结束)
           setPendingEndingResult(result);
           setEnding(result.ending);
           setRewards(result.rewards);
           setStorySummary(result.story_summary);
           setUnlockedPhoto(result.unlocked_photo || null);
           
-          // 生成结局叙述：使用 story_summary 的最后部分，或者 ending.description
-          const finaleText = result.finale_narrative || 
-            result.ending?.description ||
-            '约会结束了，你们依依不舍地告别...';
+          // 强制结束时使用 ending.narrative，否则用 finale_narrative
+          const finaleText = result.forced_ending 
+            ? (result.ending?.narrative || result.ending?.description || '约会不欢而散...')
+            : (result.finale_narrative || result.ending?.description || '约会结束了，你们依依不舍地告别...');
           setFinaleNarrative(finaleText);
           
-          // 先进入 finale 阶段，不是直接 ending
+          // 进入 finale 阶段
           setPhase('finale');
-          // 注意：不在这里调用 onDateCompleted，等用户看完结局后再调用
         } else {
           // Next stage
           setCurrentStage(result.stage);
@@ -675,17 +673,18 @@ export default function DateSceneModal({
           setRemainingExtends(result.remaining_extends);
           setProgress(result.progress);
           setPhase('checkpoint');
-        } else if (result.completed) {
-          // Date completed - first show finale, then ending
+        } else if (result.completed || result.is_finished) {
+          // Date completed (正常完成或强制结束)
           setPendingEndingResult(result);
           setEnding(result.ending);
           setRewards(result.rewards);
           setStorySummary(result.story_summary);
           setUnlockedPhoto(result.unlocked_photo || null);
           
-          const finaleText = result.finale_narrative || 
-            result.ending?.description ||
-            '约会结束了，你们依依不舍地告别...';
+          // 强制结束时使用 ending.narrative
+          const finaleText = result.forced_ending 
+            ? (result.ending?.narrative || result.ending?.description || '约会不欢而散...')
+            : (result.finale_narrative || result.ending?.description || '约会结束了，你们依依不舍地告别...');
           setFinaleNarrative(finaleText);
           
           setPhase('finale');
@@ -1233,14 +1232,28 @@ export default function DateSceneModal({
         handleIndicatorStyle={styles.bottomSheetIndicator}
       >
         <BottomSheetScrollView contentContainerStyle={styles.bottomSheetContent}>
-          {/* 标题 */}
+          {/* 标题 - 根据好感度动态显示 */}
           <View style={styles.checkpointHeader}>
-            <Text style={styles.checkpointIcon}>✨</Text>
-            <Text style={styles.checkpointTitle}>约会进行得很顺利...</Text>
+            <Text style={styles.checkpointIcon}>
+              {affectionScore <= 20 ? '💔' :
+               affectionScore <= 35 ? '😰' :
+               affectionScore <= 50 ? '😐' :
+               affectionScore <= 65 ? '🙂' :
+               affectionScore <= 80 ? '😊' : '💕'}
+            </Text>
+            <Text style={styles.checkpointTitle}>
+              {affectionScore <= 20 ? '约会...有点糟糕' :
+               affectionScore <= 35 ? '气氛有些尴尬...' :
+               affectionScore <= 50 ? '约会还算顺利' :
+               affectionScore <= 65 ? '约会进行得不错~' :
+               affectionScore <= 80 ? '约会进行得很顺利！' : '完美的约会💕'}
+            </Text>
           </View>
           
           <Text style={styles.checkpointText}>
-            基础章节已完成！要继续享受更多甜蜜时光吗？
+            {affectionScore <= 35 
+              ? '基础章节已完成。要尝试挽回局面吗？' 
+              : '基础章节已完成！要继续享受更多甜蜜时光吗？'}
           </Text>
           
           {/* 选择按钮 */}
@@ -1261,7 +1274,7 @@ export default function DateSceneModal({
                   ) : (
                     <>
                       <Text style={styles.extendButtonText}>💎 继续剧情</Text>
-                      <Text style={styles.extendButtonPrice}>10 月石 · 还能延长{remainingExtends}次</Text>
+                      <Text style={styles.extendButtonPrice}>30 月石 · 解锁后续 3 章</Text>
                     </>
                   )}
                 </LinearGradient>
@@ -1871,7 +1884,7 @@ const styles = StyleSheet.create({
     top: 0, // 从顶部开始
     left: 0,
     right: 0,
-    height: SCREEN_HEIGHT * 0.55, // 占屏幕 55%，给 BottomSheet 留空间
+    height: SCREEN_HEIGHT * 0.75, // 占屏幕 75%，让图片延伸到 BottomSheet 下方（会被遮挡）
     justifyContent: 'flex-start',
     alignItems: 'center',
     overflow: 'hidden',
@@ -1879,13 +1892,13 @@ const styles = StyleSheet.create({
   },
   backgroundAvatar: {
     width: SCREEN_WIDTH * 0.85,
-    height: SCREEN_HEIGHT * 0.55,
+    height: SCREEN_HEIGHT * 0.7,
     marginTop: 60, // 给顶部状态栏留空间
     opacity: 1,
   },
   sceneImage: {
     width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT * 0.55,
+    height: SCREEN_HEIGHT * 0.75,
   },
   scenarioEmoji: {
     fontSize: 64,

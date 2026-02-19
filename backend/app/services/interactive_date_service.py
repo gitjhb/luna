@@ -811,12 +811,14 @@ class InteractiveDateService:
                 pass  # 继续正常流程
             else:
                 await _save_session_to_db(session)
+                remaining_extends = MAX_TOTAL_STAGES - current_stage.stage_num
                 return {
                     "success": True,
                     "affection_change": affection_change,
                     "judge_comment": judge_result.get("comment", ""),
                     "at_checkpoint": True,
                     "can_extend": True,
+                    "remaining_extends": remaining_extends,  # 剩余可延长次数
                     "extend_cost": EXTEND_COST,
                     "extend_stages": MAX_BONUS_STAGES,
                     "progress": {
@@ -1814,25 +1816,32 @@ class InteractiveDateService:
             stages_summary += f"[第{s.stage_num}幕] {s.narrative[:100]}...\n"
         
         # 调用 AI 生成定制结局
-        prompt = f"""你是 {character_name}，正在和用户约会，但约会进行得很糟糕。
+        prompt = f"""你是 {character_name}，正在和用户约会，但用户做了不可原谅的事情！
 
 ## 背景
 场景：{session.scenario_name}
-当前好感度：{session.affection_score}（已经跌到 0 或以下）
-触发原因：{trigger_text}
+当前好感度：{session.affection_score}（已经跌到谷底）
+用户说/做了：{trigger_text}
 
 ## 最近的剧情
 {stages_summary}
 
 ## 任务
-用户的言行让 {character_name} 非常不开心/失望/生气，约会无法继续了。
-请生成一个约会被迫终止的结局描述（100-150字）：
-- 用第二人称"你"描述
-- 描写 {character_name} 的反应和离开
-- 语气可以是失望、生气、伤心等，取决于之前的剧情
-- 这是一个令人遗憾的结局，让用户感受到后果
+根据用户的恶劣行为，生成一个**戏剧化、有冲击力**的约会终止场景（100-200字）：
 
-直接输出结局描述文字，不要 JSON 格式。"""
+参考反应（根据情况选择或组合）：
+- 如果用户说了冒犯的话 → {character_name} 愤怒地泼水/打脸/摔门离开
+- 如果用户表现猥琐/越界 → {character_name} 惊恐/大声呼救/找人帮忙
+- 如果用户说谎/背叛 → {character_name} 眼眶泛红，颤抖着声音质问
+- 如果用户无礼/傲慢 → {character_name} 冷笑着站起来，留下一句扎心的话离开
+
+要求：
+- 用第二人称"你"描述场景
+- 具体描写 {character_name} 的动作、表情、台词
+- 让用户感受到自己行为的后果
+- 可以戏剧化、夸张一点，这是约会游戏！
+
+直接输出结局描述，不要任何格式标记。"""
 
         try:
             llm = GrokService()
@@ -1846,10 +1855,20 @@ class InteractiveDateService:
             logger.error(f"Failed to generate bad ending narrative: {e}")
             ending_narrative = f"{character_name} 看着你，眼中满是失望。「我们...今天就到这里吧。」她转身离开，没有回头。这场约会，就这样草草收场了。"
         
+        # 动态计算 XP（即使是坏结局也给合理奖励，毕竟用户花了时间）
+        try:
+            intimacy_status = await intimacy_service.get_status(session.user_id, session.character_id)
+            xp_for_next_level = intimacy_status.get("xp_for_next_level", 1000) if intimacy_status else 1000
+            # bad 结局：5% 升级经验或 50 XP，取较大值
+            calculated_xp = max(int(xp_for_next_level * 0.05), 50)
+        except Exception as e:
+            logger.warning(f"Failed to calculate dynamic XP for bad ending: {e}")
+            calculated_xp = 50  # fallback
+        
         # 更新会话状态
         session.status = DateStatus.COMPLETED.value
         session.ending_type = "bad"
-        session.xp_awarded = 5  # 坏结局只给少量 XP
+        session.xp_awarded = calculated_xp
         session.completed_at = datetime.utcnow().isoformat()
         session.story_summary = ending_narrative
         
@@ -1863,10 +1882,10 @@ class InteractiveDateService:
         await _save_session_to_db(session)
         await _save_cooldown_to_db(session.user_id, session.character_id, cooldown_until)
         
-        # 给予少量 XP
+        # 给予 XP
         try:
             await intimacy_service.award_xp_direct(
-                session.user_id, session.character_id, 5, reason="date_bad_forced"
+                session.user_id, session.character_id, calculated_xp, reason="date_bad_forced"
             )
         except Exception as e:
             logger.warning(f"Failed to award XP: {e}")
@@ -1883,6 +1902,61 @@ class InteractiveDateService:
         if session.id in _active_sessions:
             del _active_sessions[session.id]
         
+        # 保存约会事件到聊天记录（气泡显示）
+        try:
+            from app.models.event_message import create_date_event
+            from app.services.chat_service import chat_service
+            
+            date_event = create_date_event(
+                scenario_name=session.scenario_name,
+                ending_text="尴尬的约会",
+                detail_id=session.id,
+                unlock_cost=0,  # 坏结局免费查看
+            )
+            await chat_service.add_system_memory(
+                user_id=session.user_id,
+                character_id=session.character_id,
+                memory_content=date_event.to_json(),
+                memory_type="date",
+            )
+            logger.info(f"📅 [DATE] Bad ending event saved to chat")
+        except Exception as e:
+            logger.warning(f"Failed to save bad ending to chat: {e}")
+        
+        # 记录到历史事件
+        try:
+            from app.services.stats_service import StatsService
+            from app.core.database import get_db
+            
+            async with get_db() as db:
+                await StatsService.record_event(
+                    db=db,
+                    user_id=session.user_id,
+                    character_id=session.character_id,
+                    event_type="date",
+                    title="😅 尴尬的约会",
+                    description=f"在{session.scenario_name}约会",
+                    metadata={"scenario": session.scenario_name, "ending": "bad", "forced": True},
+                )
+            logger.info(f"📅 [DATE] Bad ending event recorded")
+        except Exception as e:
+            logger.warning(f"Failed to record bad ending event: {e}")
+        
+        # 保存到回忆录（记忆页面的约会记录）
+        try:
+            from app.services.event_story_generator import event_story_generator
+            
+            await event_story_generator.save_story_direct(
+                user_id=session.user_id,
+                character_id=session.character_id,
+                event_type="date",
+                story_content=ending_narrative,
+                context_summary=f"场景：{session.scenario_name}，结局：bad（强制结束）",
+            )
+            logger.info(f"📅 [DATE] Bad ending saved to memories")
+        except Exception as e:
+            logger.warning(f"Failed to save bad ending to memories: {e}")
+        
         return {
             "success": True,
             "is_finished": True,
@@ -1892,7 +1966,7 @@ class InteractiveDateService:
                 "title": "约会中断",
                 "narrative": ending_narrative,
             },
-            "rewards": {"xp": 5, "emotion": -40},
+            "rewards": {"xp": calculated_xp, "emotion": -40},
             "progress": {
                 "current": session.current_stage,
                 "total": DATE_STAGES,

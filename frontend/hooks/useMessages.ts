@@ -213,11 +213,24 @@ export function useMessages({ sessionId, characterId, enabled = true }: UseMessa
       (oldData: any) => {
         if (!oldData) return oldData;
         
-        // Dedup check: don't add if messageId already exists in any page
+        // Dedup check: by messageId OR by content+time (10s window)
         const exists = oldData.pages.some((page: MessagesPage) =>
-          page.messages.some((m: Message) => m.messageId === message.messageId)
+          page.messages.some((m: Message) => {
+            // Check by messageId
+            if (m.messageId === message.messageId) return true;
+            // Check by content + time (for optimistic updates vs backend syncs)
+            if (m.content === message.content && m.role === message.role) {
+              const existingTime = new Date(m.createdAt).getTime();
+              const newTime = new Date(message.createdAt).getTime();
+              if (Math.abs(existingTime - newTime) < 10000) return true;
+            }
+            return false;
+          })
         );
-        if (exists) return oldData;
+        if (exists) {
+          console.log('[useMessages] Skipping duplicate:', message.content?.substring(0, 30));
+          return oldData;
+        }
         
         // Add to the first page (newest messages)
         const newPages = [...oldData.pages];
