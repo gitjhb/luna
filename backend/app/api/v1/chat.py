@@ -2,13 +2,15 @@
 Chat API Routes - with SQLite persistence
 """
 
-from typing import Optional
+from typing import Optional, AsyncGenerator
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from uuid import UUID, uuid4
 from datetime import datetime
 import os
 import logging
+import json
 
 from app.models.schemas import (
     ChatCompletionRequest, ChatCompletionResponse,
@@ -20,6 +22,7 @@ from app.services.chat_repository import chat_repo
 from app.services.chat_debug_logger import chat_debug
 from app.api.v1.characters import CHARACTERS, get_character_by_id
 from app.config import settings
+from app.core.perf import PerfTracker
 
 logger = logging.getLogger(__name__)
 
@@ -445,6 +448,7 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         # 三层架构: L1 感知层 → 中间件逻辑层 → L2 执行层 (Legacy)
         # =====================================================================
         logger.info(f"🎮 Legacy Three-layer mode: L1 Perception → Middleware → L2 Generation")
+        perf = PerfTracker()
         
         from app.services.llm_service import GrokService
         from app.services.perception_engine import perception_engine
@@ -505,13 +509,14 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         logger.info(f"📡 Step 1: L1 Perception Engine (emotion-aware)")
         chat_debug.log_l1_input(request.message, intimacy_level, context_messages)
         
-        l1_result = await perception_engine.analyze(
-            message=request.message,
-            intimacy_level=intimacy_level,
-            context_messages=context_messages,
-            current_emotion=current_emotion,  # 传入当前情绪
-            spicy_mode=spicy_mode  # 传入 Spicy 模式状态
-        )
+        async with perf.track_async("l1"):
+            l1_result = await perception_engine.analyze(
+                message=request.message,
+                intimacy_level=intimacy_level,
+                context_messages=context_messages,
+                current_emotion=current_emotion,  # 传入当前情绪
+                spicy_mode=spicy_mode  # 传入 Spicy 模式状态
+            )
         
         chat_debug.log_l1_output(l1_result)
         logger.info(f"L1 Result: safety={l1_result.safety_flag}, intent={l1_result.intent}, "
@@ -524,12 +529,13 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         logger.info(f"⚙️ Step 2: Game Engine (Middleware)")
         chat_debug.log_game_input(user_id, character_id, l1_result.intent, l1_result.sentiment)
         
-        game_result = await game_engine.process(
-            user_id=user_id,
-            character_id=character_id,
-            l1_result=l1_result,
-            user_message=request.message  # 传入用户消息用于复读检测
-        )
+        async with perf.track_async("game"):
+            game_result = await game_engine.process(
+                user_id=user_id,
+                character_id=character_id,
+                l1_result=l1_result,
+                user_message=request.message  # 传入用户消息用于复读检测
+            )
         
         chat_debug.log_game_output(game_result)
         logger.info(f"Game Result: passed={game_result.check_passed}, reason={game_result.refusal_reason}, "
@@ -684,11 +690,12 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         chat_debug.log_l2_input(conversation, temperature=0.8)
         
         try:
-            result = await grok.chat_completion(
-                messages=conversation,
-                temperature=0.8,
-                max_tokens=500
-            )
+            async with perf.track_async("l2"):
+                result = await grok.chat_completion(
+                    messages=conversation,
+                    temperature=0.8,
+                    max_tokens=500
+                )
             reply = result["choices"][0]["message"]["content"]
             tokens = result.get("usage", {}).get("total_tokens", 0)
             
@@ -722,6 +729,9 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             chat_debug._log("ERROR", "L2_ERROR", str(e))
             reply = f"抱歉，我暂时无法回应。请稍后再试。"
             tokens = 10
+        
+        # 输出性能日志
+        perf.log_summary("chat")
 
     # Store assistant message — V4 pipeline already saved, skip to avoid duplicates
     if USE_V4_PIPELINE:
@@ -729,12 +739,13 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
         # We just need the message_id for the response
         msg_id = uuid4()  # V4 response has its own ID
     else:
-        assistant_msg = await chat_repo.add_message(
-            session_id=session_id,
-            role="assistant",
-            content=reply,
-            tokens_used=tokens,
-        )
+        async with perf.track_async("db_save"):
+            assistant_msg = await chat_repo.add_message(
+                session_id=session_id,
+                role="assistant",
+                content=reply,
+                tokens_used=tokens,
+            )
         msg_id = UUID(assistant_msg["message_id"])
 
     # Update session stats
@@ -929,3 +940,227 @@ def _mock_reply(message: str) -> str:
         return f"这是个好问题！关于「{message[:20]}...」，让我想想... 🤔"
     
     return f"收到～ 你说的是「{message[:30]}{'...' if len(message) > 30 else ''}」。有什么想继续聊的吗？"
+
+
+# =============================================================================
+# Streaming Chat Completion (SSE)
+# =============================================================================
+
+class StreamChatRequest(BaseModel):
+    """Request model for streaming chat"""
+    session_id: UUID
+    message: str
+    spicy_mode: bool = False
+    intimacy_level: int = 1
+    scenario_id: Optional[str] = None
+
+
+@router.post("/stream")
+async def stream_chat_completion(request: StreamChatRequest, req: Request):
+    """
+    Streaming chat completion endpoint using Server-Sent Events (SSE).
+    
+    Returns a stream of SSE events:
+    - event: chunk    → {"content": "partial text"}
+    - event: done     → {"message_id": "...", "tokens_used": N, "character_name": "..."}
+    - event: error    → {"error": "error message"}
+    
+    Usage with curl:
+        curl -N -X POST http://localhost:8000/api/v1/chat/stream \
+             -H "Content-Type: application/json" \
+             -d '{"session_id": "...", "message": "你好"}'
+    """
+    import time
+    request_id = f"{int(time.time()*1000)}"
+    
+    logger.info(f"🌊 [{request_id}] STREAMING REQUEST")
+    logger.info(f"   Session: {request.session_id}")
+    logger.info(f"   Message: '{request.message[:50]}{'...' if len(request.message) > 50 else ''}'")
+    
+    session_id = str(request.session_id)
+    
+    # Validate session
+    session = await chat_repo.get_session(session_id)
+    if not session:
+        async def error_stream():
+            yield f"event: error\ndata: {json.dumps({'error': 'Session not found'})}\n\n"
+        return StreamingResponse(
+            error_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            }
+        )
+    
+    # Get user ID
+    user_id = _get_user_id(req)
+    character_id = session["character_id"]
+    character_name = session["character_name"]
+    
+    # Store user message
+    user_msg = await chat_repo.add_message(
+        session_id=session_id,
+        role="user",
+        content=request.message,
+        tokens_used=0,
+    )
+    
+    # Get conversation context
+    all_messages = await chat_repo.get_all_messages(session_id)
+    context_messages = [
+        {"role": m["role"], "content": m["content"]} 
+        for m in all_messages[-10:]  # Last 10 messages for context
+    ]
+    
+    # Create streaming generator
+    async def generate_stream() -> AsyncGenerator[str, None]:
+        """Generate SSE stream from Grok API"""
+        from app.services.llm_service import GrokService
+        from app.services.prompt_builder import prompt_builder
+        from app.services.game_engine import game_engine
+        from app.services.perception_engine import perception_engine
+        
+        grok = GrokService()
+        full_response = ""
+        estimated_tokens = 0
+        message_id = uuid4()
+        
+        try:
+            # Step 1: L1 Perception (simplified for streaming)
+            current_emotion = 0
+            try:
+                from app.services.emotion_engine_v2 import emotion_engine
+                current_emotion = await emotion_engine.get_score(user_id, character_id)
+            except Exception as e:
+                logger.warning(f"Failed to get emotion: {e}")
+            
+            l1_result = await perception_engine.analyze(
+                message=request.message,
+                intimacy_level=request.intimacy_level,
+                context_messages=context_messages,
+                current_emotion=current_emotion,
+                spicy_mode=request.spicy_mode
+            )
+            
+            # Step 2: Game Engine
+            game_result = await game_engine.process(
+                user_id=user_id,
+                character_id=character_id,
+                l1_result=l1_result,
+                user_message=request.message
+            )
+            
+            # Check for blocks
+            if game_result.status == "BLOCK":
+                blocked_msg = game_result.system_message or "内容违规，消息已被拦截。"
+                yield f"event: chunk\ndata: {json.dumps({'content': blocked_msg}, ensure_ascii=False)}\n\n"
+                yield f"event: done\ndata: {json.dumps({'message_id': str(message_id), 'tokens_used': 0, 'character_name': character_name, 'blocked': True}, ensure_ascii=False)}\n\n"
+                return
+            
+            # Step 3: Build system prompt
+            system_prompt = prompt_builder.build(
+                game_result=game_result,
+                character_id=character_id,
+                user_message=request.message,
+                context_messages=context_messages,
+                memory_context=""
+            )
+            
+            # Build conversation for LLM
+            conversation = [{"role": "system", "content": system_prompt}]
+            for msg in all_messages[:-1][-10:]:  # Exclude current message, last 10
+                conversation.append({"role": msg["role"], "content": msg["content"]})
+            conversation.append({"role": "user", "content": request.message})
+            
+            # Step 4: Stream from Grok
+            logger.info(f"🌊 Starting Grok stream...")
+            
+            async for chunk_data in grok.stream_completion(
+                messages=conversation,
+                temperature=0.8,
+                max_tokens=500
+            ):
+                try:
+                    # Parse the SSE data from Grok
+                    if chunk_data.strip():
+                        chunk_json = json.loads(chunk_data)
+                        if "choices" in chunk_json and chunk_json["choices"]:
+                            delta = chunk_json["choices"][0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                full_response += content
+                                # Send chunk to client
+                                yield f"event: chunk\ndata: {json.dumps({'content': content}, ensure_ascii=False)}\n\n"
+                except json.JSONDecodeError:
+                    continue
+                except Exception as e:
+                    logger.warning(f"Chunk parse error: {e}")
+                    continue
+            
+            # Estimate tokens (rough: 1 token ≈ 2 Chinese chars or 4 English chars)
+            input_tokens = sum(len(m.get("content", "")) for m in conversation) // 3
+            output_tokens = len(full_response) // 2
+            estimated_tokens = input_tokens + output_tokens
+            
+            logger.info(f"🌊 Stream complete. Total: {len(full_response)} chars, ~{estimated_tokens} tokens")
+            
+            # Store assistant message
+            assistant_msg = await chat_repo.add_message(
+                session_id=session_id,
+                role="assistant",
+                content=full_response,
+                tokens_used=estimated_tokens,
+            )
+            message_id = UUID(assistant_msg["message_id"])
+            
+            # Update session stats
+            await chat_repo.update_session(
+                session_id,
+                total_messages=session.get("total_messages", 0) + 2
+            )
+            
+            # Award XP
+            try:
+                xp_result = await intimacy_service.award_xp(user_id, character_id, "message")
+                if xp_result.get("success"):
+                    logger.info(f"XP awarded: +{xp_result.get('xp_awarded', 0)}")
+            except Exception as e:
+                logger.warning(f"XP award failed: {e}")
+            
+            # Send completion event
+            done_data = {
+                "message_id": str(message_id),
+                "tokens_used": estimated_tokens,
+                "character_name": character_name,
+                "emotion": game_result.current_emotion,
+                "emotion_state": game_result.emotion_state,
+            }
+            yield f"event: done\ndata: {json.dumps(done_data, ensure_ascii=False)}\n\n"
+            
+        except Exception as e:
+            logger.error(f"Streaming error: {e}", exc_info=True)
+            # Try to save partial response if any
+            if full_response:
+                try:
+                    await chat_repo.add_message(
+                        session_id=session_id,
+                        role="assistant",
+                        content=full_response + " [响应中断]",
+                        tokens_used=estimated_tokens,
+                    )
+                except:
+                    pass
+            
+            yield f"event: error\ndata: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+    
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        }
+    )

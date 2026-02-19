@@ -12,6 +12,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 from dataclasses import dataclass
 
+from app.core.perf import PerfTracker
 from app.services.v4.precompute_service import precompute_service, PrecomputeResult
 from app.services.v4.prompt_builder_v4 import prompt_builder_v4
 from app.services.v4.json_parser import json_parser, ParsedResponse
@@ -97,19 +98,21 @@ class ChatPipelineV4:
         Returns:
             聊天响应
         """
-        start_time = datetime.now()
+        perf = PerfTracker()
         
         try:
             # 1. 加载用户状态
-            user_state = await self._load_user_state(request.user_id, request.character_id)
+            async with perf.track_async("load_state"):
+                user_state = await self._load_user_state(request.user_id, request.character_id)
             logger.info(f"📊 User State: level={user_state.intimacy_level}, "
                        f"intimacy={user_state.intimacy_x:.1f}, emotion={user_state.emotion}")
             
             # 2. 前置计算 (替代L1)
-            precompute_result = precompute_service.analyze(
-                message=request.message,
-                user_state=user_state
-            )
+            with perf.track("precompute"):
+                precompute_result = precompute_service.analyze(
+                    message=request.message,
+                    user_state=user_state
+                )
             logger.info(f"📊 Precompute: {precompute_service.get_analysis_summary(precompute_result)}")
             
             # 3. 硬性拦截检查
@@ -121,25 +124,28 @@ class ChatPipelineV4:
                 return self._create_cold_war_response(user_state, precompute_result)
             
             # 5. 获取对话上下文
-            context_messages = await self._get_context_messages(request.session_id)
+            async with perf.track_async("db_context"):
+                context_messages = await self._get_context_messages(request.session_id)
             
             # 5.5 先存用户消息（确保 DB 立即可查，避免前端 refetch 时消息消失）
-            await chat_repo.add_message(
-                session_id=request.session_id,
-                role="user",
-                content=request.message,
-                tokens_used=0
-            )
+            async with perf.track_async("db_save_user"):
+                await chat_repo.add_message(
+                    session_id=request.session_id,
+                    role="user",
+                    content=request.message,
+                    tokens_used=0
+                )
             
             # 5.6 获取用户兴趣
             user_interests = await self._load_user_interests(request.user_id)
             
             # 5.7 获取记忆上下文
-            memory_context_str = await self._load_memory_context(
-                request.user_id, request.character_id,
-                request.message, context_messages,
-                getattr(user_state, 'intimacy_level', 1)
-            )
+            async with perf.track_async("memory"):
+                memory_context_str = await self._load_memory_context(
+                    request.user_id, request.character_id,
+                    request.message, context_messages,
+                    getattr(user_state, 'intimacy_level', 1)
+                )
             
             # 5.8 获取礼物记忆
             gift_memory_str = await self._load_gift_memory(
@@ -227,22 +233,25 @@ class ChatPipelineV4:
             logger.info(f"📝 === FULL SYSTEM PROMPT ({len(system_prompt)} chars) ===\n{system_prompt}\n=== END SYSTEM PROMPT ===")
             
             # 7. 单次LLM调用（包含对话历史）
-            llm_response = await self._call_llm(system_prompt, request.message, context_messages)
+            async with perf.track_async("llm"):
+                llm_response = await self._call_llm(system_prompt, request.message, context_messages)
             
             # 7.5 日志：LLM 原始返回
             logger.info(f"🤖 LLM raw response: {llm_response['content'][:500]}")
             
             # 8. JSON解析
-            parsed_response = json_parser.parse_llm_response(llm_response["content"])
+            with perf.track("parse"):
+                parsed_response = json_parser.parse_llm_response(llm_response["content"])
             
             # 9. 存储助手回复（用户消息已在步骤5.5存储）
-            assistant_msg = await chat_repo.add_message(
-                session_id=request.session_id,
-                role="assistant",
-                content=parsed_response.reply,
-                tokens_used=llm_response["tokens_used"]
-            )
-            message_id = assistant_msg["message_id"]
+            async with perf.track_async("db_save_asst"):
+                assistant_msg = await chat_repo.add_message(
+                    session_id=request.session_id,
+                    role="assistant",
+                    content=parsed_response.reply,
+                    tokens_used=llm_response["tokens_used"]
+                )
+                message_id = assistant_msg["message_id"]
             
             # 9.5 获取瓶颈锁状态
             bottleneck_info = None
@@ -277,7 +286,9 @@ class ChatPipelineV4:
                     logger.warning(f"Failed to decrement effects: {e}")
             
             # 11. 构建响应
-            elapsed = (datetime.now() - start_time).total_seconds()
+            # 性能日志
+            perf.log_summary("chat")
+            elapsed = perf.total_elapsed
             logger.info(f"✅ V4 Pipeline completed in {elapsed:.2f}s, "
                        f"tokens: {llm_response['tokens_used']}")
             
@@ -307,7 +318,8 @@ class ChatPipelineV4:
                     },
                     "v4_metrics": {
                         "elapsed_seconds": round(elapsed, 2),
-                        "parse_success": parsed_response.parse_success
+                        "parse_success": parsed_response.parse_success,
+                        "perf": {k: round(v, 3) for k, v in perf.stages.items()}
                     },
                     "bottleneck": bottleneck_info if bottleneck_info else {},
                     "stage_boost": stage_boost_info if stage_boost_info else None,
