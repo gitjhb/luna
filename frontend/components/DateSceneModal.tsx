@@ -325,6 +325,13 @@ export default function DateSceneModal({
     currentEmotion: number;
     message: string;
   } | null>(null);
+  
+  // 体力不足
+  const [staminaInsufficient, setStaminaInsufficient] = useState<{
+    required: number;
+    current: number;
+    hint: string;
+  } | null>(null);
 
   // Check cooldown status and active session
   const checkCooldown = async () => {
@@ -522,6 +529,9 @@ export default function DateSceneModal({
     const sceneIdToUse = selectedScenario.id;
     setActiveSceneId(sceneIdToUse);
     
+    // 清除之前的错误状态
+    setStaminaInsufficient(null);
+    
     setLoading(true);
     try {
       const result = await dateApi.startInteractive(characterId, sceneIdToUse);
@@ -532,9 +542,25 @@ export default function DateSceneModal({
         setSelectedScenario(result.scenario);
         setIsExtended(false); // 重置延长状态
         setPhase('playing');
+      } else {
+        // 处理失败情况
+        if (result.reason === 'insufficient_stamina') {
+          setStaminaInsufficient({
+            required: result.required_stamina || 15,
+            current: result.current_stamina || 0,
+            hint: result.hint || '可以购买体力或升级 VIP 享受无限体力~',
+          });
+        } else {
+          // 其他错误用通用提示
+          setJudgeComment(`❌ ${result.error || '约会启动失败'}`);
+          setTimeout(() => setJudgeComment(null), 3000);
+        }
       }
     } catch (e: any) {
       console.error('Failed to start date:', e);
+      const errorMsg = e.response?.data?.detail || e.message || '约会启动失败';
+      setJudgeComment(`❌ ${errorMsg}`);
+      setTimeout(() => setJudgeComment(null), 3000);
     } finally {
       setLoading(false);
     }
@@ -830,6 +856,22 @@ export default function DateSceneModal({
         </View>
       )}
       
+      {/* 体力不足提示 */}
+      {staminaInsufficient && !activeSession && (
+        <View style={styles.staminaWarningBox}>
+          <Text style={styles.staminaWarningIcon}>⚡</Text>
+          <Text style={styles.staminaWarningText}>
+            体力不足！约会需要 {staminaInsufficient.required} 体力
+          </Text>
+          <Text style={styles.staminaWarningCurrent}>
+            当前体力：{staminaInsufficient.current}
+          </Text>
+          <Text style={styles.staminaWarningHint}>
+            💡 {staminaInsufficient.hint}
+          </Text>
+        </View>
+      )}
+      
       {/* Cooldown 提示 */}
       {cooldownInfo?.inCooldown && !activeSession && !emotionTooLow && (
         <View style={styles.cooldownBox}>
@@ -911,9 +953,9 @@ export default function DateSceneModal({
       </ScrollView>
       
       <TouchableOpacity
-        style={[styles.startButton, (!selectedScenario || cooldownInfo?.inCooldown || emotionTooLow || activeSession) && styles.startButtonDisabled]}
+        style={[styles.startButton, (!selectedScenario || cooldownInfo?.inCooldown || emotionTooLow || staminaInsufficient || activeSession) && styles.startButtonDisabled]}
         onPress={handleStartDate}
-        disabled={!selectedScenario || loading || cooldownInfo?.inCooldown || !!emotionTooLow || !!activeSession}
+        disabled={!selectedScenario || loading || cooldownInfo?.inCooldown || !!emotionTooLow || !!staminaInsufficient || !!activeSession}
       >
         <LinearGradient
           colors={selectedScenario && !activeSession ? ['#FF6B9D', '#C44569'] : ['#666', '#444']}
@@ -1616,6 +1658,39 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   emotionWarningHint: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  
+  // 体力不足提示
+  staminaWarningBox: {
+    backgroundColor: 'rgba(100,200,255,0.15)',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(100,200,255,0.3)',
+  },
+  staminaWarningIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  staminaWarningText: {
+    color: '#64C8FF',
+    fontSize: 14,
+    textAlign: 'center',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  staminaWarningCurrent: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  staminaWarningHint: {
     color: 'rgba(255,255,255,0.6)',
     fontSize: 12,
     textAlign: 'center',

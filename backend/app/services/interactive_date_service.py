@@ -36,7 +36,8 @@ logger = logging.getLogger(__name__)
 DATE_STAGES = 5  # 约会基础阶段数
 MAX_BONUS_STAGES = 3  # 最多可延长的 bonus 阶段数
 MAX_TOTAL_STAGES = DATE_STAGES + MAX_BONUS_STAGES  # 最大总阶段数 (8)
-DATE_COST = 50  # 开始约会费用（月石）
+DATE_COST = 50  # 开始约会费用（月石）- 已废弃，改用体力
+DATE_STAMINA_COST = 15  # 开始约会消耗的体力（VIP 免费）
 EXTEND_COST = 30  # 延长剧情费用（月石，一次性解锁全部 3 阶段）
 COOLDOWN_HOURS = 24  # 普通用户冷却时间
 VIP_COOLDOWN_HOURS = 6  # VIP 冷却时间
@@ -232,6 +233,7 @@ async def _load_active_session_from_db(user_id: str, character_id: str) -> Optio
                     ending_type=db_session.ending_type,
                     xp_awarded=db_session.xp_awarded,
                     story_summary=db_session.story_summary,
+                    is_extended=db_session.is_extended or False,  # 加载延长状态
                     started_at=db_session.started_at.isoformat() if db_session.started_at else None,
                     completed_at=db_session.completed_at.isoformat() if db_session.completed_at else None,
                     cooldown_until=db_session.cooldown_until.isoformat() if db_session.cooldown_until else None,
@@ -271,6 +273,7 @@ async def _save_session_to_db(session: DateSession):
                 db_session.ending_type = session.ending_type
                 db_session.xp_awarded = session.xp_awarded
                 db_session.story_summary = session.story_summary
+                db_session.is_extended = session.is_extended  # 保存延长状态
                 if session.completed_at:
                     db_session.completed_at = datetime.fromisoformat(session.completed_at)
                 if session.cooldown_until:
@@ -286,6 +289,7 @@ async def _save_session_to_db(session: DateSession):
                     current_stage=session.current_stage,
                     affection_score=session.affection_score,
                     status=session.status,
+                    is_extended=session.is_extended,  # 保存延长状态
                     stages_data=stages_data,
                     started_at=datetime.fromisoformat(session.started_at) if session.started_at else datetime.utcnow(),
                 )
@@ -483,11 +487,17 @@ class InteractiveDateService:
         """
         开始新的互动式约会
         
+        消耗体力：
+        - 普通用户：消耗 DATE_STAMINA_COST (15) 体力
+        - VIP 用户：免费（无限体力）
+        
         Returns:
             session_id, 第一个 stage 的剧情和选项
         """
         from app.services.scenarios import get_scenario
         from app.services.date_service import date_service
+        from app.services.stamina_service import stamina_service
+        from app.services.subscription_service import subscription_service
         
         # 检查解锁条件
         is_unlocked, reason = await date_service.check_date_unlock(user_id, character_id)
@@ -503,6 +513,14 @@ class InteractiveDateService:
                     "error": "已有进行中的约会",
                     "active_session": status["active_session"],
                 }
+            elif status.get("reason") == "emotion_too_low":
+                return {
+                    "success": False,
+                    "error": status.get("message", "她不是很想约会呢，提升下好感再来吧～"),
+                    "reason": "emotion_too_low",
+                    "current_emotion": status.get("current_emotion"),
+                    "required_emotion": status.get("required_emotion"),
+                }
             else:
                 return {
                     "success": False,
@@ -515,24 +533,35 @@ class InteractiveDateService:
         if not scenario:
             return {"success": False, "error": f"未知场景: {scenario_id}"}
         
-        # 扣除约会费用（30月石）
-        try:
-            from app.services.wallet_service import wallet_service
-            success = await wallet_service.deduct(
-                user_id=user_id,
-                amount=DATE_COST,
-                reason=f"约会 - {scenario.name}"
-            )
-            if not success:
+        # 检查体力（VIP 用户免费）
+        is_vip = await subscription_service.compare_tier(user_id, "vip")
+        stamina_cost = 0 if is_vip else DATE_STAMINA_COST
+        
+        if stamina_cost > 0:
+            # 检查体力是否足够
+            stamina_status = await stamina_service.get_stamina(user_id)
+            current_stamina = stamina_status.get("current_stamina", 0)
+            
+            if current_stamina < stamina_cost:
                 return {
                     "success": False,
-                    "error": f"月石不足，约会需要 {DATE_COST} 月石",
-                    "required": DATE_COST,
+                    "error": f"体力不足，约会需要 {stamina_cost} 体力",
+                    "reason": "insufficient_stamina",
+                    "required_stamina": stamina_cost,
+                    "current_stamina": current_stamina,
+                    "hint": "可以购买体力或升级 VIP 享受无限体力~",
                 }
-            logger.info(f"💰 Date cost deducted: {DATE_COST} coins from user {user_id}")
-        except Exception as e:
-            logger.error(f"Failed to deduct date cost: {e}")
-            return {"success": False, "error": "扣费失败，请稍后重试"}
+            
+            # 扣除体力
+            consume_result = await stamina_service.consume_stamina(user_id, stamina_cost)
+            if not consume_result.get("success"):
+                return {
+                    "success": False,
+                    "error": consume_result.get("error", "体力扣除失败"),
+                    "reason": "stamina_consume_failed",
+                }
+            
+            logger.info(f"Date stamina consumed: user={user_id}, cost={stamina_cost}, remaining={consume_result.get('current_stamina')}")
         
         # 创建会话
         session = DateSession(
@@ -666,11 +695,13 @@ class InteractiveDateService:
             else:
                 # 未延长，返回检查点让用户选择
                 await _save_session_to_db(session)
+                remaining_extends = MAX_TOTAL_STAGES - current_stage.stage_num  # 计算剩余可延长阶段
                 return {
                     "success": True,
                     "affection_change": chosen_option.affection,
                     "at_checkpoint": True,
                     "can_extend": True,
+                    "remaining_extends": remaining_extends,  # 剩余可延长次数（前端需要）
                     "extend_cost": EXTEND_COST,
                     "extend_stages": MAX_BONUS_STAGES,
                     "progress": {
@@ -1855,15 +1886,8 @@ class InteractiveDateService:
             logger.error(f"Failed to generate bad ending narrative: {e}")
             ending_narrative = f"{character_name} 看着你，眼中满是失望。「我们...今天就到这里吧。」她转身离开，没有回头。这场约会，就这样草草收场了。"
         
-        # 动态计算 XP（即使是坏结局也给合理奖励，毕竟用户花了时间）
-        try:
-            intimacy_status = await intimacy_service.get_status(session.user_id, session.character_id)
-            xp_for_next_level = intimacy_status.get("xp_for_next_level", 1000) if intimacy_status else 1000
-            # bad 结局：5% 升级经验或 50 XP，取较大值
-            calculated_xp = max(int(xp_for_next_level * 0.05), 50)
-        except Exception as e:
-            logger.warning(f"Failed to calculate dynamic XP for bad ending: {e}")
-            calculated_xp = 50  # fallback
+        # 强制结束/中断不给 XP（用户主动放弃或表现太差）
+        calculated_xp = 0
         
         # 更新会话状态
         session.status = DateStatus.COMPLETED.value
@@ -1906,12 +1930,29 @@ class InteractiveDateService:
         try:
             from app.models.event_message import create_date_event
             from app.services.chat_service import chat_service
+            from app.services.character_config import get_character_config
+            
+            character = get_character_config(session.character_id)
+            character_name = character.name if character else "角色"
+            
+            # 进度信息
+            total_stages = DATE_STAGES
+            progress_str = f"{len(session.stages)}/{total_stages}"
+            
+            # 简短摘要
+            summary_text = f"和{character_name}的约会提前结束了，气氛变得有些尴尬..."
             
             date_event = create_date_event(
                 scenario_name=session.scenario_name,
                 ending_text="尴尬的约会",
                 detail_id=session.id,
                 unlock_cost=0,  # 坏结局免费查看
+                # 约会卡片完整信息
+                ending_type="bad",
+                progress=progress_str,
+                affection=session.affection_score,
+                rewards={"xp": 0, "emotion": -40},  # 坏结局无奖励
+                story_summary=summary_text,
             )
             await chat_service.add_system_memory(
                 user_id=session.user_id,
@@ -1963,10 +2004,11 @@ class InteractiveDateService:
             "forced_ending": True,  # 标记是强制结束
             "ending": {
                 "type": "bad",
-                "title": "约会中断",
+                "title": "😔 约会不欢而散",
+                "description": f"在{session.scenario_name}的约会中，气氛逐渐变得尴尬...",
                 "narrative": ending_narrative,
             },
-            "rewards": {"xp": calculated_xp, "emotion": -40},
+            "rewards": {"xp": calculated_xp},  # xp=0, 中断不给奖励
             "progress": {
                 "current": session.current_stage,
                 "total": DATE_STAGES,
@@ -2107,13 +2149,25 @@ class InteractiveDateService:
             }
             ending_desc = ending_desc_map.get(ending_type, "普通")
             
-            # 使用新的结构化事件消息格式
-            # detail_id 关联到 event_memories 表的回忆录，用于点击查看详情
+            # 计算进度（基础5阶段 + 可能的bonus阶段）
+            total_stages = MAX_TOTAL_STAGES if session.is_extended else DATE_STAGES
+            progress_str = f"{len(session.stages)}/{total_stages}"
+            
+            # 生成简短的约会总结（用于卡片显示）
+            summary_text = self._generate_card_summary(session, ending_type, character_name)
+            
+            # 使用新的结构化事件消息格式（包含完整卡片信息）
             date_event = create_date_event(
                 scenario_name=session.scenario_name,
                 ending_text=f"{ending_desc}的约会",
                 detail_id=session.id,  # 约会session ID，可用于获取详细故事
                 unlock_cost=10,  # 解锁查看详情需要10月石
+                # 新增：约会卡片完整信息
+                ending_type=ending_type,
+                progress=progress_str,
+                affection=session.affection_score,
+                rewards=rewards,
+                story_summary=summary_text,
             )
 
             await chat_service.add_system_memory(
@@ -2350,6 +2404,25 @@ class InteractiveDateService:
         summary_parts.append(f"\n{ending_title}\n{ending_desc}")
         
         return "\n".join(summary_parts)
+    
+    def _generate_card_summary(
+        self,
+        session: DateSession,
+        ending_type: str,
+        character_name: str,
+    ) -> str:
+        """
+        生成约会卡片的简短摘要（50-80字）
+        
+        用于在聊天气泡中显示，让用户快速了解约会结果
+        """
+        summaries = {
+            "perfect": f"和{character_name}度过了完美的时光，她脸上洋溢着幸福的笑容，这段美好的回忆会永远留在心底... 💕",
+            "good": f"和{character_name}的约会很愉快，留下了温暖的回忆，期待下次见面~",
+            "normal": f"和{character_name}的约会还算顺利，虽然没有特别的火花，但也是一次不错的体验。",
+            "bad": f"和{character_name}的约会有些尴尬，下次要更加用心才行...",
+        }
+        return summaries.get(ending_type, summaries["normal"])
 
 
 # 单例
