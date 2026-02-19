@@ -1769,11 +1769,15 @@ export default function ChatScreen() {
       {/* 💕 互动式约会 (沉浸模式) */}
       <DateSceneModal
         visible={showDateSceneModal}
-        onClose={() => setShowDateSceneModal(false)}
+        onClose={() => {
+          setShowDateSceneModal(false);
+          setActiveDateSession(null); // 关闭时清除，避免重复提示
+        }}
         characterId={params.characterId}
         characterName={characterName}
         characterAvatar={characterAvatar}
         scenarios={dateScenarios}
+        resumeSession={activeDateSession}
         onDateCompleted={async (result) => {
           // 刷新亲密度和情绪
           try {

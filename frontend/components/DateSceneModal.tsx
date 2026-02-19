@@ -113,6 +113,11 @@ interface DateSceneModalProps {
   characterAvatar?: string;
   scenarios: DateScenario[];
   onDateCompleted?: (result: any) => void;
+  resumeSession?: {
+    session_id: string;
+    stage_num: number;
+    scenario_name: string;
+  } | null;
 }
 
 // API helpers
@@ -181,6 +186,7 @@ export default function DateSceneModal({
   characterAvatar,
   scenarios,
   onDateCompleted,
+  resumeSession,
 }: DateSceneModalProps) {
   // State
   const [phase, setPhase] = useState<Phase>('select');
@@ -226,6 +232,14 @@ export default function DateSceneModal({
     scenario_name: string;
   } | null>(null);
   
+  // 键盘高度监听
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardWillShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hideSub = Keyboard.addListener('keyboardWillHide', () => setKeyboardHeight(0));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
+  
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -234,7 +248,7 @@ export default function DateSceneModal({
   
   // Bottom sheet ref and snap points
   const bottomSheetRef = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => ['15%', '50%', '95%'], []); // 增加到95%以适应键盘
+  const snapPoints = useMemo(() => ['15%', '50%', '100%'], []); // 100% 让键盘弹出时能完全展开
   
   // TextInput ref for free input focus
   const freeInputRef = useRef<TextInput>(null);
@@ -267,8 +281,34 @@ export default function DateSceneModal({
       
       // Check cooldown status
       checkCooldown();
+      
+      // 如果传入了 resumeSession，直接恢复约会
+      if (resumeSession) {
+        (async () => {
+          setLoading(true);
+          try {
+            const session = await dateApi.getSession(resumeSession.session_id);
+            if (session) {
+              setSessionId(session.id);
+              setAffectionScore(50 + (session.affection_score || 0));
+              const extended = session.is_extended || false;
+              setIsExtended(extended);
+              setProgress({ current: session.current_stage, total: extended ? 8 : 5 });
+              const lastStage = session.stages?.[session.stages.length - 1];
+              if (lastStage) setCurrentStage(lastStage);
+              setSelectedScenario({ id: session.scenario_id, name: session.scenario_name, icon: '☕' });
+              setActiveSceneId(session.scenario_id);
+              setPhase('playing');
+            }
+          } catch (e) {
+            console.error('Failed to resume date:', e);
+          } finally {
+            setLoading(false);
+          }
+        })();
+      }
     }
-  }, [visible]);
+  }, [visible, resumeSession]);
   
   // 情绪太低不能约会
   const [emotionTooLow, setEmotionTooLow] = useState<{
@@ -1049,7 +1089,7 @@ export default function DateSceneModal({
               <ActivityIndicator size="large" color="#FF6B9D" style={{ marginVertical: 20 }} />
             ) : !showOptions ? null : showFreeInput ? (
               /* 自由输入模式 */
-              <View style={styles.freeInputContainer}>
+              <View style={[styles.freeInputContainer, { paddingBottom: keyboardHeight > 0 ? keyboardHeight - 100 : 0 }]}>
                 <TextInput
                   ref={freeInputRef}
                   style={styles.freeInputField}
