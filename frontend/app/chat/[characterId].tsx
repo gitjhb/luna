@@ -141,6 +141,7 @@ export default function ChatScreen() {
   const [dateScenarios, setDateScenarios] = useState<Array<{id: string; name: string; icon: string; description?: string}>>([]);
   const [dateLoading, setDateLoading] = useState(false);
   const [photoLoading, setPhotoLoading] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [showCharacterInfo, setShowCharacterInfo] = useState(false);
   const [emotionScore, setEmotionScore] = useState(0);
@@ -226,6 +227,22 @@ export default function ChatScreen() {
 
   // Note: With inverted FlatList, newest messages are at index 0 (visible at bottom)
   // No need to manually scroll to bottom - it happens automatically
+
+  // 监听键盘高度变化
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => setKeyboardHeight(e.endCoordinates.height)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Animate progress bar when XP changes
   useEffect(() => {
@@ -1171,13 +1188,12 @@ export default function ChatScreen() {
           data={messages}
           keyExtractor={(item) => item.messageId}
           renderItem={renderMessage}
-          contentContainerStyle={styles.messagesList}
+          contentContainerStyle={[styles.messagesList, { paddingBottom: keyboardHeight > 0 ? keyboardHeight : 0 }]}
           inverted
           onScroll={handleScroll}
           scrollEventThrottle={100}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
-          automaticallyAdjustKeyboardInsets
           // Load more when reaching the end (top of chat, since inverted)
           onEndReached={() => {
             if (hasNextPage && !isFetchingNextPage) {
@@ -1333,7 +1349,7 @@ export default function ChatScreen() {
         <View>
           {/* AI Disclaimer - California compliance */}
           <Text style={styles.aiDisclaimer}>{t.chat.aiDisclaimer}</Text>
-          <View style={[styles.inputContainer, { paddingBottom: insets.bottom || 10 }]}>
+          <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 10) + (keyboardHeight > 0 ? 10 : 0) }]}>
             {/* Input */}
             <View style={styles.inputWrapper}>
               <TextInput
