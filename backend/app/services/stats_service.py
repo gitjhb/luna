@@ -81,12 +81,13 @@ class StatsService:
             # First interaction
             stats.streak_days = 1
             
-            # Record first meet event
+            # Record first meet event (unique=True ensures only one record)
             await StatsService.record_event(
                 db, user_id, character_id,
                 event_type="first_meet",
                 title="初次相遇",
-                description="你们第一次见面"
+                description="你们第一次见面",
+                unique=True
             )
         
         stats.last_interaction_date = today
@@ -131,10 +132,29 @@ class StatsService:
         event_type: str,
         title: str,
         description: str = None,
-        metadata: dict = None
+        metadata: dict = None,
+        unique: bool = False
     ) -> UserCharacterEvent:
-        """Record a significant event."""
+        """Record a significant event.
+        
+        Args:
+            unique: If True, check if event already exists and skip if duplicate.
+                   Used for events like 'first_meet' that should only happen once.
+        """
         import json
+        
+        # 检查是否需要去重（如 first_meet 只应记录一次）
+        if unique or event_type == "first_meet":
+            existing = await db.execute(
+                select(UserCharacterEvent).where(
+                    UserCharacterEvent.user_id == user_id,
+                    UserCharacterEvent.character_id == character_id,
+                    UserCharacterEvent.event_type == event_type
+                ).limit(1)
+            )
+            if existing.scalar_one_or_none():
+                # 已存在，跳过记录
+                return None
         
         event = UserCharacterEvent(
             user_id=user_id,
@@ -157,8 +177,7 @@ class StatsService:
         if stats:
             stats.special_events += 1
         
-        await db.commit()
-        await db.refresh(event)
+        # Note: commit handled by caller or context manager
         return event
     
     @staticmethod
