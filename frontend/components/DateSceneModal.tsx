@@ -309,7 +309,16 @@ export default function DateSceneModal({
               if (lastStage) setCurrentStage(lastStage);
               setSelectedScenario({ id: session.scenario_id, name: session.scenario_name, icon: '☕' });
               setActiveSceneId(session.scenario_id);
-              setPhase('playing');
+              
+              // 判断应该恢复到哪个阶段
+              // 如果已完成第5阶段且未延长，应该进入checkpoint
+              if (session.current_stage >= 5 && !extended) {
+                setCanExtend(true);
+                setRemainingExtends(8 - session.current_stage);
+                setPhase('checkpoint');
+              } else {
+                setPhase('playing');
+              }
             }
           } catch (e) {
             console.error('Failed to resume date:', e);
@@ -601,7 +610,16 @@ export default function DateSceneModal({
         
         // 清除 activeSession 提示，避免重复显示
         setActiveSession(null);
-        setPhase('playing');
+        
+        // 判断应该恢复到哪个阶段
+        // 如果已完成第5阶段且未延长，应该进入checkpoint
+        if (session.current_stage >= 5 && !extended) {
+          setCanExtend(true);
+          setRemainingExtends(8 - session.current_stage);
+          setPhase('checkpoint');
+        } else {
+          setPhase('playing');
+        }
       }
     } catch (e: any) {
       console.error('Failed to continue date:', e);
