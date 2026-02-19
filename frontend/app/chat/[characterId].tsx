@@ -24,7 +24,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Video, ResizeMode } from 'expo-av';
@@ -76,6 +76,7 @@ const DEFAULT_BACKGROUND = 'https://i.imgur.com/vB5HQXQ.jpg';
 export default function ChatScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ characterId: string; characterName: string; sessionId?: string; backgroundUrl?: string; avatarUrl?: string }>();
+  const insets = useSafeAreaInsets();
 
   const { t } = useLocale();
   const { wallet, deductCredits, updateWallet, isSubscribed } = useUserStore();
@@ -1096,7 +1097,7 @@ export default function ChatScreen() {
         glowColor={emotionTheme.colors.glow}
       />
 
-      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* AI Disclaimer Banner - shown once */}
         <AiDisclaimerBanner />
 
@@ -1301,11 +1302,11 @@ export default function ChatScreen() {
         {/* Input Area - moved up */}
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.bottom : 0}
         >
           {/* AI Disclaimer - California compliance */}
           <Text style={styles.aiDisclaimer}>{t.chat.aiDisclaimer}</Text>
-          <View style={styles.inputContainer}>
+          <View style={[styles.inputContainer, { paddingBottom: insets.bottom || 10 }]}>
             {/* Input */}
             <View style={styles.inputWrapper}>
               <TextInput
