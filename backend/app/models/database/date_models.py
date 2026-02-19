@@ -4,7 +4,7 @@ Date Session Database Models
 """
 
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, DateTime, Text, JSON
+from sqlalchemy import Column, String, Integer, DateTime, Text, JSON, Boolean
 from app.models.database.billing_models import Base
 
 
@@ -22,6 +22,7 @@ class DateSessionDB(Base):
     current_stage = Column(Integer, default=0)
     affection_score = Column(Integer, default=0)
     status = Column(String(20), default="in_progress", index=True)  # in_progress, completed, abandoned
+    is_extended = Column(Boolean, default=False)  # 是否已付费延长（30月石解锁3阶段）
     
     # 阶段数据 (JSON存储)
     stages_data = Column(JSON, default=list)
@@ -47,6 +48,7 @@ class DateSessionDB(Base):
             "current_stage": self.current_stage,
             "affection_score": self.affection_score,
             "status": self.status,
+            "is_extended": self.is_extended or False,
             "stages": self.stages_data or [],
             "ending_type": self.ending_type,
             "xp_awarded": self.xp_awarded,

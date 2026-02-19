@@ -636,8 +636,8 @@ export default function DateSceneModal({
         
         if (result.at_checkpoint) {
           // 到达检查点 - 让用户选择是否继续
-          setCanExtend(result.can_extend);
-          setRemainingExtends(result.remaining_extends);
+          setCanExtend(result.can_extend ?? true);
+          setRemainingExtends(result.remaining_extends ?? 3);  // 默认3（如果后端没返回）
           setProgress(result.progress);
           setPhase('checkpoint');
         } else if (result.completed || result.is_finished) {
@@ -695,8 +695,8 @@ export default function DateSceneModal({
         
         if (result.at_checkpoint) {
           // 到达检查点
-          setCanExtend(result.can_extend);
-          setRemainingExtends(result.remaining_extends);
+          setCanExtend(result.can_extend ?? true);
+          setRemainingExtends(result.remaining_extends ?? 3);  // 默认3
           setProgress(result.progress);
           setPhase('checkpoint');
         } else if (result.completed || result.is_finished) {

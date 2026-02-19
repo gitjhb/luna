@@ -60,6 +60,7 @@ import EventStoryCard from '../../components/EventStoryCard';
 import EventStoryModal from '../../components/EventStoryModal';
 import MemoriesModal from '../../components/MemoriesModal';
 import EventBubble from '../../components/EventBubble';
+import DateEventCard, { isDateEventCard } from '../../components/DateEventCard';
 import { eventService, EventStoryPlaceholder, EventMemory } from '../../services/eventService';
 import { IntimacyInfoPanel } from '../../components/IntimacyInfoPanel';
 import { interactionsService } from '../../services/interactionsService';
@@ -879,7 +880,21 @@ export default function ChatScreen() {
         
         const eventData = JSON.parse(jsonContent);
         if (eventData.type === 'event') {
-          // 使用新的 EventBubble 组件渲染
+          // 🎀 约会事件卡片 - 使用特殊的 DateEventCard 组件
+          if (isDateEventCard(eventData)) {
+            return (
+              <DateEventCard
+                eventData={eventData}
+                characterId={params.characterId}
+                characterName={characterName}
+                onDetailViewed={() => {
+                  setReadEventIds(prev => new Set([...prev, item.messageId]));
+                }}
+              />
+            );
+          }
+          
+          // 其他事件使用通用 EventBubble 组件渲染
           return (
             <EventBubble
               eventData={eventData}

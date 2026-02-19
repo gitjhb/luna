@@ -160,8 +160,34 @@ def create_date_event(
     ending_text: str,
     detail_id: Optional[str] = None,
     unlock_cost: int = 10,
+    # 新增字段 - 约会卡片完整信息
+    ending_type: Optional[str] = None,  # perfect/good/normal/bad
+    progress: Optional[str] = None,      # "5/5"
+    affection: Optional[int] = None,     # 好感度分数
+    rewards: Optional[Dict[str, Any]] = None,  # {"xp": 150, "emotion": 30}
+    story_summary: Optional[str] = None,  # 简短的约会回忆描述
 ) -> EventMessage:
-    """创建约会事件消息"""
+    """
+    创建约会事件消息
+    
+    支持完整的约会卡片信息，前端可渲染为特殊卡片样式
+    """
+    # 构建 metadata，包含卡片渲染需要的完整信息
+    metadata = {
+        "date_card": True,  # 标记这是约会卡片，前端特殊处理
+    }
+    
+    if ending_type:
+        metadata["ending"] = ending_type
+    if progress:
+        metadata["progress"] = progress
+    if affection is not None:
+        metadata["affection"] = affection
+    if rewards:
+        metadata["rewards"] = rewards
+    if story_summary:
+        metadata["summary"] = story_summary
+    
     return EventMessage(
         event_type=EventMessageType.DATE,
         summary=f"{scenario_name} · {ending_text}",
@@ -172,6 +198,7 @@ def create_date_event(
             subtitle=ending_text,
         ),
         unlock_cost=unlock_cost,
+        metadata=metadata if metadata else None,
     )
 
 

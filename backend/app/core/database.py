@@ -140,12 +140,60 @@ async def init_db():
             await conn.run_sync(ChatBase.metadata.create_all)
             await conn.run_sync(BillingBase.metadata.create_all)
         
+        # Run migrations for new columns (safe to run multiple times)
+        await _run_migrations()
+        
         logger.info("Database connection initialized and tables created")
 
     except Exception as e:
         logger.warning(f"Database init failed, using mock: {e}")
         import traceback
         traceback.print_exc()
+
+
+async def _run_migrations():
+    """Run database migrations for new columns (safe to run multiple times)"""
+    from sqlalchemy import text
+    global _engine
+    
+    if not _engine:
+        return
+    
+    # Migrations format: (table_name, column_name, sqlite_sql, postgres_sql)
+    migrations = [
+        # Add is_extended column to date_sessions table
+        (
+            "date_sessions", 
+            "is_extended", 
+            "ALTER TABLE date_sessions ADD COLUMN is_extended BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE date_sessions ADD COLUMN IF NOT EXISTS is_extended BOOLEAN DEFAULT FALSE",
+        ),
+    ]
+    
+    # Detect database type
+    db_url = str(_engine.url)
+    is_postgres = "postgresql" in db_url or "postgres" in db_url
+    
+    for table_name, column_name, sqlite_sql, postgres_sql in migrations:
+        try:
+            async with _engine.begin() as conn:
+                # Choose SQL based on database type
+                sql = postgres_sql if is_postgres else sqlite_sql
+                
+                if is_postgres:
+                    # PostgreSQL: Use IF NOT EXISTS (native support)
+                    await conn.execute(text(sql))
+                    logger.info(f"Migration: Ensured column {table_name}.{column_name} exists")
+                else:
+                    # SQLite: Check if column exists first
+                    try:
+                        await conn.execute(text(f"SELECT {column_name} FROM {table_name} LIMIT 1"))
+                        logger.debug(f"Column {table_name}.{column_name} already exists, skipping")
+                    except Exception:
+                        await conn.execute(text(sql))
+                        logger.info(f"Migration: Added column {table_name}.{column_name}")
+        except Exception as e:
+            logger.warning(f"Migration for {table_name}.{column_name}: {e}")
 
 
 async def close_db():
