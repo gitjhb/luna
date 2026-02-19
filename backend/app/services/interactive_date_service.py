@@ -709,10 +709,18 @@ class InteractiveDateService:
                 # 未延长，返回检查点让用户选择
                 await _save_session_to_db(session)
                 remaining_extends = MAX_TOTAL_STAGES - current_stage.stage_num  # 计算剩余可延长阶段
+                
+                # 生成checkpoint过渡剧情（用户选择的结果 + 约会回顾）
+                checkpoint_narrative = await self._generate_checkpoint_narrative(
+                    session=session,
+                    chosen_option=chosen_option,
+                )
+                
                 return {
                     "success": True,
                     "affection_change": chosen_option.affection,
                     "at_checkpoint": True,
+                    "checkpoint_narrative": checkpoint_narrative,  # 新增：过渡剧情
                     "can_extend": True,
                     "remaining_extends": remaining_extends,  # 剩余可延长次数（前端需要）
                     "extend_cost": EXTEND_COST,
@@ -1157,6 +1165,75 @@ class InteractiveDateService:
         
         # 调用 _complete_date 生成结局
         return await self._complete_date(session)
+    
+    async def _generate_checkpoint_narrative(
+        self,
+        session: DateSession,
+        chosen_option: DateOption,
+    ) -> str:
+        """
+        生成checkpoint过渡剧情
+        
+        包含：用户选择的结果反馈 + 约会回顾
+        让用户在看到"是否继续"选择前，先看到选择的效果
+        """
+        from app.services.character_config import get_character_config
+        from app.services.llm_service import GrokService
+        
+        try:
+            character = get_character_config(session.character_id)
+            char_name = character.name if character else "她"
+            
+            # 根据好感度和选择类型生成不同风格的回顾
+            affection = session.affection_score
+            choice_type = chosen_option.type
+            choice_text = chosen_option.text
+            
+            prompt = f"""你是 {char_name}，正在和用户约会。
+
+## 当前状态
+- 约会好感度：{affection}
+- 用户刚才的选择：{choice_text}
+- 选择类型：{choice_type}（good=好选择, neutral=普通, bad=差选择）
+
+## 任务
+用50-80字生成一段过渡剧情：
+1. 先对用户的选择做出反应（{char_name}的回应）
+2. 然后自然地表达"时间过得很快，约会已经很愉快了"的感觉
+
+## 要求
+- 用第二人称"你"
+- 包含{char_name}的表情/动作描写
+- 语气要符合当前好感度（{affection}分，满分100）
+- 不要太长，简洁温馨
+
+直接输出剧情文字，不要任何格式标记。"""
+
+            llm = GrokService()
+            llm_response = await llm.chat_completion(
+                messages=[
+                    {"role": "system", "content": "你是浪漫剧情作家，擅长简洁温馨的描写。"},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=200,
+                temperature=0.8,
+            )
+            
+            narrative = llm_response.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            
+            if narrative:
+                return narrative
+                
+        except Exception as e:
+            logger.warning(f"Failed to generate checkpoint narrative: {e}")
+        
+        # 后备文案
+        if session.affection_score >= 60:
+            return f"{char_name}对你的选择露出满意的微笑。不知不觉，约会已经持续了好一会儿，你们之间的气氛越来越融洽..."
+        elif session.affection_score >= 30:
+            return f"{char_name}轻轻点头回应你。时间过得很快，这次约会进行得还不错..."
+        else:
+            return f"{char_name}的表情有些复杂。约会已经持续了一段时间，气氛有点微妙..."
     
     async def _generate_bonus_stage(
         self,

@@ -206,6 +206,7 @@ export default function DateSceneModal({
   const [remainingExtends, setRemainingExtends] = useState(3); // 剩余可延长次数
   const [isExtended, setIsExtended] = useState(false); // 是否已经延长过（一次性30月石）
   const [extendLoading, setExtendLoading] = useState(false); // 延长加载状态
+  const [checkpointNarrative, setCheckpointNarrative] = useState<string | null>(null); // checkpoint过渡剧情
   const [affectionScore, setAffectionScore] = useState(50); // 起始好感度
   const [affectionFeedback, setAffectionFeedback] = useState<number | null>(null);
   const [showFreeInput, setShowFreeInput] = useState(false);
@@ -638,6 +639,7 @@ export default function DateSceneModal({
           // 到达检查点 - 让用户选择是否继续
           setCanExtend(result.can_extend ?? true);
           setRemainingExtends(result.remaining_extends ?? 3);  // 默认3（如果后端没返回）
+          setCheckpointNarrative(result.checkpoint_narrative || null);  // 保存过渡剧情
           setProgress(result.progress);
           setPhase('checkpoint');
         } else if (result.completed || result.is_finished) {
@@ -697,6 +699,7 @@ export default function DateSceneModal({
           // 到达检查点
           setCanExtend(result.can_extend ?? true);
           setRemainingExtends(result.remaining_extends ?? 3);  // 默认3
+          setCheckpointNarrative(result.checkpoint_narrative || null);  // 保存过渡剧情
           setProgress(result.progress);
           setPhase('checkpoint');
         } else if (result.completed || result.is_finished) {
@@ -1291,6 +1294,13 @@ export default function DateSceneModal({
                affectionScore <= 80 ? '约会进行得很顺利！' : '完美的约会💕'}
             </Text>
           </View>
+          
+          {/* 过渡剧情 - 用户选择的结果 */}
+          {checkpointNarrative && (
+            <Text style={styles.checkpointNarrative}>
+              {checkpointNarrative}
+            </Text>
+          )}
           
           <Text style={styles.checkpointText}>
             {affectionScore <= 35 
@@ -2287,6 +2297,19 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: '#fff',
+  },
+  checkpointNarrative: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.9)',
+    lineHeight: 24,
+    marginBottom: 16,
+    fontStyle: 'italic',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: 'rgba(255,107,155,0.5)',
   },
   checkpointText: {
     fontSize: 15,
