@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     MOCK_TTS: bool = Field(default=True)
     MOCK_IMAGE: bool = Field(default=True)  # Mock mode for image generation
     
+    # ========== Content Moderation ==========
+    MODERATION_ENABLED: bool = Field(default=True)  # Set to False to skip moderation
+    
     # ========== Rate Limiting ==========
     RATE_LIMIT_ENABLED: bool = Field(default=True)
     RATE_LIMIT_FREE: int = Field(default=5)
