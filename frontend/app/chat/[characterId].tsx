@@ -1222,13 +1222,28 @@ export default function ChatScreen() {
                 if (dateLoading) return;
                 setDateLoading(true);
                 try {
-                  // 先检查约会状态（情绪、冷却等）
+                  // 先检查约会状态（解锁、礼物、情绪、冷却等）
                   const status = await api.get<{
                     can_date: boolean;
+                    is_unlocked?: boolean;
+                    gift_sent?: boolean;
                     reason?: string;
                     message?: string;
                     cooldown_remaining_minutes?: number;
                   }>(`/dates/status/${params.characterId}`);
+
+                  // 检查是否送过礼物
+                  if (status.is_unlocked === false && status.gift_sent === false) {
+                    Alert.alert(
+                      '🎁 需要先送礼物',
+                      '在约会之前，先送她一份礼物表达心意吧~',
+                      [
+                        { text: '取消', style: 'cancel' },
+                        { text: '🎁 去送礼', onPress: () => setShowGiftModal(true) },
+                      ]
+                    );
+                    return;
+                  }
 
                   if (!status.can_date) {
                     if (status.reason === 'emotion_too_low') {
