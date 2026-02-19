@@ -644,6 +644,12 @@ class InteractiveDateService:
         logger.info(f"📅 [DATE] Option text: {chosen_option.text[:50]}...")
         logger.info(f"📅 [DATE] Affection change: {chosen_option.affection}, Total: {session.affection_score}")
         
+        # 💔 好感度 <= 0，立即强制结束约会
+        if session.affection_score <= 0:
+            logger.info(f"📅 [DATE] Affection dropped to {session.affection_score}, forcing bad ending")
+            await _save_session_to_db(session)
+            return await self._force_bad_ending(session, chosen_option.text)
+        
         # 检查是否到达检查点（基础 5 阶段完成）
         if current_stage.stage_num >= DATE_STAGES:
             # 检查是否已经延长过（session 有标记）
@@ -786,6 +792,12 @@ class InteractiveDateService:
         
         logger.info(f"Free input processed: session={session_id}, "
                    f"affection_change={affection_change}, input={user_input[:50]}")
+        
+        # 💔 好感度 <= 0，立即强制结束约会
+        if session.affection_score <= 0:
+            logger.info(f"📅 [DATE] Affection dropped to {session.affection_score}, forcing bad ending (free input)")
+            await _save_session_to_db(session)
+            return await self._force_bad_ending(session, f"用户说：{user_input}")
         
         # 检查是否到达检查点
         if current_stage.stage_num >= DATE_STAGES:
@@ -1778,6 +1790,114 @@ class InteractiveDateService:
             character_expression="neutral",
             options=options,
         )
+    
+    async def _force_bad_ending(self, session: DateSession, trigger_text: str) -> Dict[str, Any]:
+        """
+        💔 强制结束约会（好感度 <= 0 时）
+        
+        调用 AI 生成定制的坏结局，而不是用模板
+        """
+        from app.services.intimacy_service import intimacy_service
+        from app.services.emotion_engine_v2 import emotion_engine
+        from app.services.llm_service import GrokService
+        from app.services.character_config import get_character_config
+        
+        logger.info(f"📅 [DATE] Forcing bad ending for session {session.id}, affection={session.affection_score}")
+        
+        # 获取角色信息
+        character = get_character_config(session.character_id)
+        character_name = character.name if character else "她"
+        
+        # 构建之前的剧情摘要
+        stages_summary = ""
+        for s in session.stages[-3:]:  # 最近3个阶段
+            stages_summary += f"[第{s.stage_num}幕] {s.narrative[:100]}...\n"
+        
+        # 调用 AI 生成定制结局
+        prompt = f"""你是 {character_name}，正在和用户约会，但约会进行得很糟糕。
+
+## 背景
+场景：{session.scenario_name}
+当前好感度：{session.affection_score}（已经跌到 0 或以下）
+触发原因：{trigger_text}
+
+## 最近的剧情
+{stages_summary}
+
+## 任务
+用户的言行让 {character_name} 非常不开心/失望/生气，约会无法继续了。
+请生成一个约会被迫终止的结局描述（100-150字）：
+- 用第二人称"你"描述
+- 描写 {character_name} 的反应和离开
+- 语气可以是失望、生气、伤心等，取决于之前的剧情
+- 这是一个令人遗憾的结局，让用户感受到后果
+
+直接输出结局描述文字，不要 JSON 格式。"""
+
+        try:
+            llm = GrokService()
+            ending_narrative = await llm.chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.8,
+                max_tokens=300,
+            )
+            ending_narrative = ending_narrative.strip().strip('"').strip("'")
+        except Exception as e:
+            logger.error(f"Failed to generate bad ending narrative: {e}")
+            ending_narrative = f"{character_name} 看着你，眼中满是失望。「我们...今天就到这里吧。」她转身离开，没有回头。这场约会，就这样草草收场了。"
+        
+        # 更新会话状态
+        session.status = DateStatus.COMPLETED.value
+        session.ending_type = "bad"
+        session.xp_awarded = 5  # 坏结局只给少量 XP
+        session.completed_at = datetime.utcnow().isoformat()
+        session.story_summary = ending_narrative
+        
+        # 设置冷却
+        cooldown_until = datetime.utcnow() + timedelta(hours=COOLDOWN_HOURS)
+        session.cooldown_until = cooldown_until.isoformat()
+        cooldown_key = f"{session.user_id}:{session.character_id}"
+        _user_cooldowns[cooldown_key] = cooldown_until.isoformat()
+        
+        # 保存到数据库
+        await _save_session_to_db(session)
+        await _save_cooldown_to_db(session.user_id, session.character_id, cooldown_until)
+        
+        # 给予少量 XP
+        try:
+            await intimacy_service.award_xp_direct(
+                session.user_id, session.character_id, 5, reason="date_bad_forced"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to award XP: {e}")
+        
+        # 更新情绪（坏结局大幅降低情绪）
+        try:
+            await emotion_engine.update_score(
+                session.user_id, session.character_id, -40, reason="date_bad_forced"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to update emotion: {e}")
+        
+        # 清理活跃会话
+        if session.id in _active_sessions:
+            del _active_sessions[session.id]
+        
+        return {
+            "success": True,
+            "is_finished": True,
+            "forced_ending": True,  # 标记是强制结束
+            "ending": {
+                "type": "bad",
+                "title": "约会中断",
+                "narrative": ending_narrative,
+            },
+            "rewards": {"xp": 5, "emotion": -40},
+            "progress": {
+                "current": session.current_stage,
+                "total": DATE_STAGES,
+            },
+        }
     
     async def _complete_date(self, session: DateSession) -> Dict[str, Any]:
         """
