@@ -67,6 +67,7 @@ import DressupModal from '../../components/DressupModal';
 import DateModal from '../../components/DateModal';
 import DateSceneModal from '../../components/DateSceneModal';
 import AiDisclaimerBanner from '../../components/AiDisclaimerBanner';
+import ChatLoadingSkeleton from '../../components/ChatLoadingSkeleton';
 import { useLocale, tpl } from '../../i18n';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -608,7 +609,7 @@ export default function ChatScreen() {
       // Inverted list: new messages appear at top automatically
     } catch (error: any) {
       console.error('Send message error:', error);
-      Alert.alert('Error', 'Failed to send message');
+      Alert.alert(t.chat.sendError || 'Error', t.chat.sendErrorMessage || 'Failed to send message');
     } finally {
       setTyping(false);
       isSendingRef.current = false;  // Allow sending again
@@ -685,7 +686,7 @@ export default function ChatScreen() {
       // Inverted list: new messages appear at top automatically
     } catch (error: any) {
       console.error('Photo request error:', error);
-      Alert.alert('Error', 'Failed to request photo');
+      Alert.alert(t.chat.photoError || 'Error', t.chat.photoErrorMessage || 'Failed to request photo');
     } finally {
       setTyping(false);
     }
@@ -1177,41 +1178,45 @@ export default function ChatScreen() {
           </View>
         </View>
 
-        {/* Messages */}
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) => item.messageId}
-          renderItem={renderMessage}
-          contentContainerStyle={styles.messagesList}
-          inverted
-          onScroll={handleScroll}
-          scrollEventThrottle={100}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          // Load more when reaching the end (top of chat, since inverted)
-          onEndReached={() => {
-            if (hasNextPage && !isFetchingNextPage) {
-              fetchNextPage();
+        {/* Messages - 显示加载骨架屏或消息列表 */}
+        {isInitializing && messages.length === 0 ? (
+          <ChatLoadingSkeleton />
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item) => item.messageId}
+            renderItem={renderMessage}
+            contentContainerStyle={styles.messagesList}
+            inverted
+            onScroll={handleScroll}
+            scrollEventThrottle={100}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            // Load more when reaching the end (top of chat, since inverted)
+            onEndReached={() => {
+              if (hasNextPage && !isFetchingNextPage) {
+                fetchNextPage();
+              }
+            }}
+            onEndReachedThreshold={0.3}
+            // For inverted list: Header shows at bottom, Footer at top
+            ListHeaderComponent={isTyping ? renderTypingIndicator : null}
+            ListFooterComponent={
+              isFetchingNextPage ? (
+                <View style={{ padding: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
+                  <ActivityIndicator size="small" color="#888" />
+                  <Text style={{ color: '#aaa' }}>{t.chat.loadingHistory}</Text>
+                </View>
+              ) : !hasNextPage && messages.length > 0 ? (
+                <View style={{ padding: 15, alignItems: 'center' }}>
+                  <Text style={{ color: '#666' }}>{t.chat.allLoaded}</Text>
+                </View>
+              ) : null
             }
-          }}
-          onEndReachedThreshold={0.3}
-          // For inverted list: Header shows at bottom, Footer at top
-          ListHeaderComponent={isTyping ? renderTypingIndicator : null}
-          ListFooterComponent={
-            isFetchingNextPage ? (
-              <View style={{ padding: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
-                <ActivityIndicator size="small" color="#888" />
-                <Text style={{ color: '#aaa' }}>{t.chat.loadingHistory}</Text>
-              </View>
-            ) : !hasNextPage && messages.length > 0 ? (
-              <View style={{ padding: 15, alignItems: 'center' }}>
-                <Text style={{ color: '#666' }}>{t.chat.allLoaded}</Text>
-              </View>
-            ) : null
-          }
-          showsVerticalScrollIndicator={false}
-        />
+            showsVerticalScrollIndicator={false}
+          />
+        )}
 
         {/* Action Buttons - Horizontal Scroll */}
         <ScrollView
@@ -2217,10 +2222,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   actionButtonDisabled: {
-    opacity: 0.4,
+    opacity: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   actionButtonLocked: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderWidth: 1,
+    borderStyle: 'dashed',
   },
   actionButtonActive: {
     backgroundColor: 'rgba(0, 245, 212, 0.2)',
@@ -2280,7 +2289,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   sendButtonDisabled: {
-    opacity: 0.4,
+    opacity: 0.35,
+    transform: [{ scale: 0.95 }],
   },
   sendButtonGradient: {
     width: 44,

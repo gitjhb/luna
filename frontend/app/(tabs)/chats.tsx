@@ -12,6 +12,7 @@ import {
   RefreshControl,
   Image,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -270,7 +271,14 @@ export default function ChatsScreen() {
           keyExtractor={(item) => item.sessionId}
           renderItem={renderSession}
           contentContainerStyle={sessions.length === 0 ? styles.emptyContainer : styles.listContainer}
-          ListEmptyComponent={!loading ? renderEmpty : null}
+          ListEmptyComponent={
+            loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={theme.colors.primary.main} />
+                <Text style={styles.loadingText}>{t.common?.loading || '加载中...'}</Text>
+              </View>
+            ) : renderEmpty()
+          }
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary.main} />
           }
@@ -368,6 +376,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: 'rgba(255, 255, 255, 0.7)',
     marginTop: 4,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.6)',
   },
   emptyState: {
     flex: 1,

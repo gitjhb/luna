@@ -115,6 +115,13 @@ export const en: Translations = {
     dateLocked: 'Dates unlock at Lv.10',
     locked: '🔒 Locked',
     aiDisclaimer: 'AI-powered virtual character',
+    // Error messages
+    sendError: 'Send Failed',
+    sendErrorMessage: 'Failed to send message. Please try again.',
+    photoError: 'Photo Request Failed',
+    photoErrorMessage: 'Failed to request photo. Please try again.',
+    networkError: 'Network Error',
+    networkErrorMessage: 'Please check your connection and try again.',
   },
 
   // Character profile

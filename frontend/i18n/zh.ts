@@ -113,6 +113,13 @@ export const zh = {
     dateLocked: '约会功能需要 Lv.10 解锁',
     locked: '🔒 未解锁',
     aiDisclaimer: '由AI驱动的虚拟角色',
+    // Error messages
+    sendError: '发送失败',
+    sendErrorMessage: '消息发送失败，请重试。',
+    photoError: '照片请求失败',
+    photoErrorMessage: '无法获取照片，请重试。',
+    networkError: '网络错误',
+    networkErrorMessage: '请检查网络连接后重试。',
   },
 
   // Character profile
