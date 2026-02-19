@@ -20,7 +20,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ExtraData, GameDebugInfo } from '../store/chatStore';
-import { API_BASE_URL } from '../services/api';
+import { apiClient } from '../services/api';
 
 // Stage name mapping
 const getStageNameCN = (stage: string): string => {
@@ -45,32 +45,27 @@ interface DebugPanelProps {
   onStateChanged?: () => void;  // 状态变更后的回调
 }
 
-// Debug API helpers
+// Debug API helpers - 使用 apiClient 自动带 token
 const debugApi = {
   setLevel: async (characterId: string, level: number) => {
-    const res = await fetch(`${API_BASE_URL}/debug/set_level`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: characterId, level }),
+    const res = await apiClient.post('/debug/set_level', {
+      character_id: characterId,
+      level,
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    return res.data;
   },
   
   setEmotion: async (characterId: string, emotion: number) => {
-    const res = await fetch(`${API_BASE_URL}/debug/set_emotion`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: characterId, emotion }),
+    const res = await apiClient.post('/debug/set_emotion', {
+      character_id: characterId,
+      emotion,
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    return res.data;
   },
   
   getStatus: async (characterId: string) => {
-    const res = await fetch(`${API_BASE_URL}/debug/status/${characterId}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    const res = await apiClient.get(`/debug/status/${characterId}`);
+    return res.data;
   },
 };
 
