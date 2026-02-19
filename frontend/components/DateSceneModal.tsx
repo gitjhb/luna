@@ -795,6 +795,17 @@ export default function DateSceneModal({
         setJudgeComment(`💎 -${cost} 月石，解锁后续3章剧情！`);
         setTimeout(() => setJudgeComment(null), 2500);
       }
+      // 处理失败情况
+      if (!result.success) {
+        if (result.current_balance !== undefined && result.required) {
+          // 余额不足 - 显示详细信息
+          const shortage = result.required - result.current_balance;
+          setJudgeComment(`💎 月石不足！还需要 ${shortage} 月石（当前: ${result.current_balance}）`);
+        } else {
+          setJudgeComment(`❌ ${result.error || '延长失败'}`);
+        }
+        setTimeout(() => setJudgeComment(null), 4000);
+      }
     } catch (e: any) {
       const errorMsg = e.response?.data?.detail || e.message || '延长失败';
       setJudgeComment(`❌ ${errorMsg}`);

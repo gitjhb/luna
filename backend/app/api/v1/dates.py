@@ -276,7 +276,7 @@ async def extend_date(request: ExtendDateRequest, req: Request):
     """
     付费延长约会剧情（生成 bonus stage）
     
-    费用：10 月石
+    费用：30 月石（一次性解锁3章）
     上限：最多延长 3 章（原5章 + 3章bonus = 8章）
     """
     user_id = _get_user_id(req)
@@ -286,9 +286,8 @@ async def extend_date(request: ExtendDateRequest, req: Request):
         user_id=user_id,
     )
     
-    if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("error", "延长失败"))
-    
+    # 不抛HTTPException，返回完整result让前端处理
+    # 前端可以根据 current_balance, required 等信息显示更友好的提示
     return result
 
 
