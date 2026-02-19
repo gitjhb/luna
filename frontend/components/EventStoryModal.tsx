@@ -73,7 +73,20 @@ export default function EventStoryModal({
     setError(null);
     
     try {
-      // First try to get existing story
+      // If we have a story_id (from MemoriesModal), fetch by ID directly
+      if (placeholder.story_id) {
+        const existingStory = await eventService.getEventMemoryById(
+          characterId,
+          placeholder.story_id
+        );
+        if (existingStory) {
+          setStory(existingStory);
+          setIsLoading(false);
+          return;
+        }
+      }
+      
+      // Otherwise try to get existing story by event_type
       const existingStory = await eventService.getEventMemory(
         characterId,
         placeholder.event_type

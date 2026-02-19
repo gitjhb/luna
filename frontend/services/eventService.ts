@@ -94,6 +94,20 @@ export const eventService = {
   },
   
   /**
+   * Get event memory by ID
+   */
+  getEventMemoryById: async (characterId: string, memoryId: string): Promise<EventMemory | null> => {
+    try {
+      // Get all memories and find the one with matching ID
+      const memories = await eventService.getEventMemories(characterId);
+      return memories.find(m => m.id === memoryId) || null;
+    } catch (error) {
+      console.error('Failed to get memory by ID:', error);
+      return null;
+    }
+  },
+  
+  /**
    * Generate story for an event
    */
   generateStory: async (
