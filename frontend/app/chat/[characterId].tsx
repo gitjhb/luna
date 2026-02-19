@@ -1098,6 +1098,11 @@ export default function ChatScreen() {
         glowColor={emotionTheme.colors.glow}
       />
 
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* AI Disclaimer Banner - shown once */}
         <AiDisclaimerBanner />
@@ -1324,11 +1329,8 @@ export default function ChatScreen() {
           )}
         </ScrollView>
 
-        {/* Input Area - moved up */}
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.bottom : 0}
-        >
+        {/* Input Area */}
+        <View>
           {/* AI Disclaimer - California compliance */}
           <Text style={styles.aiDisclaimer}>{t.chat.aiDisclaimer}</Text>
           <View style={[styles.inputContainer, { paddingBottom: insets.bottom || 10 }]}>
@@ -1362,7 +1364,7 @@ export default function ChatScreen() {
               </LinearGradient>
             </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
+        </View>
 
         {/* Debug Panel Button - only in development */}
         {__DEV__ && (
@@ -1400,6 +1402,7 @@ export default function ChatScreen() {
           />
         )}
       </SafeAreaView>
+      </KeyboardAvoidingView>
 
       {/* Recharge Modal */}
       <RechargeModal
