@@ -121,6 +121,7 @@ export default function ChatScreen() {
     isFetchingNextPage,
     addMessage,
     updateMessage,
+    refresh: refreshMessages,
   } = useMessages({
     sessionId,
     characterId: params.characterId,
@@ -1791,6 +1792,8 @@ export default function ChatScreen() {
           } catch (e) {
             console.warn('Failed to refresh after date:', e);
           }
+          // 刷新聊天记录以显示约会事件卡片
+          refreshMessages();
         }}
       />
 
@@ -1819,6 +1822,9 @@ export default function ChatScreen() {
           } catch (e) {
             console.warn('Failed to refresh after date:', e);
           }
+          
+          // 刷新聊天记录以显示约会事件卡片
+          refreshMessages();
 
           // 🎉 显示第一次约会庆祝弹窗
           if (result?.ending || result?.rewards) {
