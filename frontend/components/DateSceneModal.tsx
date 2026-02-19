@@ -1603,16 +1603,17 @@ const styles = StyleSheet.create({
   scenarioItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(40,25,60,0.9)',
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   scenarioItemSelected: {
     borderColor: '#FF6B9D',
-    backgroundColor: 'rgba(255,107,157,0.1)',
+    backgroundColor: 'rgba(255,107,157,0.2)',
+    borderWidth: 2,
   },
   scenarioIcon: {
     fontSize: 36,

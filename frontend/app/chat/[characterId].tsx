@@ -139,6 +139,7 @@ export default function ChatScreen() {
   const [showDateModal, setShowDateModal] = useState(false);
   const [showDateSceneModal, setShowDateSceneModal] = useState(false);
   const [dateScenarios, setDateScenarios] = useState<Array<{id: string; name: string; icon: string; description?: string}>>([]);
+  const [dateLoading, setDateLoading] = useState(false);
   const [photoLoading, setPhotoLoading] = useState(false);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [showCharacterInfo, setShowCharacterInfo] = useState(false);
@@ -1215,8 +1216,11 @@ export default function ChatScreen() {
           {/* 约会 - Lv10 解锁 */}
           {(relationshipLevel || 1) >= 10 ? (
             <TouchableOpacity
-              style={styles.actionButton}
+              style={[styles.actionButton, dateLoading && styles.actionButtonDisabled]}
+              disabled={dateLoading}
               onPress={async () => {
+                if (dateLoading) return;
+                setDateLoading(true);
                 try {
                   // 先检查约会状态（情绪、冷却等）
                   const status = await api.get<{
@@ -1282,10 +1286,16 @@ export default function ChatScreen() {
                   console.error('Failed to check date status:', e);
                   // 降级到简单模式
                   setShowDateModal(true);
+                } finally {
+                  setDateLoading(false);
                 }
               }}
             >
-              <Text style={styles.actionButtonEmoji}>💕</Text>
+              {dateLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.actionButtonEmoji}>💕</Text>
+              )}
               <Text style={styles.actionButtonText}>{t.chat.date}</Text>
             </TouchableOpacity>
           ) : (
