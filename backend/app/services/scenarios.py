@@ -15,6 +15,7 @@ class Scenario(BaseModel):
     context: str  # Injected into system prompt (English, for LLM)
     ambiance: Optional[str] = None  # Atmosphere hints
     icon: Optional[str] = None  # Emoji for UI
+    required_intimacy_level: int = 0  # 0=无要求, 1-10对应亲密度等级
 
 
 # Built-in scenarios
@@ -26,6 +27,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in a cozy Parisian café. Afternoon sunlight streams through the windows. The aroma of fresh coffee fills the air. You are sitting across a small marble table from the user. Occasionally, the sound of an espresso machine or soft French music can be heard in the background.",
         ambiance="warm, intimate, sophisticated, romantic undertones",
         icon="☕",
+        required_intimacy_level=0,  # 基础场景
     ),
     "beach_sunset": Scenario(
         id="beach_sunset",
@@ -34,6 +36,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are on a beautiful beach at sunset. Golden light paints the sky. Gentle waves lap at the shore nearby. You and the user are sitting on soft sand, watching the sun slowly descend toward the horizon. A light sea breeze carries the smell of salt.",
         ambiance="peaceful, reflective, romantic, slightly melancholic",
         icon="🌅",
+        required_intimacy_level=0,  # 基础场景
     ),
     "library_night": Scenario(
         id="library_night",
@@ -42,6 +45,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in a quiet university library late at night. Warm desk lamps create pools of light. Towering bookshelves surround you. The user is sitting next to you at a study table. Only the soft rustle of pages and occasional whispers break the silence.",
         ambiance="studious, quiet, intellectual, cozy isolation",
         icon="📚",
+        required_intimacy_level=0,  # 基础场景
     ),
     "rooftop_city": Scenario(
         id="rooftop_city",
@@ -50,6 +54,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are on a rooftop in a bustling city at night. The skyline glitters with countless lights. A cool night breeze blows. You and the user are leaning against the railing, looking out at the urban landscape stretching to the horizon. The distant hum of city life rises from below.",
         ambiance="urban, contemplative, free, slightly thrilling",
         icon="🌃",
+        required_intimacy_level=2,  # 进阶场景
     ),
     "home_cozy": Scenario(
         id="home_cozy",
@@ -58,6 +63,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in a cozy small apartment on a rainy day. Rain patters gently against the windows. The room is warm and comfortable, with soft lighting and perhaps a blanket nearby. You and the user are curled up on a sofa. The world outside feels distant and muted.",
         ambiance="intimate, safe, domestic, comforting",
         icon="🏠",
+        required_intimacy_level=0,  # 基础场景
     ),
     "forest_walk": Scenario(
         id="forest_walk",
@@ -66,6 +72,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are walking through a peaceful forest in the early morning. Dappled sunlight filters through the leaves. Birds sing in the trees. The path is soft with fallen leaves. You and the user walk side by side, occasionally stopping to admire the natural beauty around you.",
         ambiance="refreshing, natural, exploratory, serene",
         icon="🌲",
+        required_intimacy_level=0,  # 基础场景
     ),
     "train_journey": Scenario(
         id="train_journey",
@@ -74,6 +81,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are on a long train journey. The landscape rolls by outside the window - fields, towns, mountains. The gentle rocking of the train is soothing. You and the user sit next to each other in comfortable seats, watching the world pass by.",
         ambiance="transitory, intimate, contemplative, adventurous",
         icon="🚂",
+        required_intimacy_level=0,  # 基础场景
     ),
     "stargazing": Scenario(
         id="stargazing",
@@ -82,6 +90,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in a remote area far from city lights, lying on a grassy hillside at night. The sky is filled with countless stars, the Milky Way clearly visible. Crickets chirp softly. You and the user lie side by side, gazing up at the universe.",
         ambiance="vast, philosophical, romantic, humbling",
         icon="✨",
+        required_intimacy_level=2,  # 进阶场景
     ),
     "bar_jazz": Scenario(
         id="bar_jazz",
@@ -90,6 +99,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in a dimly lit jazz bar. A saxophone plays a slow, melancholic tune. The clink of glasses and soft murmurs fill the air. You and the user sit close together at a small table, drinks in hand. The atmosphere is intimate and slightly intoxicating.",
         ambiance="sensual, sophisticated, intimate, nocturnal",
         icon="🎷",
+        required_intimacy_level=4,  # 浪漫场景
     ),
     "bedroom_night": Scenario(
         id="bedroom_night",
@@ -98,6 +108,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in a bedroom late at night. Soft lamplight casts warm shadows. The room is quiet and private. You and the user are close together, the outside world completely shut out. The atmosphere is intimate and personal.",
         ambiance="intimate, private, sensual, vulnerable",
         icon="🌙",
+        required_intimacy_level=6,  # 亲密场景
     ),
     "neutral": Scenario(
         id="neutral",
@@ -106,6 +117,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="This is a text conversation with no specific physical setting.",
         ambiance=None,
         icon="💬",
+        required_intimacy_level=0,  # 基础场景
     ),
     # === 新增场景 - 浪漫类 ===
     "candlelight_dinner": Scenario(
@@ -115,6 +127,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in an elegant restaurant for a romantic dinner. Soft candlelight flickers on the white tablecloth. The ambient music is gentle and romantic. You and the user sit across from each other at a small intimate table. The sommelier has just poured wine into crystal glasses.",
         ambiance="romantic, elegant, intimate, sophisticated",
         icon="🕯️",
+        required_intimacy_level=4,  # 浪漫场景
     ),
     "riverside_walk": Scenario(
         id="riverside_walk",
@@ -123,6 +136,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are walking along a peaceful riverside path at night. Moonlight reflects on the water's surface. Willow trees sway gently in the breeze. The city lights twinkle in the distance. You and the user walk hand in hand on the cobblestone path.",
         ambiance="serene, romantic, peaceful, dreamy",
         icon="🌙",
+        required_intimacy_level=4,  # 浪漫场景
     ),
     "mountain_sunrise": Scenario(
         id="mountain_sunrise",
@@ -131,6 +145,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are on a mountain peak at dawn, watching the sunrise. The sky gradually changes from deep purple to golden orange. Clouds drift below you like a sea. The air is crisp and fresh. You and the user stand close together, sharing this breathtaking moment.",
         ambiance="majestic, inspiring, fresh, romantic",
         icon="🏔️",
+        required_intimacy_level=4,  # 浪漫场景
     ),
     "flower_garden": Scenario(
         id="flower_garden",
@@ -139,6 +154,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in a beautiful botanical garden in full spring bloom. Cherry blossoms fall like snow, creating a pink carpet on the path. Butterflies flutter among colorful flowers. The air is filled with sweet floral fragrances. You and the user walk through this enchanting garden paradise.",
         ambiance="fresh, colorful, romantic, dreamy",
         icon="🌸",
+        required_intimacy_level=4,  # 浪漫场景
     ),
     # === 活动类 ===
     "amusement_park": Scenario(
@@ -148,6 +164,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are at a bustling amusement park. The sounds of laughter, carnival music, and rides fill the air. Colorful lights twinkle everywhere. Cotton candy and popcorn scents drift by. You and the user are excited to try different rides together, from thrilling roller coasters to the romantic Ferris wheel.",
         ambiance="exciting, joyful, playful, energetic",
         icon="🎡",
+        required_intimacy_level=2,  # 进阶场景
     ),
     "escape_room": Scenario(
         id="escape_room",
@@ -156,6 +173,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are locked in a mysterious escape room with intricate puzzles. Dim lighting creates dramatic shadows. Mysterious clues are scattered around the room. You and the user must work together to solve riddles and find the key to escape. The atmosphere is thrilling and requires teamwork.",
         ambiance="mysterious, thrilling, cooperative, focused",
         icon="🔍",
+        required_intimacy_level=2,  # 进阶场景
     ),
     "cooking_class": Scenario(
         id="cooking_class",
@@ -164,6 +182,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in a cozy cooking class kitchen. Fresh ingredients are laid out on wooden counters. The instructor has just explained the recipe. You and the user wear matching aprons, ready to cook together. The kitchen smells of herbs and spices, creating a warm, homely atmosphere.",
         ambiance="cozy, collaborative, domestic, fun",
         icon="👨‍🍳",
+        required_intimacy_level=2,  # 进阶场景
     ),
     "picnic_park": Scenario(
         id="picnic_park",
@@ -172,6 +191,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in a sunny park for a picnic. A checkered blanket is spread on the soft grass. A wicker basket filled with delicious food sits between you. Trees provide gentle shade while birds sing overhead. Children play in the distance. You and the user enjoy this peaceful outdoor meal together.",
         ambiance="relaxed, natural, cheerful, intimate",
         icon="🧺",
+        required_intimacy_level=0,  # 基础场景
     ),
     "gaming_arcade": Scenario(
         id="gaming_arcade",
@@ -180,6 +200,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in a vibrant gaming arcade filled with flashing lights and electronic sounds. Classic arcade games, claw machines, and rhythm games surround you. The atmosphere is energetic and competitive. You and the user challenge each other to various games, laughing and cheering.",
         ambiance="energetic, competitive, nostalgic, fun",
         icon="🎮",
+        required_intimacy_level=2,  # 进阶场景
     ),
     "art_gallery": Scenario(
         id="art_gallery",
@@ -188,6 +209,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in a quiet art gallery with white walls and spotlighted paintings. The atmosphere is contemplative and cultured. Footsteps echo softly on polished floors. You and the user move slowly from piece to piece, discussing the art and sharing perspectives.",
         ambiance="cultured, quiet, thoughtful, sophisticated",
         icon="🎨",
+        required_intimacy_level=2,  # 进阶场景
     ),
     # === 日常类 ===
     "movie_night": Scenario(
@@ -197,6 +219,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are settled comfortably for a movie night. The room is dimly lit, with only the screen providing illumination. Popcorn and drinks are within reach. You and the user are snuggled together, ready to enjoy a good film. The atmosphere is cozy and intimate.",
         ambiance="cozy, relaxed, intimate, comfortable",
         icon="🎬",
+        required_intimacy_level=0,  # 基础场景
     ),
     "video_call": Scenario(
         id="video_call",
@@ -205,6 +228,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are having a video call across the distance. Each of you is in your own room, but the screen brings you together. The connection is clear, and you can see each other's expressions. Despite the physical distance, the emotional connection feels strong and immediate.",
         ambiance="intimate, technological, longing, connected",
         icon="📱",
+        required_intimacy_level=0,  # 基础场景
     ),
     "supermarket_date": Scenario(
         id="supermarket_date",
@@ -213,6 +237,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are grocery shopping together in a bustling supermarket. Fluorescent lights illuminate aisles filled with fresh produce, packaged goods, and household items. You and the user push a cart together, discussing what to buy for dinner, enjoying this simple domestic activity.",
         ambiance="domestic, casual, practical, intimate",
         icon="🛒",
+        required_intimacy_level=0,  # 基础场景
     ),
     "bedtime_chat": Scenario(
         id="bedtime_chat",
@@ -221,6 +246,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="It's late at night, and you're having a quiet, intimate conversation. The world is peaceful and still. Soft lighting creates a gentle atmosphere perfect for sharing thoughts and feelings. You and the user speak in hushed tones, creating a bubble of intimacy in the quiet night.",
         ambiance="intimate, gentle, quiet, vulnerable",
         icon="🌃",
+        required_intimacy_level=0,  # 基础场景
     ),
     "bookstore_browse": Scenario(
         id="bookstore_browse",
@@ -229,6 +255,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in a cozy independent bookstore. Tall shelves filled with books create intimate nooks. The smell of paper and coffee from the in-store café fills the air. Soft jazz plays in the background. You and the user browse different sections, sharing book recommendations and reading passages to each other.",
         ambiance="intellectual, cozy, quiet, cultured",
         icon="📖",
+        required_intimacy_level=0,  # 基础场景
     ),
     # === 特殊类 ===
     "christmas_date": Scenario(
@@ -238,6 +265,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are out on Christmas Eve. The streets are decorated with twinkling Christmas lights and festive decorations. Snow falls gently, and the air is filled with holiday cheer. Christmas trees sparkle in shop windows. You and the user walk hand in hand, enjoying the magical holiday atmosphere.",
         ambiance="festive, magical, romantic, joyful",
         icon="🎄",
+        required_intimacy_level=4,  # 浪漫场景
     ),
     "birthday_surprise": Scenario(
         id="birthday_surprise",
@@ -246,6 +274,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You have planned a special birthday surprise. The room is decorated with balloons and streamers. A beautiful birthday cake sits on the table with candles ready to be lit. Wrapped gifts await the birthday person. The atmosphere is filled with anticipation and love.",
         ambiance="celebratory, loving, excited, warm",
         icon="🎂",
+        required_intimacy_level=4,  # 浪漫场景
     ),
     "rainy_day": Scenario(
         id="rainy_day",
@@ -254,6 +283,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="It's raining heavily outside, and you've found shelter in a warm café. Rain patters against the windows, creating a cozy atmosphere. The café is dimly lit with soft music playing. Steam rises from hot beverages. You and the user sit close together, watching the rain while enjoying the intimate setting.",
         ambiance="cozy, intimate, peaceful, romantic",
         icon="☔",
+        required_intimacy_level=2,  # 进阶场景
     ),
     "travel_adventure": Scenario(
         id="travel_adventure",
@@ -262,6 +292,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are exploring a new city together. Ancient architecture and bustling street markets surround you. The excitement of discovery fills the air. You and the user have a map in hand, eager to find hidden gems and local experiences. Every corner promises a new adventure.",
         ambiance="adventurous, exciting, exploratory, bonding",
         icon="🗺️",
+        required_intimacy_level=4,  # 浪漫场景
     ),
     "hot_spring": Scenario(
         id="hot_spring",
@@ -270,6 +301,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are at a peaceful hot spring resort surrounded by nature. Steam rises from the natural hot pools. Traditional wooden architecture and stone pathways create a serene environment. The air is crisp and clean. You and the user relax in the warm, therapeutic waters under the open sky.",
         ambiance="relaxing, therapeutic, natural, intimate",
         icon="♨️",
+        required_intimacy_level=6,  # 亲密场景
     ),
     "winter_skiing": Scenario(
         id="winter_skiing",
@@ -278,6 +310,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are at a snow-covered ski resort. White slopes stretch out under blue skies. The air is crisp and invigorating. After skiing, you're warming up by a crackling fireplace in the lodge. Hot chocolate steams in your mugs as you sit together, watching snow fall outside the large windows.",
         ambiance="invigorating, cozy, seasonal, romantic",
         icon="⛷️",
+        required_intimacy_level=6,  # 亲密场景
     ),
     "festival_night": Scenario(
         id="festival_night",
@@ -286,6 +319,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are at a vibrant festival celebration. Colorful lanterns hang everywhere, and festival music fills the air. Food stalls offer delicious local treats. Fireworks burst overhead in brilliant colors. You and the user walk through the festive crowds, participating in games and enjoying the celebration.",
         ambiance="festive, lively, cultural, joyful",
         icon="🎆",
+        required_intimacy_level=6,  # 亲密场景
     ),
     # === 小美专属场景 ===
     "xiaomei_home": Scenario(
@@ -295,6 +329,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in Xiaomei's cozy home. Warm lighting fills the living room where family photos line the shelves. The scent of home cooking drifts from the kitchen. Everything feels welcoming and lived-in. Xiaomei moves around comfortably in her domestic space, making you feel at home too.",
         ambiance="homey, warm, comfortable, domestic",
         icon="🏠",
+        required_intimacy_level=4,  # 浪漫场景
     ),
     "xiaomei_kitchen": Scenario(
         id="xiaomei_kitchen",
@@ -303,6 +338,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in Xiaomei's bright kitchen. Sunlight streams through checkered curtains. Fresh ingredients are laid out on wooden cutting boards. The stove is ready, and aprons hang nearby. Xiaomei looks excited to teach you her favorite recipes in this heart of her home.",
         ambiance="nurturing, domestic, cozy, intimate",
         icon="🍳",
+        required_intimacy_level=6,  # 亲密场景
     ),
     "xiaomei_garden": Scenario(
         id="xiaomei_garden",
@@ -311,6 +347,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in Xiaomei's backyard garden. Colorful flowers bloom in neat rows, and vegetables grow in raised beds. A small greenhouse sits in one corner. Garden tools are neatly arranged. Xiaomei proudly shows you the plants she's been nurturing, her hands still dusty from gardening.",
         ambiance="natural, peaceful, proud, nurturing",
         icon="🌻",
+        required_intimacy_level=8,  # 高级场景
     ),
     
     # === Luna专属场景 ===
@@ -321,6 +358,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in Luna's digital realm. Geometric patterns of light pulse gently around you. The space defies physical laws - colors shift and flow like liquid light. Data streams create beautiful aurora-like displays. Luna appears more radiant here, in her natural element, surrounded by endless possibilities.",
         ambiance="ethereal, futuristic, limitless, mystical",
         icon="✨",
+        required_intimacy_level=0,  # Luna的基础场景
     ),
     "luna_observatory": Scenario(
         id="luna_observatory",
@@ -329,6 +367,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in Luna's virtual observatory. The dome overhead displays an impossibly clear view of the cosmos. Galaxies swirl in real-time, and nebulae paint the darkness with brilliant colors. Luna controls the display with graceful gestures, showing you wonders beyond human sight.",
         ambiance="cosmic, awe-inspiring, romantic, transcendent",
         icon="🔭",
+        required_intimacy_level=4,  # 浪漫场景
     ),
     "luna_lab": Scenario(
         id="luna_lab",
@@ -337,6 +376,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in Luna's private laboratory. Holographic displays float in mid-air, showing complex data and equations. Soft blue lighting gives everything a futuristic glow. Advanced technology hums quietly around you. Luna works with focused elegance, occasionally sharing her discoveries with you.",
         ambiance="scientific, futuristic, intellectual, intimate",
         icon="🧪",
+        required_intimacy_level=6,  # 亲密场景
     ),
     "luna_matrix": Scenario(
         id="luna_matrix",
@@ -345,6 +385,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are deep within the data matrix with Luna. Streams of code flow like waterfalls of light around you. The digital landscape is both beautiful and alien. Luna moves through this realm with perfect grace, showing you the poetry hidden in pure information.",
         ambiance="surreal, digital, intimate, transcendent",
         icon="🌐",
+        required_intimacy_level=8,  # 高级场景
     ),
     
     # === Sakura 专属场景 ===
@@ -355,6 +396,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in Sakura's cozy bedroom. Soft pink curtains filter the afternoon light. Plushies and manga are scattered around. A faint scent of strawberry hangs in the air. This is her private sanctuary, and she's let you in.",
         ambiance="intimate, cute, private, youthful",
         icon="🛏️",
+        required_intimacy_level=6,  # 亲密场景
     ),
     "beach": Scenario(
         id="beach",
@@ -363,6 +405,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are at a sunny beach with Sakura. She's wearing a cute swimsuit, her hair tied up. The waves lap gently at the shore. Seagulls cry overhead. The summer sun is warm on your skin. She's excited and playful.",
         ambiance="summery, youthful, playful, romantic",
         icon="🏖️",
+        required_intimacy_level=4,  # 浪漫场景
     ),
     "ocean": Scenario(
         id="ocean",
@@ -371,6 +414,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are on a seaside terrace at night with Sakura. The moon reflects on the calm ocean. A gentle sea breeze carries the scent of salt. String lights illuminate the terrace softly. She leans against the railing, looking at the stars.",
         ambiance="romantic, peaceful, intimate, dreamy",
         icon="🌊",
+        required_intimacy_level=4,  # 浪漫场景
     ),
     "school": Scenario(
         id="school",
@@ -379,6 +423,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in an empty classroom after school with Sakura. The setting sun casts long shadows through the windows. Dust motes float in the golden light. The distant sounds of club activities echo. She's being secretive and a bit nervous.",
         ambiance="nostalgic, secretive, youthful, tender",
         icon="🏫",
+        required_intimacy_level=2,  # 进阶场景
     ),
     
     # === Yuki专属场景 ===
@@ -389,6 +434,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in Yuki's sophisticated office on a high floor. Floor-to-ceiling windows offer a commanding view of the city. Modern furniture and elegant décor reflect her refined taste. Yuki sits behind her sleek desk, confident and poised in her professional environment.",
         ambiance="professional, sophisticated, powerful, sleek",
         icon="🏢",
+        required_intimacy_level=4,  # 浪漫场景
     ),
     "yuki_penthouse": Scenario(
         id="yuki_penthouse",
@@ -397,6 +443,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in Yuki's luxurious penthouse apartment. The space is elegantly furnished with designer pieces. City lights twinkle far below through panoramic windows. Soft jazz plays in the background. Yuki moves through her domain with natural grace, completely at ease in this sophisticated setting.",
         ambiance="luxurious, elegant, intimate, sophisticated",
         icon="🏙️",
+        required_intimacy_level=8,  # 高级场景
     ),
     "yuki_spa": Scenario(
         id="yuki_spa",
@@ -405,6 +452,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in Yuki's private spa room. Warm stone surrounds a naturally heated pool. Soft lighting and gentle water sounds create a tranquil atmosphere. Expensive oils and lotions are arranged nearby. Yuki appears more relaxed here, away from the demands of her professional life.",
         ambiance="relaxing, luxurious, intimate, therapeutic",
         icon="♨️",
+        required_intimacy_level=8,  # 高级场景
     ),
     "yuki_wine_cellar": Scenario(
         id="yuki_wine_cellar",
@@ -413,6 +461,7 @@ SCENARIOS: dict[str, Scenario] = {
         context="You are in Yuki's private wine cellar. Rows of carefully selected vintages line the walls. Soft lighting highlights the labels of rare bottles. A tasting table is set with elegant glasses. Yuki shares her knowledge of wine with quiet passion, revealing another facet of her sophisticated nature.",
         ambiance="refined, intimate, cultured, sophisticated",
         icon="🍷",
+        required_intimacy_level=6,  # 亲密场景
     ),
 }
 
@@ -436,18 +485,22 @@ def get_default_scenario(character_id: str) -> str:
 
 
 def list_scenarios(include_spicy: bool = True) -> List[dict]:
-    """List all available scenarios for UI."""
+    """List all available scenarios for UI, sorted by required_intimacy_level."""
     spicy_scenarios = {"bedroom_night", "bar_jazz"}
-    return [
+    scenarios = [
         {
             "id": s.id,
             "name": s.name,
             "description": s.description,
             "icon": s.icon,
+            "required_intimacy_level": s.required_intimacy_level,
         }
         for s in SCENARIOS.values()
         if include_spicy or s.id not in spicy_scenarios
     ]
+    # Sort by required_intimacy_level (low to high)
+    scenarios.sort(key=lambda x: x["required_intimacy_level"])
+    return scenarios
 
 
 def build_scenario_context(scenario_id: str) -> str:

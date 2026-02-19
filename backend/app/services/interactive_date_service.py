@@ -533,6 +533,19 @@ class InteractiveDateService:
         if not scenario:
             return {"success": False, "error": f"未知场景: {scenario_id}"}
         
+        # 检查场景是否解锁（根据亲密度等级）
+        if scenario.required_intimacy_level > 0:
+            intimacy_data = await intimacy_service.get_or_create_intimacy(user_id, character_id)
+            user_level = intimacy_data.get("current_level", 1)
+            if user_level < scenario.required_intimacy_level:
+                return {
+                    "success": False,
+                    "error": f"需要 Lv.{scenario.required_intimacy_level} 才能解锁「{scenario.name}」",
+                    "reason": "scenario_locked",
+                    "required_level": scenario.required_intimacy_level,
+                    "current_level": user_level,
+                }
+        
         # 检查体力（VIP 用户免费）
         is_vip = await subscription_service.compare_tier(user_id, "vip")
         stamina_cost = 0 if is_vip else DATE_STAMINA_COST

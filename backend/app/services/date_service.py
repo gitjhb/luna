@@ -560,19 +560,20 @@ You are on a date with the user!
         """
         获取约会场景列表：专属场景 + 通用场景
         
-        专属场景有等级锁定，通用场景始终可用
+        所有场景都根据 required_intimacy_level 判断锁定状态
+        按亲密度要求从低到高排序
         """
         from app.services.intimacy_service import intimacy_service
         from app.services.scenarios import get_scenario
+        
+        # 获取用户等级
+        intimacy_data = await intimacy_service.get_or_create_intimacy(user_id, character_id)
+        user_level = intimacy_data.get("current_level", 1)
         
         scenarios = []
         
         # 1. 添加角色专属场景（如果有）
         if character_id in CHARACTER_EXCLUSIVE_SCENES:
-            # 获取用户等级
-            intimacy_data = await intimacy_service.get_or_create_intimacy(user_id, character_id)
-            user_level = intimacy_data.get("current_level", 1)
-            
             exclusive_scenes = CHARACTER_EXCLUSIVE_SCENES[character_id]
             for scene_id, scene_config in exclusive_scenes.items():
                 required_level = scene_config.get("required_level", 1)
@@ -588,19 +589,25 @@ You are on a date with the user!
                     "is_exclusive": True,
                 })
         
-        # 2. 添加通用约会场景（始终可用）
+        # 2. 添加通用约会场景（根据 required_intimacy_level 检查锁定）
         for scenario_id in DATE_SCENARIOS:
             scenario = get_scenario(scenario_id)
             if scenario:
+                required_level = scenario.required_intimacy_level
+                is_locked = user_level < required_level
+                
                 scenarios.append({
                     "id": scenario.id,
                     "name": scenario.name,
                     "icon": scenario.icon,
                     "description": scenario.description,
-                    "required_level": 0,
-                    "is_locked": False,
+                    "required_level": required_level,
+                    "is_locked": is_locked,
                     "is_exclusive": False,
                 })
+        
+        # 3. 按 required_level 从低到高排序
+        scenarios.sort(key=lambda x: (x["required_level"], x["name"]))
         
         return scenarios
 
