@@ -1115,12 +1115,7 @@ export default function ChatScreen() {
         glowColor={emotionTheme.colors.glow}
       />
 
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-      >
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <SafeAreaView style={[styles.safeArea, { paddingBottom: keyboardHeight }]} edges={['top']}>
         {/* AI Disclaimer Banner - shown once */}
         <AiDisclaimerBanner />
 
@@ -1188,7 +1183,7 @@ export default function ChatScreen() {
           data={messages}
           keyExtractor={(item) => item.messageId}
           renderItem={renderMessage}
-          contentContainerStyle={[styles.messagesList, { paddingBottom: keyboardHeight > 0 ? keyboardHeight : 0 }]}
+          contentContainerStyle={styles.messagesList}
           inverted
           onScroll={handleScroll}
           scrollEventThrottle={100}
@@ -1349,7 +1344,7 @@ export default function ChatScreen() {
         <View>
           {/* AI Disclaimer - California compliance */}
           <Text style={styles.aiDisclaimer}>{t.chat.aiDisclaimer}</Text>
-          <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 10) + (keyboardHeight > 0 ? 10 : 0) }]}>
+          <View style={[styles.inputContainer, { paddingBottom: keyboardHeight > 0 ? 10 : (insets.bottom || 10) }]}>
             {/* Input */}
             <View style={styles.inputWrapper}>
               <TextInput
@@ -1418,7 +1413,6 @@ export default function ChatScreen() {
           />
         )}
       </SafeAreaView>
-      </KeyboardAvoidingView>
 
       {/* Recharge Modal */}
       <RechargeModal
