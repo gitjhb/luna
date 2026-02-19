@@ -252,17 +252,27 @@ export default function DateSceneModal({
   
   // TextInput ref for free input focus
   const freeInputRef = useRef<TextInput>(null);
+  const scrollViewRef = useRef<any>(null);
   
   // Auto focus free input when opened and expand sheet
   useEffect(() => {
     if (showFreeInput) {
       // Expand sheet to max and focus input
-      bottomSheetRef.current?.snapToIndex(2); // 85%
+      bottomSheetRef.current?.snapToIndex(2);
       setTimeout(() => {
         freeInputRef.current?.focus();
       }, 150);
     }
   }, [showFreeInput]);
+  
+  // 键盘弹出时自动滚动到底部
+  useEffect(() => {
+    if (keyboardHeight > 0 && scrollViewRef.current) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd?.({ animated: true });
+      }, 100);
+    }
+  }, [keyboardHeight]);
   
   // Reset when modal opens and check cooldown
   useEffect(() => {
@@ -1057,6 +1067,7 @@ export default function DateSceneModal({
         enablePanDownToClose={false}
       >
         <BottomSheetScrollView 
+          ref={scrollViewRef}
           contentContainerStyle={[styles.bottomSheetContent, { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 20 : 20 }]}
           keyboardShouldPersistTaps="handled"
         >
