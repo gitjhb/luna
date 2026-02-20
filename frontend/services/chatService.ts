@@ -11,6 +11,7 @@ interface SendMessageRequest {
   requestType?: 'text' | 'photo' | 'video' | 'voice';
   spicyMode?: boolean;
   intimacyLevel?: number;
+  clientMessageId?: string;  // Client-generated UUID for user message dedup
 }
 
 // Re-export types for convenience
@@ -160,6 +161,7 @@ export const chatService = {
       request_type: data.requestType || 'text',
       spicy_mode: data.spicyMode || false,
       intimacy_level: data.intimacyLevel || 1,
+      client_message_id: data.clientMessageId,  // Client-generated UUID for dedup
     });
     
     return {

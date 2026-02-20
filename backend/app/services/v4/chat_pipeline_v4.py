@@ -62,6 +62,7 @@ class ChatRequestV4:
     session_id: str
     message: str
     intimacy_level: int = 1
+    client_message_id: Optional[str] = None  # Client-generated UUID for user message dedup
 
 
 @dataclass
@@ -133,7 +134,8 @@ class ChatPipelineV4:
                     session_id=request.session_id,
                     role="user",
                     content=request.message,
-                    tokens_used=0
+                    tokens_used=0,
+                    message_id=request.client_message_id,  # Use client-provided ID if available
                 )
             
             # 5.6 获取用户兴趣

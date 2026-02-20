@@ -58,6 +58,7 @@ class ChatCompletionRequest(BaseModel):
     spicy_mode: bool = False  # Enable adult content (Premium only)
     intimacy_level: int = 1   # Current relationship level (1-100)
     scenario_id: Optional[str] = None  # Scene context injection (e.g., "cafe_paris")
+    client_message_id: Optional[str] = None  # Client-generated UUID for user message dedup
 
 
 class ChatCompletionResponse(BaseModel):

@@ -374,6 +374,7 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             role="user",
             content=request.message,
             tokens_used=0,
+            message_id=request.client_message_id,  # Use client-provided ID if available
         )
     
     all_messages = await chat_repo.get_all_messages(session_id)
@@ -406,7 +407,8 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             character_id=character_id,
             session_id=session_id,
             message=request.message,
-            intimacy_level=intimacy_level
+            intimacy_level=intimacy_level,
+            client_message_id=request.client_message_id,  # Pass client-provided ID for dedup
         )
         
         # 处理请求

@@ -483,8 +483,11 @@ export default function ChatScreen() {
     Keyboard.dismiss();
     setInputText('');
 
+    // Generate client-side UUID for dedup (same ID used locally and on server)
+    const clientMessageId = crypto.randomUUID();
+
     const userMessage: Message = {
-      messageId: `user-${Date.now()}`,
+      messageId: clientMessageId,
       role: 'user',
       content: text,
       createdAt: new Date().toISOString(),
@@ -503,6 +506,7 @@ export default function ChatScreen() {
         message: text,
         spicyMode: isSpicyMode,
         intimacyLevel: relationshipLevel || 1,
+        clientMessageId,  // Pass client-generated ID to server
       });
 
       // Clear typing BEFORE adding message to avoid flicker
@@ -625,8 +629,11 @@ export default function ChatScreen() {
     const photoRequest = "Send me a photo of yourself 📸";
     setInputText('');
 
+    // Generate client-side UUID for dedup (same ID used locally and on server)
+    const clientMessageId = crypto.randomUUID();
+
     const userMessage: Message = {
-      messageId: `user-${Date.now()}`,
+      messageId: clientMessageId,
       role: 'user',
       content: photoRequest,
       createdAt: new Date().toISOString(),
@@ -643,6 +650,7 @@ export default function ChatScreen() {
         requestType: 'photo',  // Tell backend this is a photo request
         spicyMode: isSpicyMode,
         intimacyLevel: relationshipLevel || 1,
+        clientMessageId,  // Pass client-generated ID to server
       });
 
       // Clear typing BEFORE adding message to avoid flicker

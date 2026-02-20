@@ -248,9 +248,15 @@ class ChatRepository:
         role: str,
         content: str,
         tokens_used: int = 0,
+        message_id: Optional[str] = None,
     ) -> dict:
-        """Add a message to a session"""
-        message_id = str(uuid4())
+        """Add a message to a session
+        
+        Args:
+            message_id: Optional client-provided UUID. If not provided, generates new UUID.
+                       Used for client-generated IDs to avoid message deduplication issues.
+        """
+        message_id = message_id or str(uuid4())
         now = datetime.utcnow()
         
         message_data = {
