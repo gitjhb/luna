@@ -129,11 +129,29 @@ const syncFromBackend = async (sessionId: string) => {
 /**
  * Save messages to SQLite (fire and forget)
  * Store type, imageUrl, videoUrl, reaction in extra_data JSON
+ * Deduplicates by content+role within 30s window to avoid frontend/backend ID mismatch duplicates
  */
 const saveToSQLite = async (sessionId: string, messages: Message[]) => {
   try {
     const { MessageRepository } = await import('../services/database/repositories');
+    
+    // Get existing messages to check for duplicates
+    const existing = await MessageRepository.getBySessionId(sessionId, { limit: 50, order: 'desc' });
+    
     for (const msg of messages) {
+      // Check for duplicate content within 30 second window
+      const msgTime = new Date(msg.createdAt).getTime();
+      const isDuplicate = existing.some(e => 
+        e.content === msg.content && 
+        e.role === msg.role && 
+        Math.abs(new Date(e.created_at).getTime() - msgTime) < 30000
+      );
+      
+      if (isDuplicate) {
+        console.log('[useMessages] Skipping duplicate in SQLite:', msg.content?.substring(0, 30));
+        continue;
+      }
+      
       // Store extra fields in extra_data JSON
       const extra_data: Record<string, any> = {};
       if (msg.type) extra_data.type = msg.type;
@@ -150,6 +168,17 @@ const saveToSQLite = async (sessionId: string, messages: Message[]) => {
         is_unlocked: !msg.isLocked,
         extra_data: Object.keys(extra_data).length > 0 ? extra_data : undefined,
       }).catch(() => {}); // Ignore duplicate errors
+      
+      // Add to existing for subsequent checks in this batch
+      existing.push({
+        id: msg.messageId,
+        session_id: sessionId,
+        role: msg.role as any,
+        content: msg.content,
+        created_at: msg.createdAt,
+        is_unlocked: !msg.isLocked,
+        unlock_cost: 0,
+      });
     }
     console.log('[useMessages] Saved to SQLite:', messages.length, 'messages');
   } catch (e) {
@@ -188,15 +217,31 @@ export function useMessages({ sessionId, characterId, enabled = true }: UseMessa
   // We need: [newest_overall, ..., oldest_overall]
   // So: reverse each page, then flatten in order
   // 
-  // DEDUP: optimistic adds + refetch can cause duplicates, so deduplicate by messageId
+  // DEDUP: optimistic adds + refetch can cause duplicates
+  // Deduplicate by messageId AND by content+role within 30s window
+  // (frontend uses user-xxx IDs, backend uses UUIDs for same message)
   const allMessages = (() => {
     const raw = query.data?.pages
       .flatMap((page: MessagesPage) => [...page.messages].reverse())
       ?? [];
-    const seen = new Set<string>();
+    const seenIds = new Set<string>();
+    const seenContent: Array<{ content: string; role: string; time: number }> = [];
+    
     return raw.filter((msg: Message) => {
-      if (seen.has(msg.messageId)) return false;
-      seen.add(msg.messageId);
+      // Check by messageId
+      if (seenIds.has(msg.messageId)) return false;
+      
+      // Check by content+role within 30 second window
+      const msgTime = new Date(msg.createdAt).getTime();
+      const isDuplicateContent = seenContent.some(seen => 
+        seen.content === msg.content && 
+        seen.role === msg.role && 
+        Math.abs(seen.time - msgTime) < 30000
+      );
+      if (isDuplicateContent) return false;
+      
+      seenIds.add(msg.messageId);
+      seenContent.push({ content: msg.content, role: msg.role, time: msgTime });
       return true;
     });
   })();

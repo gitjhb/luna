@@ -411,28 +411,53 @@ class InteractiveDateService:
             active_session: 进行中的约会
             emotion_too_low: 情绪太低不能约会
         """
-        # 检查角色情绪（太生气不能约会）
-        from app.services.emotion_service import emotion_service
+        # 检查角色情绪（太生气/受伤/冷淡时不能约会）
+        from app.services.emotion_service import emotion_service, EmotionService
+        from app.services.character_config import get_character_config
         
-        # 角色约会情绪阈值配置（默认-20）
-        CHARACTER_DATE_EMOTION_THRESHOLD = {
-            "e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e": -20,  # Sakura
-            "a1b2c3d4-e5f6-7890-abcd-ef1234567890": -30,  # Mei (芽衣，傲娇所以稍低)
-        }
-        DEFAULT_EMOTION_THRESHOLD = -20
-        
-        emotion_threshold = CHARACTER_DATE_EMOTION_THRESHOLD.get(character_id, DEFAULT_EMOTION_THRESHOLD)
+        # 不允许约会的负面情绪状态
+        NEGATIVE_STATES = ["angry", "hurt", "cold", "silent"]
         
         try:
-            emotion_status = await emotion_service.get_status(user_id, character_id)
-            current_emotion = emotion_status.get("current_score", 0)
-            if current_emotion < emotion_threshold:
+            emotion_data = await emotion_service.get_emotion(user_id, character_id)
+            emotional_state = emotion_data.get("emotional_state", "neutral")
+            emotion_intensity = emotion_data.get("emotion_intensity", 0.0)
+            
+            # 检查是否处于负面情绪状态
+            if emotional_state in NEGATIVE_STATES:
+                # 获取角色名字
+                character = get_character_config(character_id)
+                char_name = character.name if character else "她"
+                
+                # 根据情绪状态和强度生成不同的拒绝消息
+                if emotional_state == "silent":
+                    # 沉默 - 最严重
+                    message = f"{char_name}不想说话，更不想约会。先让她一个人待会吧..."
+                elif emotional_state == "angry":
+                    if emotion_intensity >= 0.7:
+                        message = f"{char_name}现在很生气，不想理你。先让她冷静一下吧..."
+                    else:
+                        message = f"{char_name}还在生气呢，暂时不想和你约会。"
+                elif emotional_state == "hurt":
+                    message = f"{char_name}心情不好，被你伤到了...先哄哄她吧"
+                elif emotional_state == "cold":
+                    message = f"{char_name}对你有点冷淡，不是很想约会。多关心关心她？"
+                else:
+                    message = f"{char_name}现在没什么心情约会，和她聊聊天吧~"
+                
+                # 获取状态的 valence 值作为 current_emotion
+                state_info = EmotionService.STATES.get(emotional_state, {})
+                valence = state_info.get("valence", 0)
+                # 结合强度计算情绪分数：valence * (1 + intensity) * 10
+                emotion_score = int(valence * (1 + emotion_intensity) * 10)
+                
                 return {
                     "can_date": False,
                     "reason": "emotion_too_low",
-                    "current_emotion": current_emotion,
-                    "required_emotion": emotion_threshold,
-                    "message": "她不是很想约会呢，提升下好感再来吧～",
+                    "emotional_state": emotional_state,
+                    "emotion_intensity": emotion_intensity,
+                    "current_emotion": emotion_score,
+                    "message": message,
                 }
         except Exception as e:
             logger.warning(f"Failed to check emotion: {e}")
