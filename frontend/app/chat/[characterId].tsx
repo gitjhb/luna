@@ -28,6 +28,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Video, ResizeMode } from 'expo-av';
+import * as Crypto from 'expo-crypto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUserStore } from '../../store/userStore';
 import { useChatStore, Message } from '../../store/chatStore';
@@ -484,7 +485,7 @@ export default function ChatScreen() {
     setInputText('');
 
     // Generate client-side UUID for dedup (same ID used locally and on server)
-    const clientMessageId = crypto.randomUUID();
+    const clientMessageId = Crypto.randomUUID();
 
     const userMessage: Message = {
       messageId: clientMessageId,
@@ -630,7 +631,7 @@ export default function ChatScreen() {
     setInputText('');
 
     // Generate client-side UUID for dedup (same ID used locally and on server)
-    const clientMessageId = crypto.randomUUID();
+    const clientMessageId = Crypto.randomUUID();
 
     const userMessage: Message = {
       messageId: clientMessageId,
