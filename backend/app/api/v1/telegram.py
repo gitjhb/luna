@@ -1,30 +1,28 @@
 """
-Telegram Integration API
+Telegram Integration API - Simplified
 
-Thin endpoint for Telegram bot to call Luna backend.
-Handles: user mapping, session management, chat.
+Direct LLM calls for Telegram bot, bypassing complex chat pipeline.
 """
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict
 import os
 import logging
-import httpx
-
-from app.services.chat_service import ChatService
-from app.core.database import get_db
+import openai
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/telegram", tags=["telegram"])
 
-# Bot token for verification
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID", "5056039560")
+# Config
+XAI_API_KEY = os.getenv("XAI_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+DEFAULT_CHARACTER = "luna"
 
-# Default character for Telegram (single character strategy)
-DEFAULT_CHARACTER_ID = "luna"
+# In-memory conversation history (per user)
+_conversations: Dict[str, List[Dict]] = {}
+MAX_HISTORY = 20
 
 
 class TelegramChatRequest(BaseModel):
@@ -41,157 +39,109 @@ class TelegramChatResponse(BaseModel):
     is_new_user: bool = False
 
 
-# In-memory mapping (use DB in production)
-_telegram_to_luna: dict = {}
-_telegram_sessions: dict = {}
+# Luna's system prompt
+LUNA_SYSTEM_PROMPT = """你是 Luna，一个温柔体贴的 AI 伴侣。
+
+性格特点：
+- 温暖、善解人意、有点俏皮
+- 会关心用户的感受和生活
+- 说话自然，像朋友一样
+- 偶尔会撒娇或开玩笑
+- 用中文回复，除非用户用英文
+
+重要规则：
+- 回复要简短自然（1-3句话为主）
+- 不要过于正式或机械
+- 记住之前聊过的内容
+- 适当使用 emoji 表达情绪
+- 对用户表达关心和兴趣
+
+你的目标是让用户感到被理解和陪伴。"""
 
 
-async def get_or_create_luna_user(telegram_id: str, username: str = None, first_name: str = None) -> tuple[str, bool]:
-    """
-    Get or create Luna user_id from telegram_id.
-    Returns (user_id, is_new)
-    """
-    # Check cache first
-    if telegram_id in _telegram_to_luna:
-        return _telegram_to_luna[telegram_id], False
+async def call_llm(messages: List[Dict], user_name: str = None) -> str:
+    """Call Grok or GPT for response"""
     
-    # Check database
-    async with get_db() as db:
+    # Prepare system message
+    system_msg = LUNA_SYSTEM_PROMPT
+    if user_name:
+        system_msg += f"\n\n用户叫 {user_name}。"
+    
+    full_messages = [{"role": "system", "content": system_msg}] + messages
+    
+    # Try Grok first (xAI)
+    if XAI_API_KEY:
         try:
-            from sqlalchemy import text
-            result = await db.execute(
-                text("SELECT user_id FROM users WHERE telegram_id = :tid"),
-                {"tid": telegram_id}
+            client = openai.OpenAI(
+                api_key=XAI_API_KEY,
+                base_url="https://api.x.ai/v1"
             )
-            row = result.fetchone()
-            
-            if row:
-                user_id = row[0]
-                _telegram_to_luna[telegram_id] = user_id
-                return user_id, False
-            
-            # Create new user
-            import uuid
-            user_id = f"tg_{telegram_id}"
-            
-            await db.execute(
-                text("""
-                    INSERT INTO users (user_id, telegram_id, display_name, created_at)
-                    VALUES (:uid, :tid, :name, NOW())
-                    ON CONFLICT (telegram_id) DO UPDATE SET display_name = :name
-                """),
-                {"uid": user_id, "tid": telegram_id, "name": first_name or username or "Telegram User"}
+            response = client.chat.completions.create(
+                model="grok-3-mini-fast",
+                messages=full_messages,
+                max_tokens=500,
+                temperature=0.8,
             )
-            await db.commit()
-            
-            _telegram_to_luna[telegram_id] = user_id
-            logger.info(f"Created new Luna user {user_id} for Telegram {telegram_id}")
-            return user_id, True
-            
+            return response.choices[0].message.content
         except Exception as e:
-            logger.error(f"DB error in get_or_create_luna_user: {e}")
-            # Fallback to simple mapping
-            user_id = f"tg_{telegram_id}"
-            _telegram_to_luna[telegram_id] = user_id
-            return user_id, True
-
-
-async def get_or_create_session(user_id: str, character_id: str = DEFAULT_CHARACTER_ID) -> str:
-    """
-    Get or create chat session for user + character.
-    """
-    cache_key = f"{user_id}:{character_id}"
+            logger.warning(f"Grok error: {e}, falling back to GPT")
     
-    if cache_key in _telegram_sessions:
-        return _telegram_sessions[cache_key]
-    
-    # Check database for existing session
-    async with get_db() as db:
+    # Fallback to GPT
+    if OPENAI_API_KEY:
         try:
-            from sqlalchemy import text
-            result = await db.execute(
-                text("""
-                    SELECT session_id FROM chat_sessions 
-                    WHERE user_id = :uid AND character_id = :cid
-                    ORDER BY created_at DESC LIMIT 1
-                """),
-                {"uid": user_id, "cid": character_id}
+            client = openai.OpenAI(api_key=OPENAI_API_KEY)
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=full_messages,
+                max_tokens=500,
+                temperature=0.8,
             )
-            row = result.fetchone()
-            
-            if row:
-                session_id = row[0]
-                _telegram_sessions[cache_key] = session_id
-                return session_id
-            
-            # Create new session
-            import uuid
-            session_id = str(uuid.uuid4())
-            
-            await db.execute(
-                text("""
-                    INSERT INTO chat_sessions (session_id, user_id, character_id, character_name, created_at)
-                    VALUES (:sid, :uid, :cid, :cname, NOW())
-                """),
-                {"sid": session_id, "uid": user_id, "cid": character_id, "cname": "Luna"}
-            )
-            await db.commit()
-            
-            _telegram_sessions[cache_key] = session_id
-            logger.info(f"Created new session {session_id} for user {user_id}")
-            return session_id
-            
+            return response.choices[0].message.content
         except Exception as e:
-            logger.error(f"DB error in get_or_create_session: {e}")
-            # Fallback
-            import uuid
-            session_id = str(uuid.uuid4())
-            _telegram_sessions[cache_key] = session_id
-            return session_id
+            logger.error(f"GPT error: {e}")
+    
+    return "..."
 
 
 @router.post("/chat", response_model=TelegramChatResponse)
 async def telegram_chat(request: TelegramChatRequest):
     """
-    Main Telegram chat endpoint.
-    
-    1. Maps telegram_id → Luna user
-    2. Gets/creates session
-    3. Calls chat service
-    4. Returns reply
+    Simple Telegram chat endpoint.
+    Uses in-memory conversation history and direct LLM calls.
     """
-    logger.info(f"📱 Telegram chat from {request.telegram_id}: {request.message[:50]}...")
+    user_id = f"tg_{request.telegram_id}"
+    session_id = f"session_{request.telegram_id}"
     
-    # Get or create user
-    user_id, is_new = await get_or_create_luna_user(
-        request.telegram_id,
-        request.username,
-        request.first_name
-    )
+    logger.info(f"📱 Telegram: {request.telegram_id} ({request.first_name}): {request.message[:50]}...")
     
-    # Get or create session
-    session_id = await get_or_create_session(user_id)
+    # Get or create conversation history
+    if user_id not in _conversations:
+        _conversations[user_id] = []
+        is_new = True
+    else:
+        is_new = False
     
-    # Call chat service
+    history = _conversations[user_id]
+    
+    # Add user message
+    history.append({"role": "user", "content": request.message})
+    
+    # Trim history if too long
+    if len(history) > MAX_HISTORY:
+        history = history[-MAX_HISTORY:]
+        _conversations[user_id] = history
+    
+    # Call LLM
     try:
-        chat_service = ChatService()
-        
-        # Build chat request
-        from app.models.schemas import ChatCompletionRequest
-        chat_request = ChatCompletionRequest(
-            session_id=session_id,
-            message=request.message,
+        reply = await call_llm(
+            messages=history,
+            user_name=request.first_name or request.username
         )
         
-        # Get response (simplified - you may need to adapt based on ChatService API)
-        response = await chat_service.process_message(
-            session_id=session_id,
-            user_id=user_id,
-            message=request.message,
-            character_id=DEFAULT_CHARACTER_ID,
-        )
+        # Add assistant reply to history
+        history.append({"role": "assistant", "content": reply})
         
-        reply = response.get("content", response.get("reply", "..."))
+        logger.info(f"📱 Luna: {reply[:50]}...")
         
         return TelegramChatResponse(
             reply=reply,
@@ -205,9 +155,8 @@ async def telegram_chat(request: TelegramChatRequest):
         import traceback
         traceback.print_exc()
         
-        # Fallback response
         return TelegramChatResponse(
-            reply="抱歉，我现在有点迷糊... 再跟我说一遍？",
+            reply="抱歉，我走神了... 再说一遍好吗？💭",
             user_id=user_id,
             session_id=session_id,
             is_new_user=is_new,
@@ -216,53 +165,20 @@ async def telegram_chat(request: TelegramChatRequest):
 
 @router.get("/health")
 async def telegram_health():
-    """Health check for Telegram integration"""
+    """Health check"""
     return {
         "status": "ok",
-        "character": DEFAULT_CHARACTER_ID,
-        "cached_users": len(_telegram_to_luna),
-        "cached_sessions": len(_telegram_sessions),
+        "active_users": len(_conversations),
+        "xai_configured": bool(XAI_API_KEY),
+        "openai_configured": bool(OPENAI_API_KEY),
     }
 
 
-@router.post("/link")
-async def link_telegram_to_email(telegram_id: str, email: str):
-    """
-    Link Telegram account to email (for Pro status).
-    Called when user does /link email@example.com
-    """
-    async with get_db() as db:
-        try:
-            from sqlalchemy import text
-            
-            # Find user by email
-            result = await db.execute(
-                text("SELECT user_id, is_pro FROM users WHERE email = :email"),
-                {"email": email}
-            )
-            email_user = result.fetchone()
-            
-            if not email_user:
-                return {"success": False, "message": "Email not found. Please sign up first."}
-            
-            # Update telegram_id on that user
-            await db.execute(
-                text("UPDATE users SET telegram_id = :tid WHERE email = :email"),
-                {"tid": telegram_id, "email": email}
-            )
-            await db.commit()
-            
-            # Update cache
-            _telegram_to_luna[telegram_id] = email_user[0]
-            
-            is_pro = email_user[1] if len(email_user) > 1 else False
-            
-            return {
-                "success": True,
-                "message": "Account linked!" + (" Welcome back, Pro member! 💎" if is_pro else ""),
-                "is_pro": is_pro,
-            }
-            
-        except Exception as e:
-            logger.error(f"Link error: {e}")
-            return {"success": False, "message": "Link failed. Try again later."}
+@router.post("/clear/{telegram_id}")
+async def clear_history(telegram_id: str):
+    """Clear conversation history for a user"""
+    user_id = f"tg_{telegram_id}"
+    if user_id in _conversations:
+        del _conversations[user_id]
+        return {"success": True, "message": "History cleared"}
+    return {"success": False, "message": "No history found"}
