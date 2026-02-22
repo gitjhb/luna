@@ -90,12 +90,13 @@ async def get_or_create_telegram_user(
         
         # Create wallet with default credits
         from app.config import settings
+        default_credits = settings.DAILY_CREDITS_FREE
         wallet = UserWallet(
             user_id=user.user_id,
-            free_credits=settings.DAILY_REFRESH_AMOUNT,
+            free_credits=default_credits,
             purchased_credits=0.0,
-            total_credits=settings.DAILY_REFRESH_AMOUNT,
-            daily_refresh_amount=settings.DAILY_REFRESH_AMOUNT,
+            total_credits=default_credits,
+            daily_refresh_amount=default_credits,
         )
         db.add(wallet)
         
@@ -342,3 +343,200 @@ async def get_telegram_user_info(telegram_id: str):
     except Exception as e:
         logger.error(f"Failed to get user info: {e}")
         return {"exists": False, "error": str(e)}
+
+
+# ========== Telegram Bot Webhook ==========
+import httpx
+from app.config import settings
+
+
+async def send_telegram_message(chat_id: str, text: str):
+    """Send a message via Telegram Bot API."""
+    bot_token = getattr(settings, 'TELEGRAM_BOT_TOKEN', None) or os.getenv('TELEGRAM_BOT_TOKEN')
+    if not bot_token:
+        logger.error("TELEGRAM_BOT_TOKEN not configured")
+        return False
+    
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+    }
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload, timeout=10.0)
+            if response.status_code != 200:
+                logger.error(f"Telegram API error: {response.text}")
+                return False
+            return True
+    except Exception as e:
+        logger.error(f"Failed to send Telegram message: {e}")
+        return False
+
+
+async def send_chat_action(chat_id: str, action: str = "typing"):
+    """Send chat action (typing indicator) via Telegram Bot API."""
+    bot_token = getattr(settings, 'TELEGRAM_BOT_TOKEN', None) or os.getenv('TELEGRAM_BOT_TOKEN')
+    if not bot_token:
+        return False
+    
+    url = f"https://api.telegram.org/bot{bot_token}/sendChatAction"
+    payload = {"chat_id": chat_id, "action": action}
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(url, json=payload, timeout=5.0)
+            return True
+    except:
+        return False
+
+
+class TelegramUpdate(BaseModel):
+    """Telegram webhook update payload."""
+    update_id: int
+    message: Optional[dict] = None
+    callback_query: Optional[dict] = None
+
+
+@router.post("/webhook")
+async def telegram_webhook(update: TelegramUpdate):
+    """
+    Telegram Bot Webhook endpoint.
+    
+    Receives updates from Telegram and processes them through Luna's chat pipeline.
+    """
+    logger.info(f"📥 Telegram webhook: update_id={update.update_id}")
+    
+    # Handle callback queries (button clicks)
+    if update.callback_query:
+        # TODO: Handle button callbacks
+        return {"ok": True}
+    
+    # Handle messages
+    if not update.message:
+        return {"ok": True}
+    
+    message = update.message
+    chat_id = str(message.get("chat", {}).get("id", ""))
+    user_id = str(message.get("from", {}).get("id", ""))
+    username = message.get("from", {}).get("username")
+    first_name = message.get("from", {}).get("first_name")
+    text = message.get("text", "")
+    
+    if not chat_id or not user_id:
+        return {"ok": True}
+    
+    # Handle /start command
+    if text == "/start":
+        character = get_character_by_id(DEFAULT_CHARACTER_ID)
+        greeting = character.get("greeting", "你好呀！我是Luna~ 💕") if character else "你好呀！我是Luna~ 💕"
+        await send_telegram_message(chat_id, greeting)
+        return {"ok": True}
+    
+    # Handle /clear command
+    if text == "/clear":
+        await clear_history(user_id)
+        await send_telegram_message(chat_id, "记忆已清除，让我们重新开始吧~ 💫")
+        return {"ok": True}
+    
+    # Handle /help command
+    if text == "/help":
+        help_text = """💕 Luna AI 伴侣
+
+可用命令：
+/start - 开始聊天
+/clear - 清除聊天记录
+/help - 显示帮助
+
+直接发消息就可以和我聊天啦~ 💬"""
+        await send_telegram_message(chat_id, help_text)
+        return {"ok": True}
+    
+    # Ignore empty messages and other commands
+    if not text or text.startswith("/"):
+        return {"ok": True}
+    
+    # Send typing indicator
+    await send_chat_action(chat_id, "typing")
+    
+    # Process through chat API
+    try:
+        request = TelegramChatRequest(
+            telegram_id=user_id,
+            username=username,
+            first_name=first_name,
+            message=text,
+        )
+        response = await telegram_chat(request)
+        
+        # Send reply
+        await send_telegram_message(chat_id, response.reply)
+        
+    except Exception as e:
+        logger.error(f"Webhook chat error: {e}", exc_info=True)
+        await send_telegram_message(chat_id, "抱歉，我走神了... 再说一遍好吗？💭")
+    
+    return {"ok": True}
+
+
+@router.post("/set-webhook")
+async def set_webhook(webhook_url: str):
+    """
+    Set Telegram bot webhook URL.
+    
+    Call this endpoint to configure the bot webhook.
+    Example: POST /api/v1/telegram/set-webhook?webhook_url=https://your-domain.com/api/v1/telegram/webhook
+    """
+    bot_token = getattr(settings, 'TELEGRAM_BOT_TOKEN', None) or os.getenv('TELEGRAM_BOT_TOKEN')
+    if not bot_token:
+        raise HTTPException(status_code=500, detail="TELEGRAM_BOT_TOKEN not configured")
+    
+    url = f"https://api.telegram.org/bot{bot_token}/setWebhook"
+    payload = {"url": webhook_url}
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload, timeout=10.0)
+            result = response.json()
+            
+            if result.get("ok"):
+                logger.info(f"✅ Webhook set to: {webhook_url}")
+                return {"success": True, "webhook_url": webhook_url}
+            else:
+                raise HTTPException(status_code=400, detail=result.get("description", "Failed to set webhook"))
+                
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")
+
+
+@router.get("/webhook-info")
+async def get_webhook_info():
+    """Get current webhook configuration."""
+    bot_token = getattr(settings, 'TELEGRAM_BOT_TOKEN', None) or os.getenv('TELEGRAM_BOT_TOKEN')
+    if not bot_token:
+        return {"configured": False, "error": "TELEGRAM_BOT_TOKEN not set"}
+    
+    url = f"https://api.telegram.org/bot{bot_token}/getWebhookInfo"
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, timeout=10.0)
+            result = response.json()
+            
+            if result.get("ok"):
+                info = result.get("result", {})
+                return {
+                    "configured": True,
+                    "url": info.get("url", ""),
+                    "has_custom_certificate": info.get("has_custom_certificate", False),
+                    "pending_update_count": info.get("pending_update_count", 0),
+                    "last_error_date": info.get("last_error_date"),
+                    "last_error_message": info.get("last_error_message"),
+                }
+            else:
+                return {"configured": False, "error": result.get("description")}
+                
+    except Exception as e:
+        return {"configured": False, "error": str(e)}
