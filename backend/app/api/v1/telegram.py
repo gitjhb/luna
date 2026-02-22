@@ -89,7 +89,7 @@ async def get_or_create_telegram_user(
         await db.flush()  # Get user_id
         
         # Create wallet with default credits
-        from app.core.config import settings
+        from app.config import settings
         wallet = UserWallet(
             user_id=user.user_id,
             free_credits=settings.DAILY_REFRESH_AMOUNT,

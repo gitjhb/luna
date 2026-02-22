@@ -1,0 +1,220 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  
+  /* Cinematic Noir Tech - Custom Font Families */
+  --font-display: 'Orbitron', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+}
+
+/* Cinematic Noir Tech Design System
+ * Movement: Film Noir meets High-Tech Interface
+ * Principles: Dramatic lighting, cinematic composition, sophisticated restraint
+ * Color: Deep obsidian black with moonlight silver, strategic electric blue, hot pink CTAs
+ * Layout: Widescreen cinematic framing, asymmetric two-column layouts
+ * Typography: Orbitron Medium for headings, Inter for body with increased line-height
+ */
+
+:root {
+  /* Primary: Electric Blue for critical UI elements */
+  --primary: oklch(0.65 0.19 230);
+  --primary-foreground: oklch(0.98 0 0);
+  
+  /* Accent: Hot Pink for CTAs only */
+  --accent: oklch(0.65 0.25 340);
+  --accent-foreground: oklch(0.98 0 0);
+  
+  --radius: 0.5rem;
+  
+  /* Deep Obsidian Black background */
+  --background: oklch(0.12 0.005 280);
+  
+  /* Moonlight Silver text with 90% opacity */
+  --foreground: oklch(0.85 0.005 280);
+  
+  /* Glass cards with subtle depth */
+  --card: oklch(0.18 0.008 280 / 0.6);
+  --card-foreground: oklch(0.85 0.005 280);
+  
+  --popover: oklch(0.18 0.008 280);
+  --popover-foreground: oklch(0.85 0.005 280);
+  
+  /* Muted elements */
+  --secondary: oklch(0.25 0.01 280);
+  --secondary-foreground: oklch(0.75 0.005 280);
+  
+  --muted: oklch(0.22 0.008 280);
+  --muted-foreground: oklch(0.60 0.008 280);
+  
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  
+  /* Thin borders with low opacity */
+  --border: oklch(1 0 0 / 0.1);
+  --input: oklch(1 0 0 / 0.15);
+  --ring: oklch(0.65 0.19 230);
+  
+  --chart-1: oklch(0.65 0.19 230);
+  --chart-2: oklch(0.55 0.19 230);
+  --chart-3: oklch(0.45 0.19 230);
+  --chart-4: oklch(0.35 0.19 230);
+  --chart-5: oklch(0.25 0.19 230);
+  
+  --sidebar: oklch(0.15 0.006 280);
+  --sidebar-foreground: oklch(0.85 0.005 280);
+  --sidebar-primary: oklch(0.65 0.19 230);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.25 0.01 280);
+  --sidebar-accent-foreground: oklch(0.85 0.005 280);
+  --sidebar-border: oklch(1 0 0 / 0.1);
+  --sidebar-ring: oklch(0.65 0.19 230);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+    line-height: 1.8;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+    font-weight: 500;
+  }
+  
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [type="button"]:not(:disabled),
+  [type="submit"]:not(:disabled),
+  [type="reset"]:not(:disabled),
+  a[href],
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled) {
+    @apply cursor-pointer;
+  }
+}
+
+@layer components {
+  .container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .flex {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  @media (min-width: 640px) {
+    .container {
+      padding-left: 1.5rem;
+      padding-right: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .container {
+      padding-left: 2rem;
+      padding-right: 2rem;
+      max-width: 1280px;
+    }
+  }
+  
+  /* Cinematic scan-line effect */
+  .scanlines {
+    position: relative;
+  }
+  
+  .scanlines::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      oklch(0 0 0 / 0.03) 2px,
+      oklch(0 0 0 / 0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 1;
+  }
+  
+  /* Film grain texture */
+  .film-grain {
+    position: relative;
+  }
+  
+  .film-grain::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.05'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1;
+  }
+  
+  /* Spotlight gradient effect */
+  .spotlight {
+    position: relative;
+    background: radial-gradient(
+      ellipse 80% 50% at 50% 50%,
+      oklch(0.18 0.008 280),
+      oklch(0.12 0.005 280)
+    );
+  }
+}
