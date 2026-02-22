@@ -54,6 +54,14 @@ except ImportError as e:
     logger.warning(f"Memory system v2 not available: {e}")
     memory_system_available = False
 
+# User learning system (communication style, activity patterns)
+try:
+    from app.services.user_learning_service import user_learning_service
+    user_learning_available = True
+except ImportError as e:
+    logger.warning(f"User learning system not available: {e}")
+    user_learning_available = False
+
 
 class ChatService:
     """
@@ -274,6 +282,18 @@ class ChatService:
             except Exception as e:
                 logger.warning(f"Memory system error (non-fatal): {e}")
         
+        # Step 3.7: Add user style hints (User Learning System)
+        if user_learning_available:
+            try:
+                style_hints = await user_learning_service.generate_style_hints(
+                    str(user_context.user_id)
+                )
+                if style_hints:
+                    system_prompt += style_hints
+                    logger.debug(f"Added style hints to prompt for user={user_context.user_id}")
+            except Exception as e:
+                logger.warning(f"User learning style hints error (non-fatal): {e}")
+        
         # Check if response should be locked for non-subscribers
         should_lock_response = (
             emotion_analysis 
@@ -348,6 +368,20 @@ class ChatService:
             except Exception as e:
                 # Don't fail the request if memory processing fails
                 logger.warning(f"Memory processing error (non-fatal): {e}")
+        
+        # Step 8.6: Process conversation for user learning (communication style, activity)
+        if user_learning_available:
+            try:
+                await user_learning_service.process_conversation(
+                    user_id=str(user_context.user_id),
+                    messages=context_messages + [
+                        {"role": "user", "content": request.message},
+                        {"role": "assistant", "content": assistant_message}
+                    ]
+                )
+            except Exception as e:
+                # Don't fail the request if learning processing fails
+                logger.warning(f"User learning processing error (non-fatal): {e}")
         
         # Step 9: Handle paywall for non-subscribers
         if should_lock_response:

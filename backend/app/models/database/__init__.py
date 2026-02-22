@@ -16,8 +16,16 @@ from .image_models import GeneratedImage, ImagePromptTemplate, ImageGenerationTy
 from .event_memory_models import EventMemory, EventType
 from .date_models import DateSessionDB, DateCooldownDB
 from .memory_v2_models import SemanticMemory, EpisodicMemory, MemoryExtractionLog
+from .story_models import StorySession, StoryTemplate
 from .stamina_models import UserStamina, StaminaConstants
 from .character_models import Character
+from .proactive_models import ProactiveHistory, UserProactiveSettings
+from .user_learning_models import (
+    UserCommunicationStyle,
+    UserTopicInterest,
+    UserActivityPattern,
+    UserLearningSnapshot,
+)
 
 __all__ = [
     "Base",
@@ -35,4 +43,12 @@ __all__ = [
     "EventType",
     "UserStamina",
     "StaminaConstants",
+    # Proactive
+    "ProactiveHistory",
+    "UserProactiveSettings",
+    # User Learning
+    "UserCommunicationStyle",
+    "UserTopicInterest",
+    "UserActivityPattern",
+    "UserLearningSnapshot",
 ]

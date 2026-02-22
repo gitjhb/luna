@@ -27,7 +27,7 @@ from app.middleware.billing_middleware import BillingMiddleware
 from app.middleware.logging_middleware import LoggingMiddleware
 
 # Import routers
-from app.api.v1 import auth, chat, characters, wallet, market, voice, image, images, intimacy, pricing, payment, gifts, scenarios, emotion, user_settings, interests, referral, events, interactions, debug, dates, photos, stamina, push, daily_reward, admin
+from app.api.v1 import auth, chat, characters, wallet, market, voice, image, images, intimacy, pricing, payment, gifts, scenarios, emotion, user_settings, interests, referral, events, interactions, debug, dates, photos, stamina, push, daily_reward, admin, proactive, user_insights, stories, telegram
 
 
 # Lifespan context manager for startup/shutdown
@@ -177,6 +177,10 @@ app.include_router(stamina.router, prefix="/api/v1", tags=["Stamina"])
 app.include_router(push.router, prefix="/api/v1", tags=["Push"])
 app.include_router(daily_reward.router, prefix="/api/v1", tags=["DailyReward"])
 app.include_router(admin.router, prefix="/api/v1", tags=["Admin"])
+app.include_router(proactive.router, prefix="/api/v1", tags=["Proactive"])
+app.include_router(user_insights.router, prefix="/api/v1", tags=["User Insights"])
+app.include_router(stories.router, prefix="/api/v1", tags=["Stories"])
+app.include_router(telegram.router, prefix="/api/v1", tags=["Telegram"])
 
 # Static files (privacy policy, terms, etc.)
 import os

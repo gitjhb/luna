@@ -2,6 +2,6 @@
 API v1 Routers
 """
 
-from . import auth, chat, characters, wallet, market, voice, image, images, intimacy, pricing, payment, gifts, scenarios, emotion, user_settings, interests, referral, events, interactions, stamina
+from . import auth, chat, characters, wallet, market, voice, image, images, intimacy, pricing, payment, gifts, scenarios, emotion, user_settings, interests, referral, events, interactions, stamina, user_insights, stories, proactive
 
-__all__ = ["auth", "chat", "characters", "wallet", "market", "voice", "image", "images", "intimacy", "pricing", "payment", "gifts", "scenarios", "emotion", "user_settings", "interests", "referral", "events", "interactions", "stamina"]
+__all__ = ["auth", "chat", "characters", "wallet", "market", "voice", "image", "images", "intimacy", "pricing", "payment", "gifts", "scenarios", "emotion", "user_settings", "interests", "referral", "events", "interactions", "stamina", "user_insights", "stories", "proactive"]

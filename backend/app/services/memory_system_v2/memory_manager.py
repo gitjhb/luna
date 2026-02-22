@@ -193,9 +193,13 @@ class MemoryExtractor:
     使用 LLM 从对话中提取：
     1. 用户信息（语义记忆）
     2. 重要事件（情节记忆）
+    
+    Patterns support both Chinese and English.
+    Inspired by Mio's profile-extractor.js but optimized for Luna.
     """
     
-    # 触发提取的模式
+    # 触发提取的模式 (Bilingual: Chinese + English)
+    # Pattern format: regex with capture group for the extracted value
     INFO_PATTERNS = {
         "name": [
             r"我叫(.{2,10})",
@@ -233,7 +237,9 @@ class MemoryExtractor:
         ],
     }
     
-    # 重要事件检测
+    # 重要事件检测 (Event Detection Triggers)
+    # Format: event_type -> list of trigger phrases (substring match)
+    # Bilingual support for key relationship events
     EVENT_TRIGGERS = {
         "confession": ["我爱你", "喜欢你", "做我女朋友", "做我男朋友", "i love you", "be my girlfriend"],
         "fight": ["分手", "不想理你", "滚", "讨厌你", "再见", "别烦我"],
