@@ -401,28 +401,88 @@ class MemoryRetriever:
     记忆检索器
     
     根据当前对话内容，找到最相关的记忆
+    使用 pgvector 语义搜索 + 关键词匹配混合策略
     """
     
-    def __init__(self, llm_service=None):
+    def __init__(self, llm_service=None, vector_service=None):
         self.llm = llm_service
+        self._vector_service = vector_service
+    
+    @property
+    def vector_service(self):
+        """Lazy load vector service to avoid circular imports."""
+        if self._vector_service is None:
+            try:
+                from app.services.vector_service import vector_service
+                self._vector_service = vector_service
+            except Exception as e:
+                logger.warning(f"Could not load vector_service: {e}")
+        return self._vector_service
     
     async def retrieve_relevant(
         self,
         query: str,
         episodes: List[EpisodicMemory],
         top_k: int = 5,
+        user_id: str = None,
+        character_id: str = None,
     ) -> List[EpisodicMemory]:
         """
         检索相关的情节记忆
         
-        方法:
-        1. 关键词匹配（快速）
-        2. LLM 相关性评分（可选）
+        策略:
+        1. 首先尝试 pgvector 语义搜索（如果可用）
+        2. 回退到关键词匹配
+        3. 合并结果并去重
         """
         if not episodes:
             return []
         
-        # 1. 关键词匹配打分
+        results = []
+        vector_memory_ids = set()
+        
+        # 1. 尝试语义搜索（pgvector）
+        if user_id and character_id and self.vector_service:
+            try:
+                vector_results = await self.vector_service.search_similar_episodes(
+                    user_id=user_id,
+                    character_id=character_id,
+                    query_text=query,
+                    top_k=top_k,
+                    min_similarity=0.3,
+                )
+                
+                # 将 vector 结果转换为 EpisodicMemory 对象
+                episode_map = {ep.memory_id: ep for ep in episodes}
+                for vr in vector_results:
+                    if vr["memory_id"] in episode_map:
+                        results.append(episode_map[vr["memory_id"]])
+                        vector_memory_ids.add(vr["memory_id"])
+                        logger.debug(f"Vector match: {vr['summary'][:50]} (sim={vr['similarity']:.2f})")
+                
+                if results:
+                    logger.info(f"pgvector found {len(results)} relevant memories")
+                    
+            except Exception as e:
+                logger.warning(f"Vector search failed, falling back to keyword: {e}")
+        
+        # 2. 关键词匹配（回退或补充）
+        if len(results) < top_k:
+            keyword_results = self._keyword_match(query, episodes, top_k - len(results))
+            # 添加未在 vector 结果中的记忆
+            for ep in keyword_results:
+                if ep.memory_id not in vector_memory_ids:
+                    results.append(ep)
+        
+        return results[:top_k]
+    
+    def _keyword_match(
+        self,
+        query: str,
+        episodes: List[EpisodicMemory],
+        top_k: int,
+    ) -> List[EpisodicMemory]:
+        """关键词匹配（回退方法）"""
         scored = []
         query_lower = query.lower()
         query_words = set(query_lower.split())
@@ -602,9 +662,10 @@ class MemoryManager:
         # 获取情节记忆
         episodes = await self.get_episodic_memories(user_id, character_id)
         
-        # 检索相关记忆
+        # 检索相关记忆（使用 pgvector 语义搜索）
         relevant = await self.retriever.retrieve_relevant(
-            current_message, episodes, top_k=3
+            current_message, episodes, top_k=3,
+            user_id=user_id, character_id=character_id
         )
         
         # 获取最近记忆
@@ -784,6 +845,20 @@ class MemoryManager:
                 await self.db.save_episodic_memory(user_id, character_id, self._episode_to_dict(episode))
             except Exception as e:
                 logger.error(f"Failed to save episodic memory: {e}")
+        
+        # 生成并保存 embedding（用于语义搜索）
+        try:
+            from app.services.vector_service import vector_service
+            # 组合摘要和关键对话作为 embedding 文本
+            embed_text = episode.summary
+            if episode.key_dialogue:
+                embed_text += " " + " ".join(episode.key_dialogue[:2])
+            
+            embedding = await vector_service.embed_text(embed_text)
+            await vector_service.save_episode_embedding(memory_id, embedding)
+            logger.debug(f"Saved embedding for episode {memory_id}")
+        except Exception as e:
+            logger.warning(f"Failed to save episode embedding (non-critical): {e}")
         
         logger.info(f"Created episodic memory: {episode.event_type} - {episode.summary}")
         return episode

@@ -1,0 +1,17 @@
+{
+  "name": "luna-telegram",
+  "version": "0.1.0",
+  "description": "Luna AI Companion - Telegram Bot Backend",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "@vercel/postgres": "^0.10.0",
+    "openai": "^4.0.0"
+  },
+  "devDependencies": {
+    "vercel": "^39.0.0"
+  }
+}
