@@ -41,12 +41,53 @@ class TelegramChatRequest(BaseModel):
 
 
 class TelegramChatResponse(BaseModel):
-    reply: str
+    reply: str  # 主回复（或用 ||| 分隔的多条消息）
+    replies: Optional[list[str]] = None  # 拆分后的多条消息
     user_id: str
     session_id: str
     is_new_user: bool = False
     emotion: Optional[int] = None
     intimacy_level: Optional[int] = None
+
+
+import re
+
+def format_for_telegram(text: str) -> list[str]:
+    """
+    将小说风格的回复转换为 Telegram 聊天风格
+    
+    1. 移除动作描写括号（中文括号内的内容）
+    2. 按段落拆分成多条消息
+    3. 清理多余空白
+    """
+    # 移除中文括号内的动作描写，如（歪头）（眨眨眼睛）
+    text = re.sub(r'（[^）]{1,20}）', '', text)
+    
+    # 也移除英文括号版本
+    text = re.sub(r'\([^)]{1,20}\)', '', text)
+    
+    # 按换行符或省略号拆分
+    parts = re.split(r'\n\n+|(?<=[。！？~])\s*(?=[^。！？~])', text)
+    
+    # 清理并过滤空消息
+    messages = []
+    for part in parts:
+        cleaned = part.strip()
+        if cleaned and len(cleaned) > 1:  # 至少2个字符
+            messages.append(cleaned)
+    
+    # 如果只有一条或拆分失败，保持原样但去掉括号
+    if len(messages) == 0:
+        cleaned = text.strip()
+        if cleaned:
+            messages = [cleaned]
+    
+    # 最多拆成3条
+    if len(messages) > 3:
+        # 合并后面的
+        messages = messages[:2] + [' '.join(messages[2:])]
+    
+    return messages
 
 
 async def get_or_create_telegram_user(
@@ -211,14 +252,19 @@ async def telegram_chat(request: TelegramChatRequest):
         v4_response = await chat_pipeline_v4.process_message(v4_request)
         
         # 6. Extract response data
-        reply = v4_response.content
+        raw_reply = v4_response.content
         emotion = v4_response.extra_data.get("user_state", {}).get("emotion", 0) if v4_response.extra_data else 0
         level = v4_response.extra_data.get("user_state", {}).get("intimacy_level", 1) if v4_response.extra_data else 1
         
-        logger.info(f"📱 Luna → {request.telegram_id}: {reply[:50]}... (emotion: {emotion}, level: {level})")
+        # 7. 转换为 Telegram 聊天风格（移除动作描写，拆分多条）
+        replies = format_for_telegram(raw_reply)
+        reply = '|||'.join(replies)  # 用 ||| 分隔，方便前端拆分
+        
+        logger.info(f"📱 Luna → {request.telegram_id}: {replies[0][:30]}... ({len(replies)} msgs, emotion: {emotion})")
         
         return TelegramChatResponse(
             reply=reply,
+            replies=replies,
             user_id=user_id,
             session_id=session_id,
             is_new_user=is_new_user,
