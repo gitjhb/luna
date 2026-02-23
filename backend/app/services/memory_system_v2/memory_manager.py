@@ -202,13 +202,13 @@ class MemoryExtractor:
     # Pattern format: regex with capture group for the extracted value
     INFO_PATTERNS = {
         "user_name": [
-            r"^我叫([^\s,，。！!？?]{2,10})",       # 句首：我叫xxx
-            r"^我是([^\s,，。！!？?]{2,10})",       # 句首：我是xxx
-            r"叫我([^\s,，。！!？?]{2,10})(?:吧|呀|哦|啊)?$",  # 叫我xxx（句尾）
-            r"(?:^|，|。)我叫([^\s,，。！!？?]{2,10})",  # 逗号/句号后：我叫xxx
+            r"^我叫([^\s,，。！!？?吧呀哦啊呢]{2,10})",       # 句首：我叫xxx
+            r"叫我([^\s,，。！!？?吧呀哦啊呢]{2,10})",       # 叫我xxx
+            r"(?:^|，|。)我叫([^\s,，。！!？?吧呀哦啊呢]{2,10})",  # 逗号/句号后：我叫xxx
             r"^my name is ([a-zA-Z]+)",
             r"^i'm ([a-zA-Z]+)",
             r"^call me ([a-zA-Z]+)",
+            # 注意：不匹配 "我是xxx" 因为太容易误匹配问句如 "我是谁"
         ],
         "birthday": [
             r"我的?生日是?(.+)",

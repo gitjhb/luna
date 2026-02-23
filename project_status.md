@@ -9,8 +9,12 @@
 ## 🎯 Current Sprint
 
 ### Active Tasks
+- [x] **Memory 基础功能** — ✅ 已修复并验证
+  - `/api/v1/chat/debug` endpoint 已创建
+  - God Mode 可正常存储/检索记忆
+  
 - [ ] **Memory 订阅限制** — Free plan 不存/提取记忆
-  - 状态: Bug 已修复，待实现订阅检查
+  - 状态: 待实现订阅检查
   - 文件: `chat_pipeline_v4.py`, `memory_integration_service.py`
 
 ### Blocked
