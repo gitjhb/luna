@@ -707,7 +707,9 @@ async def link_telegram_account(request: LinkAccountRequest):
         if language_code:
             luna_user.preferred_language = language_code[:2]  # Store just 'en', 'zh', etc.
         
-        # 5. If there's a temporary telegram user, merge their data
+        # 5. If there's a temporary telegram user, just log it
+        # Don't delete - cascade deletion has schema issues
+        # TODO: Implement proper data migration later
         temp_firebase_uid = f"telegram_{telegram_id}"
         temp_result = await db.execute(
             select(User).where(User.firebase_uid == temp_firebase_uid)
@@ -715,10 +717,7 @@ async def link_telegram_account(request: LinkAccountRequest):
         temp_user = temp_result.scalar_one_or_none()
         
         if temp_user and temp_user.user_id != luna_user.user_id:
-            # TODO: Migrate chat history and memories from temp_user to luna_user
-            # For now, just delete the temp user
-            logger.info(f"🔗 Merging temp user {temp_user.user_id} into {luna_user.user_id}")
-            await db.delete(temp_user)
+            logger.info(f"🔗 Found temp user {temp_user.user_id}, will merge later (not deleting now)")
         
         await db.commit()
         
