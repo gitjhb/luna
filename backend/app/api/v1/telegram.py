@@ -29,7 +29,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/telegram", tags=["telegram"])
 
 # Default character for Telegram bot
-DEFAULT_CHARACTER_ID = "luna"
+# Luna 的正确 character_id (与 characters.py 一致)
+DEFAULT_CHARACTER_ID = "d2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d"
 
 
 class TelegramChatRequest(BaseModel):
