@@ -1166,3 +1166,131 @@ async def stream_chat_completion(request: StreamChatRequest, req: Request):
             "X-Accel-Buffering": "no",  # Disable nginx buffering
         }
     )
+
+
+# ============================================================
+# Debug Chat Endpoint (for God Mode Dashboard)
+# ============================================================
+class ChatDebugRequest(BaseModel):
+    user_id: str
+    character_id: str
+    message: str
+    debug: bool = True
+    context: list = []
+
+
+@router.post("/debug")
+async def chat_debug_endpoint(req: ChatDebugRequest, request: Request):
+    """
+    Debug endpoint for God Mode Dashboard.
+    Returns intermediate states: memories, prompts, etc.
+    """
+    from app.services.memory_integration_service import (
+        get_memory_context_for_chat,
+        process_conversation_for_memory,
+        generate_memory_prompt,
+    )
+    from app.services.v4.chat_pipeline_v4 import ChatPipelineV4
+    
+    user_id = req.user_id
+    character_id = req.character_id
+    message = req.message
+    context = req.context
+    
+    # Get memory context
+    memory_context = None
+    memory_prompt = ""
+    retrieved_memories = []
+    
+    try:
+        memory_context = await get_memory_context_for_chat(
+            user_id=user_id,
+            character_id=character_id,
+            current_message=message,
+            working_memory=[{"role": m.get("role", "user"), "content": m.get("content", "")} for m in context[-5:]],
+        )
+        
+        if memory_context:
+            memory_prompt = generate_memory_prompt(
+                memory_context=memory_context,
+                intimacy_level=1,
+                current_query=message,
+            )
+            
+            # Format memories for display
+            if memory_context.user_profile:
+                profile = memory_context.user_profile
+                retrieved_memories.append({
+                    "type": "semantic",
+                    "summary": f"用户: {profile.user_name or '未知'}, 喜好: {profile.likes or '无'}, 生日: {profile.birthday or '未知'}",
+                    "similarity": 1.0,
+                })
+            
+            for ep in memory_context.relevant_episodes + memory_context.recent_episodes:
+                retrieved_memories.append({
+                    "type": "episodic",
+                    "summary": ep.summary,
+                    "event_type": ep.event_type,
+                    "similarity": ep.strength,
+                })
+    except Exception as e:
+        logger.warning(f"Memory context failed: {e}")
+    
+    # Get character info
+    character = get_character_by_id(character_id) or {"name": "Luna", "persona": "温柔的AI伴侣"}
+    
+    # Build system prompt (simplified)
+    system_prompt = f"""角色: {character.get('name', 'Luna')}
+人设: {character.get('persona', '温柔的AI伴侣')}
+
+{memory_prompt if memory_prompt else '(无记忆上下文)'}
+"""
+    
+    # Generate response using mock or real LLM
+    ai_response = f"(模拟回复) 收到你的消息: {message}"
+    
+    try:
+        # Use pipeline if available
+        from app.services.llm_service import GrokService
+        grok = GrokService()
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+        ]
+        for m in context[-5:]:
+            messages.append({"role": m.get("role", "user"), "content": m.get("content", "")})
+        messages.append({"role": "user", "content": message})
+        
+        result = await grok.chat(messages)
+        if result and "choices" in result:
+            ai_response = result["choices"][0]["message"]["content"]
+    except Exception as e:
+        logger.warning(f"LLM call failed: {e}")
+    
+    # Process memory extraction (store new memories)
+    try:
+        await process_conversation_for_memory(
+            user_id=user_id,
+            character_id=character_id,
+            user_message=message,
+            assistant_response=ai_response,
+            context=[{"role": m.get("role", "user"), "content": m.get("content", "")} for m in context],
+        )
+    except Exception as e:
+        logger.warning(f"Memory extraction failed: {e}")
+    
+    return {
+        "input": {
+            "user_id": user_id,
+            "character_id": character_id,
+            "message": message,
+            "history_length": len(context),
+        },
+        "retrieved_memories": retrieved_memories,
+        "system_prompt": system_prompt,
+        "output": {
+            "response": ai_response,
+            "tokens_used": len(ai_response) // 2,
+            "model": "grok-4-1-fast",
+        },
+    }
