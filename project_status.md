@@ -100,6 +100,7 @@
 - ✅ Test: `tests/test_memory_system.py` (5 tests passing)
 - ✅ Feat: 主动消息系统 (从 Mio 移植)
 - ✅ Test: `tests/test_proactive_message.py` (12 tests passing)
+- ✅ Test: `tests/test_payment_system.py` (16 tests passing)
 - 📝 建立 TEAM_NORMS.md 和 project_status.md
 
 ### 2026-02-22
