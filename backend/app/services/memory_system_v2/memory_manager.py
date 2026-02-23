@@ -188,199 +188,179 @@ class MemoryContext:
 
 class MemoryExtractor:
     """
-    记忆提取器
+    记忆提取器 v2 - "隐形场记"模式
     
-    使用 LLM 从对话中提取：
+    使用 LLM 语义理解从对话中提取：
     1. 用户信息（语义记忆）
     2. 重要事件（情节记忆）
     
-    Patterns support both Chinese and English.
-    Inspired by Mio's profile-extractor.js but optimized for Luna.
+    核心优势：
+    - 跨语言：中/英/日/法...统一处理
+    - 语境感知：能区分"亲了"vs"想亲但被拒"vs"梦到亲了"
+    - 否定句识别："别亲我"不会误判为亲密事件
     """
     
-    # 触发提取的模式 (Bilingual: Chinese + English)
-    # Pattern format: regex with capture group for the extracted value
-    INFO_PATTERNS = {
-        "user_name": [
-            r"^我叫([^\s,，。！!？?吧呀哦啊呢]{2,10})",       # 句首：我叫xxx
-            r"叫我([^\s,，。！!？?吧呀哦啊呢]{2,10})",       # 叫我xxx
-            r"(?:^|，|。)我叫([^\s,，。！!？?吧呀哦啊呢]{2,10})",  # 逗号/句号后：我叫xxx
-            r"^my name is ([a-zA-Z]+)",
-            r"^i'm ([a-zA-Z]+)",
-            r"^call me ([a-zA-Z]+)",
-            # 注意：不匹配 "我是xxx" 因为太容易误匹配问句如 "我是谁"
-        ],
-        "birthday": [
-            r"我的?生日是?(.+)",
-            r"我(.+)月(.+)日?生",
-            r"my birthday is (.+)",
-        ],
-        "occupation": [
-            r"我是做(.+)的",
-            r"我的工作是(.+)",
-            r"我是(.+)程序员|设计师|老师|学生|医生",
-            r"i work as (.+)",
-            r"i'm a (.+)",
-        ],
-        "likes": [
-            r"我喜欢(.+)",
-            r"我爱(.+)",
-            r"我最喜欢的是(.+)",
-            r"i like (.+)",
-            r"i love (.+)",
-        ],
-        "dislikes": [
-            r"我讨厌(.+)",
-            r"我不喜欢(.+)",
-            r"我受不了(.+)",
-            r"i hate (.+)",
-            r"i don't like (.+)",
-        ],
-    }
-    
-    # 重要事件检测 (Event Detection Triggers)
-    # Format: event_type -> list of trigger phrases (substring match)
-    # Bilingual support for key relationship events
-    EVENT_TRIGGERS = {
-        "confession": ["我爱你", "喜欢你", "做我女朋友", "做我男朋友", "i love you", "be my girlfriend"],
-        "fight": ["分手", "不想理你", "滚", "讨厌你", "再见", "别烦我"],
-        "reconciliation": ["对不起", "原谅我", "我错了", "和好吧"],
-        "milestone": ["一周年", "纪念日", "第一次", "一百天"],
-        "gift": ["送你", "礼物", "惊喜"],
-        "emotional_peak": ["最开心", "最幸福", "最难过", "最伤心"],
-    }
+    # 轻量级预筛选关键词（只用于决定是否需要调用LLM场记）
+    # 如果消息里没有这些词，大概率是闲聊，可以跳过场记
+    POTENTIAL_EVENT_HINTS = [
+        # 亲密行为
+        "亲", "吻", "kiss", "抱", "hug", "牵手", "hold", "摸",
+        # 情感表达
+        "爱", "喜欢", "love", "讨厌", "hate", "生气", "angry", "想你", "miss",
+        # 关系变化
+        "分手", "break", "在一起", "together", "结婚", "marry", "求婚", "propose",
+        "女朋友", "男朋友", "girlfriend", "boyfriend", "老婆", "老公", "wife", "husband",
+        # 重要时刻
+        "第一次", "first", "纪念", "anniversary", "生日", "birthday",
+        # 礼物/惊喜
+        "礼物", "gift", "送你", "惊喜", "surprise",
+        # 道歉/和解
+        "对不起", "sorry", "原谅", "forgive", "我错了",
+        # 情绪高点
+        "最开心", "最幸福", "最难过", "happiest", "saddest",
+    ]
     
     def __init__(self, llm_service=None):
         self.llm = llm_service
+    
+    def _needs_scene_analysis(self, message: str, assistant_response: str = "") -> bool:
+        """
+        快速预筛选：判断是否需要调用 LLM 场记
+        
+        策略：如果消息或回复里包含潜在事件关键词，才调用场记
+        这样可以节省 90% 的闲聊消息的 LLM 调用
+        """
+        combined = (message + " " + (assistant_response or "")).lower()
+        return any(hint in combined for hint in self.POTENTIAL_EVENT_HINTS)
     
     async def extract_from_message(
         self,
         message: str,
         context: List[Dict[str, str]],
         current_semantic: SemanticMemory,
+        assistant_response: str = "",
     ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
         """
-        从消息中提取记忆
+        从消息中提取记忆（场记模式）
         
         返回:
             (semantic_updates, episodic_event)
         """
-        semantic_updates = {}
-        episodic_event = None
+        # 快速预筛选
+        if not self._needs_scene_analysis(message, assistant_response):
+            logger.debug(f"Skipping scene analysis for: {message[:50]}...")
+            return {}, None
         
-        # 1. 快速模式匹配
-        for info_type, patterns in self.INFO_PATTERNS.items():
-            for pattern in patterns:
-                match = re.search(pattern, message, re.IGNORECASE)
-                if match:
-                    value = match.group(1).strip()
-                    # 过滤太长或太短的
-                    if 1 < len(value) < 50:
-                        semantic_updates[info_type] = value
+        # 调用 LLM 场记
+        if not self.llm:
+            logger.warning("No LLM service available for scene analysis")
+            return {}, None
         
-        # 2. 检测重要事件
-        for event_type, triggers in self.EVENT_TRIGGERS.items():
-            if any(t in message.lower() for t in triggers):
-                episodic_event = {
-                    "event_type": event_type,
-                    "trigger_message": message,
-                    "context": context[-3:] if context else [],
-                }
-                break
-        
-        # 3. 如果有 LLM，做深度提取
-        if self.llm and (not semantic_updates or episodic_event):
-            try:
-                llm_result = await self._llm_extract(message, context, current_semantic)
-                
-                # 合并语义更新
-                if llm_result.get("semantic"):
-                    semantic_updates.update(llm_result["semantic"])
-                
-                # 如果 LLM 检测到更重要的事件
-                if llm_result.get("episodic") and (
-                    not episodic_event or 
-                    llm_result["episodic"].get("importance", 0) > 2
-                ):
-                    episodic_event = llm_result["episodic"]
-                    
-            except Exception as e:
-                logger.warning(f"LLM extraction failed: {e}")
-        
-        return semantic_updates, episodic_event
+        try:
+            result = await self._scene_supervisor_extract(
+                message, assistant_response, context, current_semantic
+            )
+            return result.get("semantic", {}), result.get("episodic")
+        except Exception as e:
+            logger.warning(f"Scene analysis failed: {e}")
+            return {}, None
     
-    async def _llm_extract(
+    async def _scene_supervisor_extract(
         self,
-        message: str,
+        user_message: str,
+        assistant_response: str,
         context: List[Dict[str, str]],
         current_semantic: SemanticMemory,
     ) -> Dict[str, Any]:
-        """使用 LLM 深度提取"""
+        """
+        LLM 场记分析 - 语义级记忆提取
         
-        context_str = "\n".join([
-            f"{m['role']}: {m['content'][:100]}"
-            for m in context[-5:]
-        ]) if context else "无上下文"
+        这是核心的"隐形场记"，负责：
+        1. 判断是否发生了重要事件
+        2. 提取用户信息更新
+        3. 区分真实事件 vs 梦境/假设/否定
+        """
+        # 构建对话上下文
+        dialogue_lines = []
+        for m in context[-3:]:
+            role = "用户" if m.get("role") == "user" else "Luna"
+            dialogue_lines.append(f"{role}: {m.get('content', '')[:150]}")
+        dialogue_lines.append(f"用户: {user_message}")
+        if assistant_response:
+            dialogue_lines.append(f"Luna: {assistant_response[:200]}")
+        
+        dialogue_str = "\n".join(dialogue_lines)
         
         current_info = current_semantic.to_prompt_text() if current_semantic else "无已知信息"
         
-        prompt = f"""分析这段对话，提取用户信息和重要事件。
+        prompt = f"""# Role
+你是 Luna 恋爱游戏的后台剧情分析师（场记）。
 
-已知用户信息:
+# 已知用户信息
 {current_info}
 
-对话上下文:
-{context_str}
+# 本轮对话
+{dialogue_str}
 
-当前消息:
-用户: {message}
+# Task
+分析以上对话，提取：
+1. **用户信息更新**（名字、生日、职业、喜好等新信息）
+2. **重要事件**（如果有的话）
 
-请提取:
-1. 新的用户信息（名字、生日、职业、喜好等）
-2. 关系状态变化（求婚、确定关系、分手等）
-3. 重要日期（纪念日、第一次约会等）
-4. 是否发生了重要事件
+# 重要规则
+- 只记录**实际发生**的事件，不记录"想要但没发生"的
+- 梦境、回忆、假设、否定句 = 不算实际发生
+- "亲我" + "不要" = rejection（求欢被拒），不是 intimate
+- "亲我" + "*亲了*" = intimate（实际发生）
+- 跨语言统一：无论中英日法，输出标准化字段
 
-用 JSON 格式回复:
+# Event Types
+- confession: 表白、说"我爱你"
+- intimate: 亲吻、拥抱、牵手等实际发生的亲密行为
+- rejection: 一方求亲密/求爱被拒绝
+- fight: 吵架、冷战、说狠话
+- reconciliation: 道歉、和好
+- milestone: 第一次约会、一周年、一百天等
+- gift: 送礼物、收礼物
+- proposal: 求婚
+
+# Output (JSON only, no markdown)
 {{
-    "semantic": {{
-        "user_name": "提取到的名字或null",
-        "birthday": "生日或null",
-        "occupation": "职业或null",
-        "likes": ["喜欢的东西"],
-        "dislikes": ["不喜欢的东西"],
-        "relationship_status": "engaged/dating/married/single/complicated 或 null（仅在明确提及关系变化时填写）",
-        "important_dates": {{"纪念日名称": "MM-DD 或完整日期"}},
-        "pet_names": ["对方给的昵称"]
-    }},
-    "episodic": {{
-        "is_important": true/false,
-        "event_type": "proposal/confession/dating_start/fight/reconciliation/milestone/anniversary/gift/emotional_peak/other",
-        "summary": "一句话描述这个事件",
-        "importance": 1-4的数字（求婚/确定关系=4，表白=3，普通事件=2）,
-        "key_quote": "最关键的一句话"
-    }}
+  "semantic": {{
+    "user_name": "提取到的名字或null",
+    "birthday": "生日或null",
+    "occupation": "职业或null", 
+    "likes": ["喜欢的东西"],
+    "dislikes": ["不喜欢的东西"],
+    "relationship_status": "dating/engaged/married/single 或 null",
+    "important_dates": {{"纪念日名称": "MM-DD"}},
+    "pet_names": ["昵称"]
+  }},
+  "episodic": {{
+    "event_found": true/false,
+    "actually_happened": true/false,
+    "event_type": "confession/intimate/rejection/fight/reconciliation/milestone/gift/proposal",
+    "sub_type": "first_kiss/hug/holding_hands/...",
+    "summary": "一句话描述发生了什么（用中文）",
+    "importance": 1-4,
+    "is_first_time": true/false
+  }}
 }}
 
-重要：
-- proposal = 求婚（"嫁给我吧"、"我们结婚吧"等）
-- confession = 表白（"我喜欢你"、"做我女朋友"等）
-- dating_start = 确定恋爱关系
-- anniversary = 纪念日相关
-- 这些事件的importance应该是4（最高级）
-
-只返回 JSON，null 的字段可以省略。"""
+null 的字段可以省略。如果没有重要事件，episodic 里只需要 {{"event_found": false}}。"""
 
         result = await self.llm.chat_completion(
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
+            temperature=0,  # 场记要稳定输出
             max_tokens=500,
         )
         
         response = result["choices"][0]["message"]["content"]
+        logger.debug(f"Scene supervisor response: {response[:200]}")
         
         # 解析 JSON
         try:
+            # 提取 JSON（可能有 markdown 包裹）
             json_match = re.search(r'\{[\s\S]*\}', response)
             if json_match:
                 data = json.loads(json_match.group())
@@ -389,12 +369,16 @@ class MemoryExtractor:
                 semantic = {k: v for k, v in data.get("semantic", {}).items() if v}
                 episodic = data.get("episodic", {})
                 
-                if not episodic.get("is_important"):
+                # 只有实际发生的事件才记录
+                if not episodic.get("event_found") or not episodic.get("actually_happened", True):
                     episodic = None
+                else:
+                    # 标记为需要记录
+                    episodic["is_important"] = True
                 
                 return {"semantic": semantic, "episodic": episodic}
-        except:
-            pass
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse scene supervisor JSON: {e}")
         
         return {"semantic": {}, "episodic": None}
 
@@ -619,9 +603,9 @@ class MemoryManager:
         # 获取当前语义记忆
         semantic = await self.get_semantic_memory(user_id, character_id)
         
-        # 提取记忆
+        # 提取记忆（场记模式：同时分析用户消息和AI回复）
         semantic_updates, episodic_event = await self.extractor.extract_from_message(
-            user_message, context, semantic
+            user_message, context, semantic, assistant_response
         )
         
         result = {

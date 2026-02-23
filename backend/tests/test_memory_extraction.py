@@ -1,17 +1,16 @@
 """
-Memory Extraction 单元测试
-=========================
+Memory Extraction 单元测试 v2 - 场记模式
+======================================
 
-测试 MemoryExtractor 的模式匹配功能
+测试 MemoryExtractor 的 LLM 场记功能
 
 运行: pytest tests/test_memory_extraction.py -v
 """
 
 import pytest
 import asyncio
-import re
+from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime
-from typing import List, Tuple
 
 from app.services.memory_system_v2.memory_manager import (
     MemoryExtractor,
@@ -20,311 +19,381 @@ from app.services.memory_system_v2.memory_manager import (
 
 
 @pytest.fixture
-def extractor():
-    """Create a MemoryExtractor without LLM for pattern-only testing"""
-    return MemoryExtractor(llm_service=None)
-
-
-@pytest.fixture
 def empty_semantic():
     """Create an empty SemanticMemory for testing"""
     return SemanticMemory(user_id="test-user", character_id="test-char")
 
 
-class TestInfoPatterns:
-    """测试 INFO_PATTERNS 信息提取"""
-
-    @pytest.mark.parametrize("message,expected_name", [
-        ("我叫小明", "小明"),
-        ("我叫Alice", "Alice"),
-        ("叫我老王", "老王"),
-        ("叫我宝贝", "宝贝"),
-        ("my name is John", "John"),
-        ("My Name Is Sarah", "Sarah"),
-        ("call me Mike", "Mike"),
-        ("Call Me Maybe", "Maybe"),
-    ])
-    def test_name_extraction(self, extractor, message, expected_name):
-        """测试名字提取 - 中英文"""
-        for pattern in extractor.INFO_PATTERNS["name"]:
-            match = re.search(pattern, message, re.IGNORECASE)
-            if match:
-                result = match.group(1).strip()
-                assert expected_name.lower() in result.lower() or result in expected_name
-                return
-        pytest.fail(f"No pattern matched for: {message}")
-
-    @pytest.mark.parametrize("message,should_match", [
-        ("我的生日是3月15日", True),
-        ("我生日是12月25号", True),
-        ("我3月5日生", True),
-        ("我10月1日生的", True),
-        ("my birthday is March 15", True),
-        ("今天天气不错", False),
-    ])
-    def test_birthday_extraction(self, extractor, message, should_match):
-        """测试生日提取"""
-        matched = False
-        for pattern in extractor.INFO_PATTERNS["birthday"]:
-            match = re.search(pattern, message, re.IGNORECASE)
-            if match:
-                matched = True
-                break
-        assert matched == should_match, f"Expected match={should_match} for: {message}"
-
-    @pytest.mark.parametrize("message,should_match", [
-        ("我是做程序员的", True),
-        ("我是做设计的", True),
-        ("我的工作是老师", True),
-        ("我的工作是产品经理", True),
-        ("i work as a designer", True),
-        ("I'm a software engineer", True),
-        ("我喜欢吃苹果", False),
-    ])
-    def test_occupation_extraction(self, extractor, message, should_match):
-        """测试职业提取"""
-        matched = False
-        for pattern in extractor.INFO_PATTERNS["occupation"]:
-            match = re.search(pattern, message, re.IGNORECASE)
-            if match:
-                matched = True
-                break
-        assert matched == should_match, f"Expected match={should_match} for: {message}"
-
-    @pytest.mark.parametrize("message,expected_like", [
-        ("我喜欢看电影", "看电影"),
-        ("我喜欢你", "你"),
-        ("我爱吃火锅", "吃火锅"),
-        ("我最喜欢的是旅游", "旅游"),
-        ("i like playing games", "playing games"),
-        ("I love cooking", "cooking"),
-    ])
-    def test_likes_extraction(self, extractor, message, expected_like):
-        """测试喜好提取 - 中英文"""
-        for pattern in extractor.INFO_PATTERNS["likes"]:
-            match = re.search(pattern, message, re.IGNORECASE)
-            if match:
-                result = match.group(1).strip()
-                assert expected_like.lower() in result.lower()
-                return
-        pytest.fail(f"No pattern matched for: {message}")
-
-    @pytest.mark.parametrize("message,expected_dislike", [
-        ("我讨厌加班", "加班"),
-        ("我不喜欢下雨天", "下雨天"),
-        ("我受不了噪音", "噪音"),
-        ("i hate bugs", "bugs"),
-        ("I don't like cold weather", "cold weather"),
-    ])
-    def test_dislikes_extraction(self, extractor, message, expected_dislike):
-        """测试讨厌提取 - 中英文"""
-        for pattern in extractor.INFO_PATTERNS["dislikes"]:
-            match = re.search(pattern, message, re.IGNORECASE)
-            if match:
-                result = match.group(1).strip()
-                assert expected_dislike.lower() in result.lower()
-                return
-        pytest.fail(f"No pattern matched for: {message}")
+@pytest.fixture
+def mock_llm():
+    """Create a mock LLM service"""
+    llm = MagicMock()
+    llm.chat_completion = AsyncMock()
+    return llm
 
 
-class TestEventTriggers:
-    """测试 EVENT_TRIGGERS 事件检测"""
-
-    @pytest.mark.parametrize("message,expected_event", [
-        # 表白 confession
-        ("我爱你", "confession"),
-        ("我喜欢你很久了", "confession"),
-        ("做我女朋友吧", "confession"),
-        ("做我男朋友好不好", "confession"),
-        ("i love you", "confession"),
-        ("be my girlfriend", "confession"),
-        
-        # 吵架 fight
-        ("我们分手吧", "fight"),
-        ("不想理你了", "fight"),
-        ("我讨厌你", "fight"),
-        ("你给我滚", "fight"),
-        
-        # 和好 reconciliation
-        ("对不起我错了", "reconciliation"),
-        ("原谅我好不好", "reconciliation"),
-        ("我们和好吧", "reconciliation"),
-        
-        # 里程碑 milestone
-        ("今天是我们的一周年纪念日", "milestone"),
-        ("这是我们第一次约会", "milestone"),
-        ("我们认识一百天了", "milestone"),
-        
-        # 礼物 gift
-        ("我送你一个礼物", "gift"),
-        ("这是给你的惊喜", "gift"),
-        
-        # 情感高点 emotional_peak
-        ("这是我最开心的一天", "emotional_peak"),
-        ("这是我最幸福的时刻", "emotional_peak"),
-    ])
-    def test_event_detection(self, extractor, message, expected_event):
-        """测试事件类型检测"""
-        detected_event = None
-        message_lower = message.lower()
-        
-        for event_type, triggers in extractor.EVENT_TRIGGERS.items():
-            if any(t in message_lower for t in triggers):
-                detected_event = event_type
-                break
-        
-        assert detected_event == expected_event, \
-            f"Expected event={expected_event}, got={detected_event} for: {message}"
-
-    def test_no_false_positive(self, extractor):
-        """测试不会误检测普通消息"""
-        normal_messages = [
-            "今天天气真好",
-            "我去吃饭了",
-            "你在干嘛呢",
-            "明天有空吗",
-            "工作好累啊",
-            "晚安",
-        ]
-        
-        for message in normal_messages:
-            message_lower = message.lower()
-            detected = False
-            
-            for event_type, triggers in extractor.EVENT_TRIGGERS.items():
-                if any(t in message_lower for t in triggers):
-                    detected = True
-                    break
-            
-            assert not detected, f"False positive detected for: {message}"
+@pytest.fixture
+def extractor_no_llm():
+    """Create a MemoryExtractor without LLM"""
+    return MemoryExtractor(llm_service=None)
 
 
-class TestExtractFromMessage:
-    """测试完整的消息提取流程"""
+@pytest.fixture
+def extractor_with_mock_llm(mock_llm):
+    """Create a MemoryExtractor with mock LLM"""
+    return MemoryExtractor(llm_service=mock_llm)
+
+
+class TestPreScreening:
+    """测试预筛选逻辑 _needs_scene_analysis"""
+
+    def test_should_analyze_intimate(self, extractor_no_llm):
+        """亲密相关词应该触发分析"""
+        assert extractor_no_llm._needs_scene_analysis("亲我一下", "") == True
+        assert extractor_no_llm._needs_scene_analysis("kiss me", "") == True
+        assert extractor_no_llm._needs_scene_analysis("抱抱", "") == True
+        assert extractor_no_llm._needs_scene_analysis("hug me", "") == True
+
+    def test_should_analyze_emotion(self, extractor_no_llm):
+        """情感相关词应该触发分析"""
+        assert extractor_no_llm._needs_scene_analysis("我爱你", "") == True
+        assert extractor_no_llm._needs_scene_analysis("i love you", "") == True
+        assert extractor_no_llm._needs_scene_analysis("我喜欢你", "") == True
+        assert extractor_no_llm._needs_scene_analysis("我讨厌你", "") == True
+
+    def test_should_analyze_relationship(self, extractor_no_llm):
+        """关系变化词应该触发分析"""
+        assert extractor_no_llm._needs_scene_analysis("我们分手吧", "") == True
+        assert extractor_no_llm._needs_scene_analysis("做我女朋友", "") == True
+        assert extractor_no_llm._needs_scene_analysis("结婚", "") == True
+        assert extractor_no_llm._needs_scene_analysis("求婚", "") == True
+
+    def test_should_analyze_milestone(self, extractor_no_llm):
+        """里程碑词应该触发分析"""
+        assert extractor_no_llm._needs_scene_analysis("第一次约会", "") == True
+        assert extractor_no_llm._needs_scene_analysis("一周年纪念", "") == True
+        assert extractor_no_llm._needs_scene_analysis("生日快乐", "") == True
+
+    def test_should_analyze_gift(self, extractor_no_llm):
+        """礼物相关词应该触发分析"""
+        assert extractor_no_llm._needs_scene_analysis("送你一个礼物", "") == True
+        assert extractor_no_llm._needs_scene_analysis("惊喜", "") == True
+        assert extractor_no_llm._needs_scene_analysis("surprise for you", "") == True
+
+    def test_should_skip_normal_chat(self, extractor_no_llm):
+        """普通闲聊不应该触发分析"""
+        assert extractor_no_llm._needs_scene_analysis("今天天气真好", "") == False
+        assert extractor_no_llm._needs_scene_analysis("我去吃饭了", "") == False
+        assert extractor_no_llm._needs_scene_analysis("你在干嘛", "") == False
+        assert extractor_no_llm._needs_scene_analysis("晚安", "") == False
+        assert extractor_no_llm._needs_scene_analysis("工作好累", "") == False
+
+    def test_should_analyze_assistant_response(self, extractor_no_llm):
+        """AI回复里的关键词也应该触发分析"""
+        # 用户消息普通，但AI回复有关键词
+        assert extractor_no_llm._needs_scene_analysis(
+            "嗯", "*轻轻亲了你一下*"
+        ) == True
+        assert extractor_no_llm._needs_scene_analysis(
+            "好的", "我也爱你"
+        ) == True
+
+
+class TestNoLLMBehavior:
+    """测试没有 LLM 时的行为"""
 
     @pytest.mark.asyncio
-    async def test_extract_multiple_info(self, extractor, empty_semantic):
-        """测试同时提取多个信息"""
-        message = "我叫小红，我喜欢看电影"
-        
-        semantic_updates, episodic_event = await extractor.extract_from_message(
-            message=message,
+    async def test_skip_without_llm(self, extractor_no_llm, empty_semantic):
+        """没有 LLM 时应该跳过分析"""
+        semantic, episodic = await extractor_no_llm.extract_from_message(
+            message="我爱你",
             context=[],
             current_semantic=empty_semantic,
+            assistant_response="我也爱你",
         )
         
-        # 应该提取到名字和喜好
-        assert "name" in semantic_updates or "likes" in semantic_updates
+        # 没有 LLM，应该返回空
+        assert semantic == {}
+        assert episodic is None
+
+
+class TestLLMSceneSupervisor:
+    """测试 LLM 场记功能（使用 mock）"""
 
     @pytest.mark.asyncio
-    async def test_extract_confession_event(self, extractor, empty_semantic):
-        """测试提取表白事件"""
-        message = "我爱你，做我女朋友吧"
+    async def test_kiss_detected(self, extractor_with_mock_llm, mock_llm, empty_semantic):
+        """亲吻事件应该被正确检测"""
+        mock_llm.chat_completion.return_value = {
+            "choices": [{
+                "message": {
+                    "content": '''{
+                        "semantic": {},
+                        "episodic": {
+                            "event_found": true,
+                            "actually_happened": true,
+                            "event_type": "intimate",
+                            "sub_type": "first_kiss",
+                            "summary": "在月光下亲吻",
+                            "importance": 3,
+                            "is_first_time": true
+                        }
+                    }'''
+                }
+            }]
+        }
         
-        semantic_updates, episodic_event = await extractor.extract_from_message(
-            message=message,
+        semantic, episodic = await extractor_with_mock_llm.extract_from_message(
+            message="亲我一下",
             context=[],
             current_semantic=empty_semantic,
+            assistant_response="*轻轻吻了你*",
         )
         
-        # 应该检测到 confession 事件
-        assert episodic_event is not None
-        assert episodic_event["event_type"] == "confession"
+        assert episodic is not None
+        assert episodic["event_type"] == "intimate"
+        assert episodic["sub_type"] == "first_kiss"
+        assert episodic["is_important"] == True
 
     @pytest.mark.asyncio
-    async def test_extract_milestone_event(self, extractor, empty_semantic):
-        """测试提取里程碑事件"""
-        message = "今天是我们的一周年纪念日"
+    async def test_rejection_detected(self, extractor_with_mock_llm, mock_llm, empty_semantic):
+        """拒绝事件应该被正确检测"""
+        mock_llm.chat_completion.return_value = {
+            "choices": [{
+                "message": {
+                    "content": '''{
+                        "semantic": {},
+                        "episodic": {
+                            "event_found": true,
+                            "actually_happened": true,
+                            "event_type": "rejection",
+                            "sub_type": "kiss",
+                            "summary": "用户求吻被拒",
+                            "importance": 1
+                        }
+                    }'''
+                }
+            }]
+        }
         
-        semantic_updates, episodic_event = await extractor.extract_from_message(
-            message=message,
+        semantic, episodic = await extractor_with_mock_llm.extract_from_message(
+            message="亲我一下",
             context=[],
             current_semantic=empty_semantic,
+            assistant_response="不要啦，还没刷牙",
         )
         
-        # 应该检测到 milestone 事件
-        assert episodic_event is not None
-        assert episodic_event["event_type"] == "milestone"
+        assert episodic is not None
+        assert episodic["event_type"] == "rejection"
 
     @pytest.mark.asyncio
-    async def test_filter_long_values(self, extractor, empty_semantic):
-        """测试过滤过长的值"""
-        # 名字太长应该被过滤
-        message = "我叫阿巴阿巴阿巴阿巴阿巴阿巴阿巴阿巴阿巴阿巴阿巴阿巴"  # > 10 chars
+    async def test_dream_not_recorded(self, extractor_with_mock_llm, mock_llm, empty_semantic):
+        """梦境不应该被记录为真实事件"""
+        mock_llm.chat_completion.return_value = {
+            "choices": [{
+                "message": {
+                    "content": '''{
+                        "semantic": {},
+                        "episodic": {
+                            "event_found": false
+                        }
+                    }'''
+                }
+            }]
+        }
         
-        semantic_updates, _ = await extractor.extract_from_message(
-            message=message,
+        semantic, episodic = await extractor_with_mock_llm.extract_from_message(
+            message="我昨晚梦到亲你了",
             context=[],
             current_semantic=empty_semantic,
+            assistant_response="梦到我了？好害羞",
         )
         
-        # 过长的名字不应该被提取
-        assert "name" not in semantic_updates or len(semantic_updates.get("name", "")) < 50
+        assert episodic is None
 
-
-class TestChineseEnglishSupport:
-    """测试中英文双语支持"""
-
-    @pytest.mark.parametrize("zh_message,en_message,info_type", [
-        ("我叫小明", "my name is Mike", "name"),
-        ("我喜欢音乐", "i like music", "likes"),
-        ("我讨厌等待", "i hate waiting", "dislikes"),
-        ("我是做工程师的", "i work as an engineer", "occupation"),
-    ])
-    def test_bilingual_patterns(self, extractor, zh_message, en_message, info_type):
-        """测试中英文都能匹配到对应类型"""
-        patterns = extractor.INFO_PATTERNS[info_type]
+    @pytest.mark.asyncio
+    async def test_actually_happened_false(self, extractor_with_mock_llm, mock_llm, empty_semantic):
+        """actually_happened=false 时不应该记录"""
+        mock_llm.chat_completion.return_value = {
+            "choices": [{
+                "message": {
+                    "content": '''{
+                        "semantic": {},
+                        "episodic": {
+                            "event_found": true,
+                            "actually_happened": false,
+                            "event_type": "intimate",
+                            "summary": "只是在说梦话"
+                        }
+                    }'''
+                }
+            }]
+        }
         
-        # 中文应该匹配
-        zh_matched = any(re.search(p, zh_message, re.IGNORECASE) for p in patterns)
-        assert zh_matched, f"Chinese pattern not matched for {info_type}: {zh_message}"
+        semantic, episodic = await extractor_with_mock_llm.extract_from_message(
+            message="如果我们亲一下会怎样",
+            context=[],
+            current_semantic=empty_semantic,
+            assistant_response="那只是假设啦",
+        )
         
-        # 英文应该匹配
-        en_matched = any(re.search(p, en_message, re.IGNORECASE) for p in patterns)
-        assert en_matched, f"English pattern not matched for {info_type}: {en_message}"
+        assert episodic is None
+
+    @pytest.mark.asyncio
+    async def test_confession_with_relationship_update(self, extractor_with_mock_llm, mock_llm, empty_semantic):
+        """表白事件应该同时更新关系状态"""
+        mock_llm.chat_completion.return_value = {
+            "choices": [{
+                "message": {
+                    "content": '''{
+                        "semantic": {
+                            "relationship_status": "dating"
+                        },
+                        "episodic": {
+                            "event_found": true,
+                            "actually_happened": true,
+                            "event_type": "confession",
+                            "summary": "用户表白成功，确定恋爱关系",
+                            "importance": 4,
+                            "is_first_time": true
+                        }
+                    }'''
+                }
+            }]
+        }
+        
+        semantic, episodic = await extractor_with_mock_llm.extract_from_message(
+            message="我喜欢你，做我女朋友吧",
+            context=[],
+            current_semantic=empty_semantic,
+            assistant_response="我也喜欢你...好",
+        )
+        
+        assert semantic.get("relationship_status") == "dating"
+        assert episodic is not None
+        assert episodic["event_type"] == "confession"
+        assert episodic["importance"] == 4
+
+    @pytest.mark.asyncio
+    async def test_extract_user_info(self, extractor_with_mock_llm, mock_llm, empty_semantic):
+        """应该能提取用户信息"""
+        mock_llm.chat_completion.return_value = {
+            "choices": [{
+                "message": {
+                    "content": '''{
+                        "semantic": {
+                            "user_name": "小明",
+                            "birthday": "03-15",
+                            "likes": ["看电影", "打游戏"]
+                        },
+                        "episodic": {
+                            "event_found": false
+                        }
+                    }'''
+                }
+            }]
+        }
+        
+        semantic, episodic = await extractor_with_mock_llm.extract_from_message(
+            message="我叫小明，生日是3月15日，我喜欢看电影和打游戏",
+            context=[],
+            current_semantic=empty_semantic,
+            assistant_response="小明你好！",
+        )
+        
+        assert semantic.get("user_name") == "小明"
+        assert semantic.get("birthday") == "03-15"
+        assert "看电影" in semantic.get("likes", [])
 
 
 class TestEdgeCases:
     """测试边界情况"""
 
     @pytest.mark.asyncio
-    async def test_empty_message(self, extractor, empty_semantic):
-        """测试空消息"""
-        semantic_updates, episodic_event = await extractor.extract_from_message(
+    async def test_empty_message(self, extractor_no_llm, empty_semantic):
+        """空消息应该跳过"""
+        semantic, episodic = await extractor_no_llm.extract_from_message(
             message="",
             context=[],
             current_semantic=empty_semantic,
         )
         
-        assert semantic_updates == {}
-        assert episodic_event is None
+        assert semantic == {}
+        assert episodic is None
 
     @pytest.mark.asyncio
-    async def test_special_characters(self, extractor, empty_semantic):
-        """测试特殊字符"""
-        message = "我叫@#$%"
+    async def test_llm_error_handling(self, extractor_with_mock_llm, mock_llm, empty_semantic):
+        """LLM 出错时应该优雅降级"""
+        mock_llm.chat_completion.side_effect = Exception("API Error")
         
-        semantic_updates, _ = await extractor.extract_from_message(
-            message=message,
+        semantic, episodic = await extractor_with_mock_llm.extract_from_message(
+            message="我爱你",
             context=[],
             current_semantic=empty_semantic,
+            assistant_response="我也爱你",
         )
         
-        # 特殊字符可能被提取但应该是短的
-        if "name" in semantic_updates:
-            assert len(semantic_updates["name"]) < 50
+        # 出错时应该返回空，不崩溃
+        assert semantic == {}
+        assert episodic is None
 
     @pytest.mark.asyncio
-    async def test_none_context(self, extractor, empty_semantic):
-        """测试 None context"""
-        message = "我喜欢喝咖啡"
+    async def test_invalid_json_response(self, extractor_with_mock_llm, mock_llm, empty_semantic):
+        """LLM 返回无效 JSON 时应该优雅处理"""
+        mock_llm.chat_completion.return_value = {
+            "choices": [{
+                "message": {
+                    "content": "这不是有效的JSON"
+                }
+            }]
+        }
         
-        # 应该不会崩溃
-        semantic_updates, episodic_event = await extractor.extract_from_message(
-            message=message,
-            context=None,  # type: ignore - testing edge case
+        semantic, episodic = await extractor_with_mock_llm.extract_from_message(
+            message="我爱你",
+            context=[],
             current_semantic=empty_semantic,
+            assistant_response="我也爱你",
         )
         
-        # likes 应该被提取
-        assert "likes" in semantic_updates or semantic_updates == {}
+        assert semantic == {}
+        assert episodic is None
+
+
+class TestMultiLanguage:
+    """测试多语言支持"""
+
+    def test_english_hints(self, extractor_no_llm):
+        """英文关键词应该触发分析"""
+        assert extractor_no_llm._needs_scene_analysis("I love you", "") == True
+        assert extractor_no_llm._needs_scene_analysis("kiss me please", "") == True
+        assert extractor_no_llm._needs_scene_analysis("let's break up", "") == True
+
+    def test_japanese_hints(self, extractor_no_llm):
+        """日语关键词（如果包含在hints里）应该触发分析"""
+        # 目前hints里没有日语，但 LLM 场记可以处理
+        # 如果用户说日语但包含通用词如"kiss"，应该能触发
+        assert extractor_no_llm._needs_scene_analysis("キスして", "") == False  # 纯日语暂不触发预筛选
+        # 但如果包含英文关键词
+        assert extractor_no_llm._needs_scene_analysis("please kiss", "") == True
+
+
+class TestIntegration:
+    """集成测试（需要真实 LLM）"""
+
+    @pytest.mark.asyncio
+    @pytest.mark.skip(reason="Requires real LLM service - run manually")
+    async def test_real_llm_kiss_scene(self, empty_semantic):
+        """真实 LLM 测试亲吻场景"""
+        from app.services.llm_service import GrokService
+        
+        extractor = MemoryExtractor(llm_service=GrokService())
+        
+        semantic, episodic = await extractor.extract_from_message(
+            message="亲我一下嘛~",
+            context=[],
+            current_semantic=empty_semantic,
+            assistant_response="*轻轻靠近，在你唇上落下一吻* 笨蛋...",
+        )
+        
+        assert episodic is not None
+        assert episodic["event_type"] == "intimate"
+        assert episodic.get("is_important") == True
