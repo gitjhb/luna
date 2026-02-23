@@ -258,9 +258,15 @@ async def telegram_chat(request: TelegramChatRequest):
         
         # 7. 转换为 Telegram 聊天风格（移除动作描写，拆分多条）
         replies = format_for_telegram(raw_reply)
+        
+        # 防止空回复
+        if not replies:
+            replies = [raw_reply.strip() if raw_reply else "..."]
+        
         reply = '|||'.join(replies)  # 用 ||| 分隔，方便前端拆分
         
-        logger.info(f"📱 Luna → {request.telegram_id}: {replies[0][:30]}... ({len(replies)} msgs, emotion: {emotion})")
+        first_preview = replies[0][:30] if replies else "empty"
+        logger.info(f"📱 Luna → {request.telegram_id}: {first_preview}... ({len(replies)} msgs, emotion: {emotion})")
         
         return TelegramChatResponse(
             reply=reply,
