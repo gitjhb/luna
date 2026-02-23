@@ -626,3 +626,141 @@ async def get_webhook_info():
                 
     except Exception as e:
         return {"configured": False, "error": str(e)}
+
+
+# ========== Account Linking API ==========
+
+class LinkAccountRequest(BaseModel):
+    telegram_id: str
+    email: str
+    language_code: Optional[str] = None
+
+
+class LinkAccountResponse(BaseModel):
+    success: bool
+    message: str
+    is_pro: bool = False
+    display_name: Optional[str] = None
+
+
+@router.post("/link", response_model=LinkAccountResponse)
+async def link_telegram_account(request: LinkAccountRequest):
+    """
+    Link a Telegram account to an existing Luna account via email.
+    
+    This enables:
+    - Shared memories between iOS and Telegram
+    - Synced subscription/Pro status
+    - Unified identity
+    """
+    import re
+    
+    telegram_id = request.telegram_id.strip()
+    email = request.email.strip().lower()
+    language_code = request.language_code or 'en'
+    
+    # Validate email format
+    if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        return LinkAccountResponse(
+            success=False,
+            message="邮箱格式不正确，请检查后重试。" if language_code.startswith('zh') else "Invalid email format."
+        )
+    
+    async with get_db() as db:
+        # 1. Check if email exists in Luna users table
+        result = await db.execute(
+            select(User).where(User.email == email)
+        )
+        luna_user = result.scalar_one_or_none()
+        
+        if not luna_user:
+            return LinkAccountResponse(
+                success=False,
+                message=f"没有找到 {email} 的Luna账号，请先下载Luna App注册。" if language_code.startswith('zh') 
+                        else f"No Luna account found for {email}. Please download Luna App to register first."
+            )
+        
+        # 2. Check if this email is already linked to another telegram
+        if luna_user.telegram_id and luna_user.telegram_id != telegram_id:
+            return LinkAccountResponse(
+                success=False,
+                message="这个邮箱已经绑定了另一个Telegram账号。" if language_code.startswith('zh')
+                        else "This email is already linked to another Telegram account."
+            )
+        
+        # 3. Check if this telegram_id is already linked to another email
+        tg_check = await db.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        existing_tg_user = tg_check.scalar_one_or_none()
+        
+        if existing_tg_user and existing_tg_user.email != email:
+            # This telegram is linked to a different account
+            return LinkAccountResponse(
+                success=False,
+                message=f"你的Telegram已绑定到 {existing_tg_user.email}，如需更换请联系客服。" if language_code.startswith('zh')
+                        else f"Your Telegram is already linked to {existing_tg_user.email}."
+            )
+        
+        # 4. Link the accounts
+        luna_user.telegram_id = telegram_id
+        if language_code:
+            luna_user.preferred_language = language_code[:2]  # Store just 'en', 'zh', etc.
+        
+        # 5. If there's a temporary telegram user, merge their data
+        temp_firebase_uid = f"telegram_{telegram_id}"
+        temp_result = await db.execute(
+            select(User).where(User.firebase_uid == temp_firebase_uid)
+        )
+        temp_user = temp_result.scalar_one_or_none()
+        
+        if temp_user and temp_user.user_id != luna_user.user_id:
+            # TODO: Migrate chat history and memories from temp_user to luna_user
+            # For now, just delete the temp user
+            logger.info(f"🔗 Merging temp user {temp_user.user_id} into {luna_user.user_id}")
+            await db.delete(temp_user)
+        
+        await db.commit()
+        
+        is_pro = luna_user.is_subscribed or luna_user.subscription_tier != 'free'
+        
+        logger.info(f"✅ Linked Telegram {telegram_id} to Luna account {luna_user.email} (Pro: {is_pro})")
+        
+        return LinkAccountResponse(
+            success=True,
+            message=f"🎉 绑定成功！你的iOS记忆和{'Pro' if is_pro else ''}权益已同步。" if language_code.startswith('zh')
+                    else f"🎉 Account linked! Your iOS memories and {'Pro ' if is_pro else ''}benefits are now synced.",
+            is_pro=is_pro,
+            display_name=luna_user.display_name
+        )
+
+
+@router.get("/user-by-telegram/{telegram_id}")
+async def get_user_by_telegram(telegram_id: str):
+    """Get Luna user info by Telegram ID (for debugging)."""
+    async with get_db() as db:
+        # First try to find by telegram_id field
+        result = await db.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
+        
+        # Fallback to firebase_uid
+        if not user:
+            result = await db.execute(
+                select(User).where(User.firebase_uid == f"telegram_{telegram_id}")
+            )
+            user = result.scalar_one_or_none()
+        
+        if not user:
+            return {"found": False}
+        
+        return {
+            "found": True,
+            "user_id": user.user_id,
+            "email": user.email,
+            "display_name": user.display_name,
+            "is_linked": user.telegram_id == telegram_id and not user.email.endswith('@telegram.luna'),
+            "is_pro": user.is_subscribed or user.subscription_tier != 'free',
+            "preferred_language": user.preferred_language,
+        }

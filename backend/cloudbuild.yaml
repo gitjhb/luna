@@ -1,20 +1,7 @@
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'us-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/luna-backend', '.']
+    args: ['build', '-t', 'us-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/luna-backend:latest', '.']
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'us-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/luna-backend']
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
-    args:
-      - 'run'
-      - 'deploy'
-      - 'luna-backend'
-      - '--image'
-      - 'us-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/luna-backend'
-      - '--region'
-      - 'us-west1'
-      - '--allow-unauthenticated'
-      - '--set-secrets'
-      - 'TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest'
+    args: ['push', 'us-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/luna-backend:latest']
 images:
-  - 'us-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/luna-backend'
+  - 'us-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/luna-backend:latest'

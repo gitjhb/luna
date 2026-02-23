@@ -43,9 +43,14 @@ class User(Base):
     firebase_uid = Column(String(128), unique=True, nullable=False, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     
+    # Cross-platform identity
+    telegram_id = Column(String(64), unique=True, nullable=True, index=True)  # Telegram user ID
+    apple_id = Column(String(128), unique=True, nullable=True, index=True)    # Apple Sign In ID
+    
     # Profile
     display_name = Column(String(255))
     avatar_url = Column(String(512))
+    preferred_language = Column(String(10), default='en')  # i18n: en, zh, ja, etc.
     
     # Subscription info
     is_subscribed = Column(Boolean, default=False, nullable=False)
