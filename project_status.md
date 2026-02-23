@@ -86,7 +86,9 @@
 
 > JHB 的新想法写这里，Nikki 会定期整理到 Design Docs
 
-- (空)
+- [ ] **统一 Luna 人设**：Telegram 和 App 的 Luna 性格要一致
+  - 当前：App = 诗意神秘夜精灵，Mio Bot = 22岁傲娇女友
+  - 需要：确认用户用的是哪个 bot，统一体验
 
 ---
 
