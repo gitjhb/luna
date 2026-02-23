@@ -201,7 +201,7 @@ class MemoryExtractor:
     # 触发提取的模式 (Bilingual: Chinese + English)
     # Pattern format: regex with capture group for the extracted value
     INFO_PATTERNS = {
-        "name": [
+        "user_name": [
             r"我叫(.{2,10})",
             r"我是(.{2,10})",
             r"叫我(.{2,10})",

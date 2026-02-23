@@ -84,7 +84,7 @@ class MemoryDBService:
                 else:
                     # Create new record
                     clean_data = {k: v for k, v in data.items() 
-                                 if k not in ["updated_at", "created_at", "id"]}
+                                 if k not in ["user_id", "character_id", "updated_at", "created_at", "id"]}
                     record = SemanticMemory(
                         user_id=user_id,
                         character_id=character_id,
