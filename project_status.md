@@ -88,6 +88,9 @@
 ### 2026-02-23
 - ✅ Fix: `save_semantic_memory` 重复参数
 - ✅ Fix: `INFO_PATTERNS` key 不匹配 (name → user_name)
+- ✅ Feat: 添加 `/api/v1/chat/debug` endpoint (God Mode 支持)
+- ✅ Fix: 正则优化，避免从问句提取名字
+- ✅ Test: `tests/test_memory_system.py` (5 tests passing)
 - 📝 建立 TEAM_NORMS.md 和 project_status.md
 
 ### 2026-02-22
