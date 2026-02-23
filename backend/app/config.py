@@ -73,12 +73,13 @@ class Settings(BaseSettings):
     FIREBASE_CREDENTIALS_PATH: str = Field(default="")
     
     # ========== Mock Modes ==========
-    MOCK_AUTH: bool = Field(default=True)
-    MOCK_DATABASE: bool = Field(default=True)
-    MOCK_REDIS: bool = Field(default=True)
-    MOCK_LLM: bool = Field(default=True)
-    MOCK_TTS: bool = Field(default=True)
-    MOCK_IMAGE: bool = Field(default=True)  # Mock mode for image generation
+    # Mock modes - 默认关闭，仅本地开发时通过 .env 启用
+    MOCK_AUTH: bool = Field(default=False)
+    MOCK_DATABASE: bool = Field(default=False)
+    MOCK_REDIS: bool = Field(default=False)
+    MOCK_LLM: bool = Field(default=False)
+    MOCK_TTS: bool = Field(default=False)
+    MOCK_IMAGE: bool = Field(default=False)
     
     # ========== Content Moderation ==========
     MODERATION_ENABLED: bool = Field(default=True)  # Set to False to skip moderation
