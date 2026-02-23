@@ -447,6 +447,8 @@ async def telegram_webhook(update: TelegramUpdate):
 
 可用命令：
 /start - 开始聊天
+/me - 查看Luna记住的关于你
+/link <邮箱> - 关联Luna App账号
 /clear - 清除聊天记录
 /help - 显示帮助
 
@@ -454,7 +456,91 @@ async def telegram_webhook(update: TelegramUpdate):
         await send_telegram_message(chat_id, help_text)
         return {"ok": True}
     
-    # Ignore empty messages and other commands
+    # Handle /me command - show what Luna remembers
+    if text == "/me":
+        try:
+            user_info = await get_telegram_user_info(user_id)
+            if not user_info.get("exists"):
+                await send_telegram_message(chat_id, "我们才刚认识，多聊聊我就能记住你啦~ 💕")
+                return {"ok": True}
+            
+            # Get semantic memory
+            from app.services.memory_db_service import memory_db_service
+            luna_user_id = user_info.get("user_id")
+            memories = await memory_db_service.get_semantic_memory(luna_user_id, DEFAULT_CHARACTER_ID)
+            
+            if not memories:
+                await send_telegram_message(chat_id, "我们聊得还不够多，继续聊天让我更了解你吧~ 💕")
+                return {"ok": True}
+            
+            info = "📝 我记得的关于你：\n\n"
+            for mem in memories[:10]:  # Limit to 10 items
+                if mem.get("content"):
+                    info += f"• {mem['content'][:50]}...\n" if len(mem.get('content', '')) > 50 else f"• {mem['content']}\n"
+            
+            await send_telegram_message(chat_id, info)
+        except Exception as e:
+            logger.error(f"Failed to get memories: {e}")
+            await send_telegram_message(chat_id, "记忆系统暂时出了点问题，等会再试试~ 💭")
+        return {"ok": True}
+    
+    # Handle /link command - link to Luna App account
+    if text.startswith("/link"):
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            await send_telegram_message(chat_id, "用法：/link 你的邮箱\n\n例如：/link example@gmail.com")
+            return {"ok": True}
+        
+        email = parts[1].strip().lower()
+        
+        # Validate email format
+        import re
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            await send_telegram_message(chat_id, "这个邮箱格式好像不对诶，再检查一下？")
+            return {"ok": True}
+        
+        try:
+            # Check if email exists in Luna users table
+            async with get_db() as db:
+                result = await db.execute(
+                    select(User).where(User.email == email)
+                )
+                luna_user = result.scalar_one_or_none()
+                
+                if not luna_user:
+                    await send_telegram_message(chat_id, f"没有找到 {email} 的Luna账号哦~\n\n先下载Luna App注册一个吧！💕")
+                    return {"ok": True}
+                
+                # Check if already linked
+                telegram_uid = f"telegram_{user_id}"
+                if luna_user.firebase_uid == telegram_uid:
+                    await send_telegram_message(chat_id, "你已经关联过这个账号啦~ 💕")
+                    return {"ok": True}
+                
+                # Link: update the telegram user to point to Luna user
+                tg_result = await db.execute(
+                    select(User).where(User.firebase_uid == telegram_uid)
+                )
+                tg_user = tg_result.scalar_one_or_none()
+                
+                if tg_user:
+                    # Merge: update telegram user's data to Luna user
+                    # For now, just update the telegram user's email to link them
+                    tg_user.email = email
+                    tg_user.display_name = luna_user.display_name or tg_user.display_name
+                    await db.commit()
+                    
+                    await send_telegram_message(chat_id, f"✅ 成功关联到 {email}！\n\n现在你在Telegram和App的记忆会同步啦~ 💕")
+                else:
+                    await send_telegram_message(chat_id, "请先发送一条消息，然后再试试关联~")
+                    
+        except Exception as e:
+            logger.error(f"Link error: {e}", exc_info=True)
+            await send_telegram_message(chat_id, "关联失败了，稍后再试试？💭")
+        
+        return {"ok": True}
+    
+    # Ignore empty messages and unknown commands
     if not text or text.startswith("/"):
         return {"ok": True}
     
