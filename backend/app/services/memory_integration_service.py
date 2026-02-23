@@ -27,14 +27,23 @@ def get_memory_manager() -> MemoryManager:
     """
     Get the initialized memory manager.
     
-    Lazy initialization ensures DB service is available.
+    Lazy initialization ensures DB and LLM services are available.
     """
     global _memory_manager
     
     if _memory_manager is None:
+        # Import LLM service for scene supervisor
+        try:
+            from app.services.llm_service import GrokService
+            llm_service = GrokService()
+            logger.info("Memory manager initialized with LLM scene supervisor")
+        except Exception as e:
+            logger.warning(f"Failed to initialize LLM for memory manager: {e}")
+            llm_service = None
+        
         _memory_manager = MemoryManager(
             db_service=memory_db_service,
-            llm_service=None,  # LLM extraction is optional
+            llm_service=llm_service,
         )
         logger.info("Memory manager initialized with DB service")
     
