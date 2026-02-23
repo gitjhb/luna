@@ -14,6 +14,7 @@ import {
   ImageBackground,
   Dimensions,
   Alert,
+  Linking,
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -205,11 +206,11 @@ export default function LoginScreen() {
           {/* Tiny terms text */}
           <Text style={styles.termsText}>
             {t.login.termsPrefix}
-            <Text style={styles.termsLink} onPress={() => router.push('/legal/terms')}>
+            <Text style={styles.termsLink} onPress={() => Linking.openURL('https://luna2077-ai.vercel.app/terms-of-service-zh')}>
               {t.login.termsOfService}
             </Text>
             {t.login.and}
-            <Text style={styles.termsLink} onPress={() => router.push('/legal/privacy')}>
+            <Text style={styles.termsLink} onPress={() => Linking.openURL('https://luna2077-ai.vercel.app/privacy-policy-zh')}>
               {t.login.privacyPolicy}
             </Text>
           </Text>

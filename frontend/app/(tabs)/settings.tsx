@@ -597,13 +597,13 @@ export default function SettingsScreen() {
             <SettingItem
               icon="document-text-outline"
               title="服务条款"
-              onPress={() => router.push('/legal/terms')}
+              onPress={() => Linking.openURL('https://luna2077-ai.vercel.app/terms-of-service-zh')}
               theme={theme}
             />
             <SettingItem
               icon="shield-checkmark-outline"
               title="隐私政策"
-              onPress={() => router.push('/legal/privacy')}
+              onPress={() => Linking.openURL('https://luna2077-ai.vercel.app/privacy-policy-zh')}
               theme={theme}
             />
           </SettingSection>
