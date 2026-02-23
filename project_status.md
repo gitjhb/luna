@@ -12,6 +12,12 @@
 - [x] **Memory 基础功能** — ✅ 已修复并验证
   - `/api/v1/chat/debug` endpoint 已创建
   - God Mode 可正常存储/检索记忆
+
+- [x] **主动消息系统** — ✅ 从 Mio 移植完成
+  - 早安/晚安/想念消息
+  - 角色专属模板
+  - 冷却机制 + 亲密度门槛
+  - 12 tests passing
   
 - [ ] **Memory 订阅限制** — Free plan 不存/提取记忆
   - 状态: 待实现订阅检查
@@ -66,6 +72,7 @@
 
 | 文档 | 路径 | 内容 |
 |------|------|------|
+| **⭐ 产品战略** | `docs/PRODUCT_STRATEGY.md` | 北极星：从工具→游戏，护城河策略 |
 | **亲密度系统** | `relationship_level.md` | 5阶段, 50级, XP公式 |
 | **Chat 架构** | `backend/docs/CHAT_SYSTEM.md` | V4 Pipeline 流程图 |
 | **Intent Protocol** | `backend/docs/Luna_Intent_Protocol.md` | 意图识别规范 |
@@ -91,6 +98,8 @@
 - ✅ Feat: 添加 `/api/v1/chat/debug` endpoint (God Mode 支持)
 - ✅ Fix: 正则优化，避免从问句提取名字
 - ✅ Test: `tests/test_memory_system.py` (5 tests passing)
+- ✅ Feat: 主动消息系统 (从 Mio 移植)
+- ✅ Test: `tests/test_proactive_message.py` (12 tests passing)
 - 📝 建立 TEAM_NORMS.md 和 project_status.md
 
 ### 2026-02-22
