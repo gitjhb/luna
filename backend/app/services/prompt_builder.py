@@ -294,7 +294,8 @@ class PromptBuilder:
         character_id: str,
         user_message: str,
         context_messages: List[Dict[str, str]] = None,
-        memory_context: str = ""
+        memory_context: str = "",
+        user_timezone: str = "America/Los_Angeles"
     ) -> str:
         """
         构建完整的 L2 System Prompt
@@ -331,6 +332,9 @@ class PromptBuilder:
         if game_result.new_event:
             parts.append(self._build_new_event_instruction(game_result.new_event))
         
+        # 保存用户时区供 _build_base_prompt 使用
+        self._user_timezone = user_timezone
+        
         # 5. 事件上下文
         if game_result.events:
             parts.append(self._build_event_context(game_result.events))
@@ -360,9 +364,16 @@ class PromptBuilder:
         stage_cn = STAGE_NAMES_CN.get(stage, "未知")
         stage_en = STAGE_NAMES_EN.get(stage, "Unknown")
         
-        # 获取当前时间信息
+        # 获取用户时区的当前时间
         from datetime import datetime
-        now = datetime.now()
+        import pytz
+        
+        try:
+            user_tz = pytz.timezone(getattr(self, '_user_timezone', 'America/Los_Angeles'))
+            now = datetime.now(user_tz)
+        except Exception:
+            now = datetime.now()  # fallback
+        
         date_str = now.strftime("%Y年%m月%d日")
         time_str = now.strftime("%H:%M")
         weekday_cn = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][now.weekday()]

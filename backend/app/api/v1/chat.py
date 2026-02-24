@@ -634,7 +634,8 @@ async def chat_completion(request: ChatCompletionRequest, req: Request):
             character_id=character_id,
             user_message=request.message,
             context_messages=context_messages,
-            memory_context=gift_memory
+            memory_context=gift_memory,
+            user_timezone=request.timezone
         )
         
         # 注入状态效果到 prompt
@@ -955,6 +956,7 @@ class StreamChatRequest(BaseModel):
     spicy_mode: bool = False
     intimacy_level: int = 1
     scenario_id: Optional[str] = None
+    timezone: str = "America/Los_Angeles"  # 用户时区，默认 PST
 
 
 @router.post("/stream")
@@ -1067,7 +1069,8 @@ async def stream_chat_completion(request: StreamChatRequest, req: Request):
                 character_id=character_id,
                 user_message=request.message,
                 context_messages=context_messages,
-                memory_context=""
+                memory_context="",
+                user_timezone=request.timezone
             )
             
             # Build conversation for LLM

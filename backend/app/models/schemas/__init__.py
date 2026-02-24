@@ -59,6 +59,7 @@ class ChatCompletionRequest(BaseModel):
     intimacy_level: int = 1   # Current relationship level (1-100)
     scenario_id: Optional[str] = None  # Scene context injection (e.g., "cafe_paris")
     client_message_id: Optional[str] = None  # Client-generated UUID for user message dedup
+    timezone: str = "America/Los_Angeles"  # 用户时区，用于显示正确的本地时间
 
 
 class ChatCompletionResponse(BaseModel):

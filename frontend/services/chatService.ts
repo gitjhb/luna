@@ -155,6 +155,9 @@ export const chatService = {
    * Send message
    */
   sendMessage: async (data: SendMessageRequest): Promise<SendMessageResponse> => {
+    // 获取用户时区
+    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Los_Angeles';
+    
     const response = await api.post<any>('/chat/completions', {
       session_id: data.sessionId,
       message: data.message,
@@ -162,6 +165,7 @@ export const chatService = {
       spicy_mode: data.spicyMode || false,
       intimacy_level: data.intimacyLevel || 1,
       client_message_id: data.clientMessageId,  // Client-generated UUID for dedup
+      timezone: userTimezone,  // 自动获取用户时区
     });
     
     return {
