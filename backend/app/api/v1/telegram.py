@@ -1014,3 +1014,76 @@ async def get_user_by_telegram(telegram_id: str):
             "is_pro": user.is_subscribed or user.subscription_tier != 'free',
             "preferred_language": user.preferred_language,
         }
+
+
+# ========== Telegram Gift API ==========
+
+class TelegramGiftRequest(BaseModel):
+    telegram_id: str
+    gift_type: str
+
+
+class TelegramGiftResponse(BaseModel):
+    success: bool
+    error: Optional[str] = None
+    gift_name: Optional[str] = None
+    gift_name_cn: Optional[str] = None
+    icon: Optional[str] = None
+    new_balance: Optional[int] = None
+    xp_awarded: Optional[int] = None
+    ai_response: Optional[str] = None
+
+
+@router.post("/gift", response_model=TelegramGiftResponse)
+async def telegram_send_gift(request: TelegramGiftRequest):
+    """
+    Send a gift from Telegram user.
+    
+    This is a simplified gift API for Telegram that handles user lookup internally.
+    """
+    from app.services.gift_service import gift_service
+    from uuid import uuid4
+    
+    logger.info(f"🎁 Telegram gift request: {request.telegram_id} -> {request.gift_type}")
+    
+    try:
+        # Get or create user
+        user_id, _ = await get_or_create_telegram_user(request.telegram_id)
+        
+        # Get session
+        try:
+            session_id, _ = await get_or_create_session(user_id, DEFAULT_CHARACTER_ID)
+        except:
+            session_id = None
+        
+        # Send gift
+        result = await gift_service.send_gift(
+            user_id=user_id,
+            character_id=DEFAULT_CHARACTER_ID,
+            gift_type=request.gift_type,
+            idempotency_key=str(uuid4()),
+            session_id=session_id,
+        )
+        
+        if not result["success"]:
+            return TelegramGiftResponse(
+                success=False,
+                error=result.get("error") or result.get("message", "发送失败"),
+            )
+        
+        return TelegramGiftResponse(
+            success=True,
+            gift_name=result.get("gift", {}).get("gift_name"),
+            gift_name_cn=result.get("gift", {}).get("gift_name_cn"),
+            icon=result.get("gift", {}).get("icon", "🎁"),
+            new_balance=result.get("new_balance"),
+            xp_awarded=result.get("xp_awarded"),
+            ai_response=result.get("ai_response"),
+        )
+        
+    except Exception as e:
+        logger.error(f"Telegram gift error: {e}", exc_info=True)
+        return TelegramGiftResponse(
+            success=False,
+            error=str(e),
+        )
