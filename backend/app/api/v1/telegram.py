@@ -446,6 +446,186 @@ async def send_chat_action(chat_id: str, action: str = "typing"):
         return False
 
 
+async def send_telegram_message_with_buttons(chat_id: str, text: str, buttons: list):
+    """Send a message with inline keyboard buttons."""
+    bot_token = getattr(settings, 'TELEGRAM_BOT_TOKEN', None) or os.getenv('TELEGRAM_BOT_TOKEN')
+    if not bot_token:
+        logger.error("TELEGRAM_BOT_TOKEN not configured")
+        return False
+    
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "reply_markup": {
+            "inline_keyboard": buttons
+        }
+    }
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload, timeout=10.0)
+            if response.status_code != 200:
+                logger.error(f"Telegram API error: {response.text}")
+                return False
+            return True
+    except Exception as e:
+        logger.error(f"Failed to send Telegram message: {e}")
+        return False
+
+
+async def answer_callback_query(callback_query_id: str, text: str = None):
+    """Answer a callback query (dismiss loading state)."""
+    bot_token = getattr(settings, 'TELEGRAM_BOT_TOKEN', None) or os.getenv('TELEGRAM_BOT_TOKEN')
+    if not bot_token:
+        return False
+    
+    url = f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery"
+    payload = {"callback_query_id": callback_query_id}
+    if text:
+        payload["text"] = text
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(url, json=payload, timeout=5.0)
+            return True
+    except:
+        return False
+
+
+async def handle_gift_command(chat_id: str, telegram_id: str):
+    """Show gift menu with inline buttons."""
+    from app.services.gift_service import gift_service
+    
+    # Get user's wallet balance
+    try:
+        user_id, _ = await get_or_create_telegram_user(telegram_id)
+        
+        async with get_db() as db:
+            result = await db.execute(
+                select(UserWallet).where(UserWallet.user_id == user_id)
+            )
+            wallet = result.scalar_one_or_none()
+            balance = int(wallet.total_credits) if wallet else 0
+    except Exception as e:
+        logger.error(f"Failed to get wallet: {e}")
+        balance = 0
+    
+    # Get gift catalog (tier 1 & 2 only for Telegram)
+    try:
+        catalog = await gift_service.get_catalog()
+        # Filter to tier 1 & 2, sort by price
+        gifts = [g for g in catalog if g.get('tier', 1) <= 2]
+        gifts.sort(key=lambda x: x.get('price', 0))
+    except Exception as e:
+        logger.error(f"Failed to get gift catalog: {e}")
+        await send_telegram_message(chat_id, "抱歉，礼物商店暂时无法访问~ 💭")
+        return
+    
+    # Build inline keyboard (2 gifts per row)
+    buttons = []
+    row = []
+    for gift in gifts[:8]:  # Max 8 gifts
+        icon = gift.get('icon', '🎁')
+        name = gift.get('name_cn') or gift.get('name')
+        price = gift.get('price', 0)
+        gift_type = gift.get('gift_type')
+        
+        button_text = f"{icon} {name} ({price})"
+        row.append({
+            "text": button_text,
+            "callback_data": f"gift:{gift_type}"
+        })
+        
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+    
+    if row:  # Add remaining
+        buttons.append(row)
+    
+    # Add cancel button
+    buttons.append([{"text": "❌ 取消", "callback_data": "gift:cancel"}])
+    
+    message = f"🎁 <b>送礼物给Luna</b>\n\n你的月石余额: {balance} 💎\n\n选择一个礼物送给她吧~"
+    await send_telegram_message_with_buttons(chat_id, message, buttons)
+
+
+async def handle_gift_callback(chat_id: str, telegram_id: str, gift_type: str, callback_query_id: str):
+    """Process gift selection from callback."""
+    from app.services.gift_service import gift_service
+    from uuid import uuid4
+    
+    if gift_type == "cancel":
+        await answer_callback_query(callback_query_id, "已取消")
+        await send_telegram_message(chat_id, "好吧，下次再送也可以~ 💕")
+        return
+    
+    # Get user
+    try:
+        user_id, _ = await get_or_create_telegram_user(telegram_id)
+    except Exception as e:
+        await answer_callback_query(callback_query_id, "出错了")
+        await send_telegram_message(chat_id, "抱歉，出了点问题~ 💭")
+        return
+    
+    # Get session
+    try:
+        session_id, _ = await get_or_create_session(user_id, DEFAULT_CHARACTER_ID)
+    except Exception as e:
+        session_id = None
+    
+    # Send typing indicator
+    await send_chat_action(chat_id, "typing")
+    
+    # Send gift
+    try:
+        result = await gift_service.send_gift(
+            user_id=user_id,
+            character_id=DEFAULT_CHARACTER_ID,
+            gift_type=gift_type,
+            idempotency_key=str(uuid4()),
+            session_id=session_id,
+        )
+        
+        if not result["success"]:
+            error = result.get("error", "未知错误")
+            if "insufficient" in error.lower() or "余额" in error:
+                await answer_callback_query(callback_query_id, "余额不足")
+                await send_telegram_message(chat_id, "月石不够啦~ 💎\n\n可以通过签到或充值获得更多月石哦！")
+            else:
+                await answer_callback_query(callback_query_id, error)
+                await send_telegram_message(chat_id, f"送礼失败: {error}")
+            return
+        
+        # Success!
+        gift_icon = result.get("gift", {}).get("icon", "🎁")
+        gift_name = result.get("gift", {}).get("gift_name_cn") or result.get("gift", {}).get("gift_name", "礼物")
+        new_balance = result.get("new_balance", 0)
+        xp_awarded = result.get("xp_awarded", 0)
+        ai_response = result.get("ai_response", "谢谢你的礼物~ 💕")
+        
+        await answer_callback_query(callback_query_id, f"送出了 {gift_name}!")
+        
+        # Send result message
+        message = f"🎁 <b>送出了 {gift_icon} {gift_name}</b>\n\n"
+        message += f"💎 余额: {new_balance}\n"
+        if xp_awarded > 0:
+            message += f"✨ 亲密度 +{xp_awarded}\n"
+        message += f"\n{ai_response}"
+        
+        await send_telegram_message(chat_id, message)
+        
+        # Log
+        logger.info(f"🎁 Telegram gift: {telegram_id} sent {gift_type} to Luna")
+        
+    except Exception as e:
+        logger.error(f"Gift send error: {e}", exc_info=True)
+        await answer_callback_query(callback_query_id, "发送失败")
+        await send_telegram_message(chat_id, "送礼物时出错了，稍后再试试？💭")
+
+
 class TelegramUpdate(BaseModel):
     """Telegram webhook update payload."""
     update_id: int
@@ -464,7 +644,19 @@ async def telegram_webhook(update: TelegramUpdate):
     
     # Handle callback queries (button clicks)
     if update.callback_query:
-        # TODO: Handle button callbacks
+        callback = update.callback_query
+        callback_id = callback.get("id")
+        data = callback.get("data", "")
+        cb_chat_id = str(callback.get("message", {}).get("chat", {}).get("id", ""))
+        cb_user_id = str(callback.get("from", {}).get("id", ""))
+        
+        # Handle gift callbacks
+        if data.startswith("gift:"):
+            gift_type = data.split(":", 1)[1]
+            await handle_gift_callback(cb_chat_id, cb_user_id, gift_type, callback_id)
+        else:
+            await answer_callback_query(callback_id)
+        
         return {"ok": True}
     
     # Handle messages
@@ -500,6 +692,7 @@ async def telegram_webhook(update: TelegramUpdate):
 
 可用命令：
 /start - 开始聊天
+/gift - 送礼物给Luna 🎁
 /me - 查看Luna记住的关于你
 /link <邮箱> - 关联Luna App账号
 /clear - 清除聊天记录
@@ -507,6 +700,11 @@ async def telegram_webhook(update: TelegramUpdate):
 
 直接发消息就可以和我聊天啦~ 💬"""
         await send_telegram_message(chat_id, help_text)
+        return {"ok": True}
+    
+    # Handle /gift command - show gift menu
+    if text == "/gift":
+        await handle_gift_command(chat_id, user_id)
         return {"ok": True}
     
     # Handle /me command - show what Luna remembers
