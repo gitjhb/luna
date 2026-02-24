@@ -2333,6 +2333,13 @@ class InteractiveDateService:
         except Exception as e:
             logger.warning(f"Failed to unlock photo: {e}")
         
+        # 🔔 约会结束后发送角色消息（重要！用户下次打开聊天会看到）
+        try:
+            await self._send_post_date_message(session, ending_type, story_summary)
+            logger.info(f"📅 [DATE] Post-date message sent for {ending_type} ending")
+        except Exception as e:
+            logger.error(f"Failed to send post-date message: {e}")
+        
         # 清理会话
         if session.id in _active_sessions:
             del _active_sessions[session.id]
@@ -2538,6 +2545,113 @@ class InteractiveDateService:
             "bad": f"和{character_name}的约会有些尴尬，下次要更加用心才行...",
         }
         return summaries.get(ending_type, summaries["normal"])
+
+    async def _send_post_date_message(
+        self,
+        session: DateSession,
+        ending_type: str,
+        story_summary: str,
+    ) -> None:
+        """
+        约会结束后发送角色消息到聊天记录
+        
+        这是关键功能！确保用户下次打开聊天时能看到角色对约会的反馈。
+        根据不同结局类型生成不同风格的消息。
+        """
+        from app.services.character_config import get_character_config
+        from app.services.llm_service import GrokService
+        from app.services.chat_repository import chat_repo
+        
+        try:
+            character = get_character_config(session.character_id)
+            character_name = character.name if character else "她"
+            
+            # 根据结局类型生成不同风格的消息
+            message_prompts = {
+                "perfect": f"""你是{character_name}，刚刚和用户完成了一次完美的约会。
+场景是：{session.scenario_name}
+约会非常愉快，你们之间的感情更深了。
+
+现在生成一条约会结束后的消息（50-80字），表达：
+- 约会的美好回忆
+- 对用户的感谢和喜欢
+- 期待下次见面
+语气要甜蜜、开心、带点撒娇。用第二人称"你"。""",
+
+                "good": f"""你是{character_name}，刚刚和用户完成了一次愉快的约会。
+场景是：{session.scenario_name}
+约会很不错，虽然不是完美但也很开心。
+
+现在生成一条约会结束后的消息（50-80字），表达：
+- 今天玩得开心
+- 一些小遗憾或期待
+- 希望下次更好
+语气要轻松、温暖。用第二人称"你"。""",
+
+                "normal": f"""你是{character_name}，刚刚和用户完成了一次普通的约会。
+场景是：{session.scenario_name}
+约会还行，没有特别好也没有特别差。
+
+现在生成一条约会结束后的消息（40-60字），表达：
+- 简单的感受
+- 下次可以更好
+语气要平淡但不冷漠。用第二人称"你"。""",
+
+                "bad": f"""你是{character_name}，刚刚和用户完成了一次不太愉快的约会。
+场景是：{session.scenario_name}
+约会有点尴尬，你有点失望但不想完全放弃。
+
+现在生成一条约会结束后的消息（40-60字），表达：
+- 有点小情绪但不是很生气
+- 希望下次用户能更用心
+语气要带点委屈但不冷酷。用第二人称"你"。""",
+            }
+            
+            prompt = message_prompts.get(ending_type, message_prompts["normal"])
+            
+            # 使用 LLM 生成消息
+            llm = GrokService()
+            llm_response = await llm.chat_completion(
+                messages=[
+                    {"role": "system", "content": f"你是{character_name}，要用她的口吻说话。直接输出消息内容，不要加任何格式标记。"},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=150,
+                temperature=0.8,
+            )
+            
+            message = llm_response.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            
+            if not message:
+                # 后备消息
+                fallback_messages = {
+                    "perfect": f"（脸红红地靠在你肩上）今天真的好开心...下次还要一起出去玩哦~ 💕",
+                    "good": f"今天的约会很愉快呢，回去路上小心哦~",
+                    "normal": f"嗯...今天还行吧，下次再见~",
+                    "bad": f"（轻轻叹气）哼，下次要更用心一点啦...",
+                }
+                message = fallback_messages.get(ending_type, fallback_messages["normal"])
+            
+            # 保存消息到聊天记录
+            chat_session = await chat_repo.get_session_by_character(
+                session.user_id, 
+                session.character_id
+            )
+            
+            if chat_session:
+                await chat_repo.add_message(
+                    session_id=chat_session["session_id"],
+                    role="assistant",
+                    content=message,
+                    tokens_used=0,
+                )
+                logger.info(f"📅 [DATE] Post-date message saved: {message[:50]}...")
+            else:
+                logger.warning(f"No chat session found for user={session.user_id}, char={session.character_id}")
+                
+        except Exception as e:
+            logger.error(f"Failed to generate/save post-date message: {e}", exc_info=True)
+            raise  # 重新抛出，让调用方知道失败了
 
 
 # 单例

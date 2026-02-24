@@ -52,6 +52,17 @@ export interface SubscriptionPlan {
 }
 
 // ============================================================================
+// Stripe Payment Links (pre-built links from Stripe Dashboard)
+// ============================================================================
+
+const STRIPE_PAYMENT_LINKS = {
+  // Test mode payment link
+  test_subscription: 'https://buy.stripe.com/test_aFa6oGcuLf0Z92gc9c2Fa02',
+  // TODO: Add production payment links
+  // prod_subscription: 'https://buy.stripe.com/...',
+};
+
+// ============================================================================
 // Credit Packages (matching backend)
 // ============================================================================
 
@@ -226,6 +237,29 @@ class StripeService {
   }
   
   /**
+   * Open pre-built payment link (for quick purchase without backend)
+   */
+  async openPaymentLink(linkKey: keyof typeof STRIPE_PAYMENT_LINKS = 'test_subscription'): Promise<void> {
+    const url = STRIPE_PAYMENT_LINKS[linkKey];
+    if (!url) {
+      throw new Error(`Payment link not found: ${linkKey}`);
+    }
+    
+    if (Platform.OS === 'web') {
+      window.location.href = url;
+    } else {
+      await Linking.openURL(url);
+    }
+  }
+  
+  /**
+   * Get available payment links
+   */
+  getPaymentLinks() {
+    return STRIPE_PAYMENT_LINKS;
+  }
+  
+  /**
    * Open customer portal for subscription management
    */
   async openCustomerPortal(returnUrl?: string): Promise<void> {
@@ -303,8 +337,10 @@ export function useStripe() {
     error,
     creditPackages: stripeService.getCreditPackages(),
     subscriptionPlans: stripeService.getSubscriptionPlans(),
+    paymentLinks: stripeService.getPaymentLinks(),
     purchaseCredits,
     subscribe,
+    openPaymentLink: stripeService.openPaymentLink.bind(stripeService),
     openPortal: stripeService.openCustomerPortal.bind(stripeService),
     isAvailable: stripeService.isAvailable(),
   };

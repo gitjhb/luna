@@ -149,6 +149,9 @@ class MemoryContext:
     # 今日特殊
     today_special: Optional[str] = None  # 今天是否是特殊日子
     
+    # 约会/事件记忆（从 EventMemory 表）
+    event_memories: List[Dict[str, Any]] = field(default_factory=list)
+    
     def to_prompt_section(self) -> str:
         """生成完整的记忆 prompt 部分"""
         sections = []
@@ -178,6 +181,24 @@ class MemoryContext:
             
             if memory_lines:
                 sections.append(f"=== 你们的回忆 ===\n" + "\n".join(memory_lines))
+        
+        # 约会/事件记忆（从 EventMemory 表）
+        if self.event_memories:
+            event_lines = []
+            for event in self.event_memories[:5]:  # 最多显示5个
+                event_type = event.get("event_type", "")
+                summary = event.get("context_summary", "") or event.get("story_content", "")[:100]
+                if event_type == "date":
+                    event_lines.append(f"💕 约会: {summary}")
+                elif event_type == "first_date":
+                    event_lines.append(f"💝 第一次约会: {summary}")
+                elif event_type == "gift":
+                    event_lines.append(f"🎁 收到礼物: {summary}")
+                else:
+                    event_lines.append(f"📌 {event_type}: {summary}")
+            
+            if event_lines:
+                sections.append(f"=== 重要事件 ===\n" + "\n".join(event_lines))
         
         return "\n\n".join(sections)
 
@@ -665,12 +686,16 @@ class MemoryManager:
         # 检查特殊日期
         special = self.retriever.check_special_date(semantic)
         
+        # 🔔 获取约会/事件记忆（从 EventMemory 表）
+        event_memories = await self._get_event_memories(user_id, character_id)
+        
         return MemoryContext(
             working_memory=working_memory,
             relevant_episodes=relevant,
             recent_episodes=recent,
             user_profile=semantic,
             today_special=special,
+            event_memories=event_memories,  # 添加约会记忆
         )
     
     async def get_semantic_memory(
@@ -725,6 +750,49 @@ class MemoryManager:
         
         self._episodic_cache[key] = []
         return []
+    
+    async def _get_event_memories(
+        self,
+        user_id: str,
+        character_id: str,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """
+        获取约会/事件记忆（从 EventMemory 表）
+        
+        这些是约会、送礼物等重要事件的记录。
+        """
+        try:
+            from app.core.database import get_db
+            from app.models.database.event_memory_models import EventMemory
+            from sqlalchemy import select, desc
+            
+            async with get_db() as db:
+                stmt = (
+                    select(EventMemory)
+                    .where(
+                        EventMemory.user_id == user_id,
+                        EventMemory.character_id == character_id,
+                    )
+                    .order_by(desc(EventMemory.generated_at))
+                    .limit(limit)
+                )
+                result = await db.execute(stmt)
+                events = result.scalars().all()
+                
+                return [
+                    {
+                        "id": str(event.id),
+                        "event_type": event.event_type,
+                        "story_content": event.story_content,
+                        "context_summary": event.context_summary,
+                        "generated_at": event.generated_at.isoformat() if event.generated_at else None,
+                    }
+                    for event in events
+                ]
+        except Exception as e:
+            logger.error(f"Failed to get event memories: {e}")
+            return []
     
     # =========================================================================
     # 内部方法

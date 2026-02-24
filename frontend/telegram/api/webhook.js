@@ -9,6 +9,9 @@ const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const LUNA_BACKEND_URL = process.env.LUNA_BACKEND_URL || 'https://luna-backend-1081215078404.us-west1.run.app';
 const ADMIN_ID = process.env.ADMIN_USER_ID || '5056039560';
 
+// Stripe Payment Link (Test Mode)
+const STRIPE_PAYMENT_LINK = 'https://buy.stripe.com/test_aFa6oGcuLf0Z92gc9c2Fa02';
+
 /**
  * Send message to Telegram
  */
@@ -126,9 +129,31 @@ async function handleCommand(chatId, telegramId, command, args) {
       await sendMessage(chatId,
         `<b>Luna AI 指令</b>\n\n` +
         `/start - 开始聊天\n` +
+        `/premium - 订阅 Premium 💎\n` +
         `/link <email> - 关联账号 (同步Pro状态)\n` +
         `/help - 显示帮助\n\n` +
         `直接发消息就能和我聊天 💬`,
+      );
+      break;
+      
+    case '/premium':
+    case '/subscribe':
+    case '/vip':
+      await sendMessage(chatId,
+        `💎 <b>Luna Premium</b>\n\n` +
+        `解锁完整体验：\n` +
+        `• 无限聊天次数\n` +
+        `• 高级记忆功能\n` +
+        `• 成人内容解锁\n` +
+        `• 优先响应\n\n` +
+        `点击下方链接订阅 👇`,
+        {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '💎 订阅 Premium', url: STRIPE_PAYMENT_LINK }
+            ]]
+          }
+        }
       );
       break;
       

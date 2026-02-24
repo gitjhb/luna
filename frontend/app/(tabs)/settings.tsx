@@ -31,6 +31,7 @@ import { InterestsSelector } from '../../components/InterestsSelector';
 import { settingsService } from '../../services/settingsService';
 import { paymentService } from '../../services/paymentService';
 import { pushService } from '../../services/pushService';
+import { useLocale, type Locale } from '../../i18n';
 
 // Notification preferences storage key
 const NOTIFICATION_PREFS_KEY = '@luna_notification_prefs';
@@ -317,13 +318,14 @@ const RateAppCard = ({ theme }: { theme: ThemeConfig }) => {
           <View style={styles.rateCardContent}>
             <View style={styles.rateStars}>
               {[1, 2, 3, 4, 5].map((star) => (
-                <Ionicons 
-                  key={star} 
-                  name="star" 
-                  size={24} 
-                  color="#FFD700" 
-                  style={styles.starIcon}
-                />
+                <View key={star}>
+                  <Ionicons 
+                    name="star" 
+                    size={24} 
+                    color="#FFD700" 
+                    style={styles.starIcon}
+                  />
+                </View>
               ))}
             </View>
             <Text style={styles.rateTitle}>喜欢 Luna 吗？</Text>
@@ -341,11 +343,99 @@ const RateAppCard = ({ theme }: { theme: ThemeConfig }) => {
   );
 };
 
+// Language Selector Component
+const LanguageSelector = ({ theme }: { theme: ThemeConfig }) => {
+  const { locale, setLocale, t } = useLocale();
+  const { setPreferences } = useUserStore();
+  const [updating, setUpdating] = useState(false);
+
+  const handleLanguageChange = async (newLocale: Locale) => {
+    if (newLocale === locale) return;
+    
+    setUpdating(true);
+    try {
+      // Update i18n locale
+      setLocale(newLocale);
+      
+      // Update user preferences in store
+      setPreferences({ language: newLocale });
+      
+      // Update backend settings
+      await settingsService.updateSettings({ language: newLocale });
+      
+      Alert.alert(
+        t.settings.language,
+        newLocale === 'zh' ? '语言已切换为简体中文' : 'Language switched to English',
+        [{ text: newLocale === 'zh' ? '确定' : 'OK' }]
+      );
+    } catch (e: any) {
+      console.error('Failed to update language:', e);
+      Alert.alert(
+        t.common.error,
+        newLocale === 'zh' ? '语言切换失败，请稍后重试' : 'Failed to switch language, please try again',
+        [{ text: newLocale === 'zh' ? '确定' : 'OK' }]
+      );
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const showLanguageSelector = () => {
+    Alert.alert(
+      t.settings.language,
+      undefined,
+      [
+        {
+          text: t.settings.languageZh,
+          onPress: () => handleLanguageChange('zh'),
+          style: locale === 'zh' ? 'default' : undefined,
+        },
+        {
+          text: t.settings.languageEn,
+          onPress: () => handleLanguageChange('en'),
+          style: locale === 'en' ? 'default' : undefined,
+        },
+        {
+          text: t.common.cancel,
+          style: 'cancel',
+        },
+      ]
+    );
+  };
+
+  return (
+    <View style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}>
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+        onPress={showLanguageSelector}
+        disabled={updating}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.settingIcon, { backgroundColor: `${theme.colors.primary.main}20` }]}>
+          <Ionicons name="language-outline" size={20} color={theme.colors.primary.main} />
+        </View>
+        <View style={styles.settingContent}>
+          <Text style={styles.settingTitle}>{t.settings.language}</Text>
+          <Text style={[styles.settingSubtitle, { color: theme.colors.text.tertiary }]}>
+            {locale === 'zh' ? t.settings.languageZh : t.settings.languageEn}
+          </Text>
+        </View>
+        {updating ? (
+          <ActivityIndicator size="small" color={theme.colors.primary.main} />
+        ) : (
+          <Ionicons name="chevron-forward" size={20} color={theme.colors.text.tertiary} />
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+};
+
 // Theme Selector removed - Luna 2077 is the only theme for MVP
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { theme } = useTheme();
+  const { t } = useLocale();
   const { user, logout, isSubscribed, preferences, setPreferences } = useUserStore();
   const { isPro, showPaywall, showCustomerCenter } = useRevenueCatContext();
   const [nsfwLoading, setNsfwLoading] = useState(false);
@@ -409,10 +499,10 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert('Log Out', 'Are you sure you want to log out?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t.settings.logOut, t.settings.logOutConfirm, [
+      { text: t.settings.cancel, style: 'cancel' },
       {
-        text: 'Log Out',
+        text: t.settings.logOut,
         style: 'destructive',
         onPress: () => {
           logout();
@@ -466,7 +556,7 @@ export default function SettingsScreen() {
               textShadowOffset: { width: 0, height: 0 },
               textShadowRadius: 10,
             }
-          ]}>设置</Text>
+          ]}>{t.settings.title}</Text>
         </View>
 
         <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -515,13 +605,7 @@ export default function SettingsScreen() {
           {/* Preferences Section */}
           <SettingSection title="Preferences" theme={theme}>
             {/* NSFW toggle removed - only available on web version for App Store compliance */}
-            <SettingItem
-              icon="language-outline"
-              title="Language"
-              subtitle="简体中文"
-              onPress={() => {}}
-              theme={theme}
-            />
+            <LanguageSelector theme={theme} />
           </SettingSection>
 
           {/* Theme Section - Hidden for now, TODO: implement properly */}
@@ -545,11 +629,11 @@ export default function SettingsScreen() {
           <SettingSection title="Support" theme={theme}>
             <SettingItem
               icon="help-circle-outline"
-              title="帮助中心"
+              title={t.settings.helpCenter}
               subtitle="常见问题解答"
               onPress={() => {
                 Alert.alert(
-                  '常见问题',
+                  t.settings.helpCenter,
                   '1. 如何获得更多月光碎片？\n订阅 Premium 或 VIP 每日获得更多碎片，或直接购买。\n\n2. 如何解锁更多角色？\n提升与角色的亲密度，达到特定等级后解锁新内容。\n\n3. 约会功能怎么玩？\n点击角色页面的约会按钮，选择场景开始互动约会。\n\n更多问题请联系客服。',
                   [{ text: '我知道了' }]
                 );
@@ -612,7 +696,7 @@ export default function SettingsScreen() {
           <SettingSection title="Account Actions" theme={theme}>
             <SettingItem
               icon="log-out-outline"
-              title="Log Out"
+              title={t.settings.logOut}
               onPress={handleLogout}
               danger
               theme={theme}
