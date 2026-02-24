@@ -2,7 +2,7 @@
  * Recharge Modal - Moon Shards purchase via RevenueCat
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,10 @@ import {
   Dimensions,
   ActivityIndicator,
   Image,
+  Animated,
+  Platform,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { PurchasesPackage } from 'react-native-purchases';
@@ -58,6 +61,14 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
+  const [purchasedAmount, setPurchasedAmount] = useState(0);
+  
+  // 动画引用
+  const successScaleAnim = useRef(new Animated.Value(0)).current;
+  const confettiAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  const bounceAnim = useRef(new Animated.Value(1)).current;
 
   // Load packages when modal opens
   useEffect(() => {
@@ -121,9 +132,27 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
                 // Update wallet locally (backend should also be notified via webhook)
                 const newBalance = (wallet?.totalCredits || 0) + totalShards;
                 updateWallet({ totalCredits: newBalance });
+                
+                // 设置购买金额并显示成功动画
+                setPurchasedAmount(totalShards);
+                setShowSuccessAnimation(true);
+                
+                // 播放成功动画
+                await playSuccessAnimation();
+                
+                // 成功触觉反馈
+                if (Platform.OS !== 'web') {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+                
+                // 调用成功回调
                 onPurchaseSuccess?.(totalShards, newBalance);
-                onClose();
-                Alert.alert('🎉 购买成功！', `获得 ${totalShards.toLocaleString()} 碎片`);
+                
+                // 2.5秒后关闭
+                setTimeout(() => {
+                  setShowSuccessAnimation(false);
+                  onClose();
+                }, 2500);
               }
             } catch (err: any) {
               if (!err.userCancelled) {
@@ -136,6 +165,70 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
         },
       ]
     );
+  };
+
+  // 播放购买成功动画
+  const playSuccessAnimation = (): Promise<void> => {
+    return new Promise((resolve) => {
+      // 重置动画值
+      successScaleAnim.setValue(0);
+      confettiAnim.setValue(0);
+      glowAnim.setValue(0);
+      bounceAnim.setValue(1);
+      
+      // 并行动画序列
+      Animated.parallel([
+        // 成功图标弹出
+        Animated.spring(successScaleAnim, {
+          toValue: 1,
+          friction: 6,
+          tension: 100,
+          useNativeDriver: true,
+        }),
+        
+        // 彩带效果
+        Animated.sequence([
+          Animated.delay(300),
+          Animated.timing(confettiAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ]),
+        
+        // 光晕效果
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(glowAnim, {
+              toValue: 1,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(glowAnim, {
+              toValue: 0,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+          ]),
+          { iterations: 2 }
+        ),
+        
+        // 整体弹跳
+        Animated.sequence([
+          Animated.delay(100),
+          Animated.spring(bounceAnim, {
+            toValue: 0.95,
+            friction: 3,
+            useNativeDriver: true,
+          }),
+          Animated.spring(bounceAnim, {
+            toValue: 1,
+            friction: 8,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start(resolve);
+    });
   };
 
   const renderPackage = (pkg: PurchasesPackage) => {
@@ -183,7 +276,71 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <View style={styles.content}>
+        <Animated.View style={[
+          styles.content,
+          { transform: [{ scale: bounceAnim }] }
+        ]}>
+          
+          {/* 购买成功动画覆盖层 */}
+          {showSuccessAnimation && (
+            <Animated.View style={[styles.successOverlay, { opacity: successScaleAnim }]}>
+              {/* 彩带效果 */}
+              {['🎉', '🎊', '✨', '💫', '⭐', '🌟', '💎', '💰'].map((confetti, index) => (
+                <Animated.Text
+                  key={index}
+                  style={[
+                    styles.confettiItem,
+                    {
+                      left: `${(index * 12) % 100}%`,
+                      top: `${20 + (index * 8) % 40}%`,
+                      transform: [{
+                        translateY: confettiAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0, 200],
+                          extrapolate: 'clamp',
+                        })
+                      }],
+                      opacity: confettiAnim.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [1, 1, 0],
+                        extrapolate: 'clamp',
+                      }),
+                    }
+                  ]}
+                >
+                  {confetti}
+                </Animated.Text>
+              ))}
+              
+              {/* 成功信息 */}
+              <Animated.View style={[
+                styles.successContent,
+                { transform: [{ scale: successScaleAnim }] }
+              ]}>
+                <Animated.View style={[
+                  styles.successIcon,
+                  {
+                    shadowOpacity: glowAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.3, 0.8],
+                      extrapolate: 'clamp',
+                    }),
+                  }
+                ]}>
+                  <Text style={styles.successIconText}>💎</Text>
+                </Animated.View>
+                
+                <Text style={styles.successTitle}>🎉 购买成功!</Text>
+                <Text style={styles.successAmount}>
+                  +{purchasedAmount.toLocaleString()} 月石
+                </Text>
+                <Text style={styles.successSubtitle}>
+                  已添加到您的账户
+                </Text>
+              </Animated.View>
+            </Animated.View>
+          )}
+          
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.title}>购买月光碎片</Text>
@@ -227,7 +384,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
               </View>
             </ScrollView>
           )}
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -387,6 +544,66 @@ const styles = StyleSheet.create({
     left: '50%',
     marginLeft: -10,
     marginTop: -10,
+  },
+  
+  // 成功动画样式
+  successOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    zIndex: 1000,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confettiItem: {
+    position: 'absolute',
+    fontSize: 20,
+    zIndex: 1001,
+  },
+  successContent: {
+    alignItems: 'center',
+    zIndex: 1002,
+  },
+  successIcon: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(255, 215, 0, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  successIconText: {
+    fontSize: 48,
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFD700',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  successAmount: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#4ADE80',
+    marginBottom: 8,
+    textAlign: 'center',
+    textShadowColor: 'rgba(74, 222, 128, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
+  },
+  successSubtitle: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.8)',
+    textAlign: 'center',
   },
 });
 

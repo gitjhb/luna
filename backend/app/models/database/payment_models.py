@@ -47,6 +47,7 @@ class UserSubscription(Base):
     
     # 每日奖励
     last_daily_reward_date = Column(String(10), nullable=True)  # "2026-02-06" 格式
+    consecutive_checkin_days = Column(Integer, default=0)  # 连续签到天数
     
     # 时间戳
     created_at = Column(DateTime, default=datetime.utcnow)

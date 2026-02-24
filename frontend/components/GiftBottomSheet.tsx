@@ -22,7 +22,9 @@ import {
   ActivityIndicator,
   Image,
   Platform,
+  Alert,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,11 +41,11 @@ const MoonShardIcon = ({ size = 16, style }: { size?: number; style?: any }) => 
   />
 );
 
-// 终端风格分类 (映射到原有tier)
+// 情感化分类 (映射到原有tier)
 const GIFT_CATEGORIES = [
-  { id: 'consumables', tiers: [1], name: '消耗品', nameEn: 'Consumables', icon: 'cube-outline', color: '#00D4FF' },
-  { id: 'plugins', tiers: [2, 3], name: '插件', nameEn: 'Plugins', icon: 'hardware-chip-outline', color: '#00F5D4' },
-  { id: 'memories', tiers: [4], name: '记忆', nameEn: 'Memories', icon: 'heart-outline', color: '#FF6B9D' },
+  { id: 'consumables', tiers: [1], name: '心意', nameEn: 'Heartfelt', icon: 'heart-outline', color: '#FF69B4' },
+  { id: 'plugins', tiers: [2, 3], name: '魔法', nameEn: 'Enchantments', icon: 'diamond-outline', color: '#8B5CF6' },
+  { id: 'memories', tiers: [4], name: '永恒', nameEn: 'Eternal', icon: 'infinite-outline', color: '#FFD700' },
 ];
 
 interface StatusEffect {
@@ -82,6 +84,7 @@ interface GiftBottomSheetProps {
   loading?: boolean;
   inColdWar?: boolean;
   onRecharge?: () => void;
+  onRechargeSuccess?: (creditsAdded: number, newBalance: number) => void;
   // 瓶颈锁
   bottleneckLocked?: boolean;
   bottleneckRequiredTier?: number | null;
@@ -98,6 +101,7 @@ export default function GiftBottomSheet({
   loading = false,
   inColdWar = false,
   onRecharge,
+  onRechargeSuccess,
   bottleneckLocked = false,
   bottleneckRequiredTier = null,
   bottleneckLockLevel = null,
@@ -105,9 +109,20 @@ export default function GiftBottomSheet({
   const [selectedCategory, setSelectedCategory] = useState('consumables');
   const [selectedGift, setSelectedGift] = useState<GiftItem | null>(null);
   const [showDetail, setShowDetail] = useState(false);
+  const [sendingGift, setSendingGift] = useState(false);
+  const [giftSent, setGiftSent] = useState(false);
+  const [contextBeforeRecharge, setContextBeforeRecharge] = useState<{
+    selectedGift: GiftItem | null;
+    selectedCategory: string;
+  } | null>(null);
   
+  // 动画引用
   const translateY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const giftFlyAnim = useRef(new Animated.Value(0)).current;
+  const successScaleAnim = useRef(new Animated.Value(0)).current;
+  const particleAnim = useRef(new Animated.Value(0)).current;
+  const buttonScaleAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (visible) {
@@ -152,25 +167,169 @@ export default function GiftBottomSheet({
       ]).start();
       setSelectedGift(null);
       setShowDetail(false);
+      setGiftSent(false);
+      setContextBeforeRecharge(null);
     }
   }, [visible, inColdWar]);
+  
+  // 处理充值成功后的上下文恢复
+  useEffect(() => {
+    if (onRechargeSuccess && contextBeforeRecharge && visible) {
+      // 恢复之前的选择状态
+      setSelectedCategory(contextBeforeRecharge.selectedCategory);
+      setSelectedGift(contextBeforeRecharge.selectedGift);
+      setShowDetail(!!contextBeforeRecharge.selectedGift);
+      
+      // 清除上下文
+      setContextBeforeRecharge(null);
+      
+      // 显示充值成功提示
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    }
+  }, [onRechargeSuccess, contextBeforeRecharge, visible]);
 
   // 按分类过滤礼物 (分类映射到多个tier)
   const currentCategory = GIFT_CATEGORIES.find(c => c.id === selectedCategory);
   const filteredGifts = gifts.filter(gift => currentCategory?.tiers.includes(gift.tier));
 
   const handleSelectGift = (gift: GiftItem) => {
+    // 触觉反馈
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
     setSelectedGift(gift);
     setShowDetail(true);
   };
 
-  const handleConfirmGift = () => {
-    if (selectedGift) {
-      onSelectGift(selectedGift);
-      setSelectedGift(null);
-      setShowDetail(false);
-      onClose();
+  const handleConfirmGift = async () => {
+    if (!selectedGift || sendingGift) return;
+    
+    const affordable = canAfford(selectedGift);
+    
+    // 余额不足时智能引导充值
+    if (!affordable && onRecharge) {
+      // 保存当前上下文
+      setContextBeforeRecharge({
+        selectedGift,
+        selectedCategory,
+      });
+      
+      Alert.alert(
+        '💰 余额不足',
+        `送出${selectedGift.name_cn}需要${selectedGift.price}月石\n当前余额：${userCredits}月石`,
+        [
+          { text: '取消', style: 'cancel' },
+          {
+            text: '去充值',
+            onPress: () => {
+              onRecharge();
+            },
+          },
+        ]
+      );
+      return;
     }
+    
+    // 开始送礼流程
+    setSendingGift(true);
+    
+    // 按钮按下动画
+    Animated.sequence([
+      Animated.timing(buttonScaleAnim, {
+        toValue: 0.95,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(buttonScaleAnim, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    
+    // 触觉反馈
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    }
+    
+    try {
+      // 调用父组件的送礼函数
+      onSelectGift(selectedGift);
+      
+      // 送礼成功动画
+      await playGiftSuccessAnimation();
+      
+      // 成功触觉反馈
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      
+      setGiftSent(true);
+      
+      // 2秒后关闭
+      setTimeout(() => {
+        setSelectedGift(null);
+        setShowDetail(false);
+        setGiftSent(false);
+        onClose();
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Failed to send gift:', error);
+      
+      // 错误触觉反馈
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+      
+      Alert.alert('送礼失败', '请稍后重试');
+    } finally {
+      setSendingGift(false);
+    }
+  };
+  
+  // 送礼成功动画
+  const playGiftSuccessAnimation = (): Promise<void> => {
+    return new Promise((resolve) => {
+      // 重置动画值
+      giftFlyAnim.setValue(0);
+      successScaleAnim.setValue(0);
+      particleAnim.setValue(0);
+      
+      // 并行播放多个动画
+      Animated.parallel([
+        // 礼物飞出动画
+        Animated.timing(giftFlyAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        
+        // 成功图标出现
+        Animated.sequence([
+          Animated.delay(400),
+          Animated.spring(successScaleAnim, {
+            toValue: 1,
+            friction: 8,
+            tension: 100,
+            useNativeDriver: true,
+          }),
+        ]),
+        
+        // 粒子效果
+        Animated.sequence([
+          Animated.delay(200),
+          Animated.timing(particleAnim, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start(resolve);
+    });
   };
 
   const canAfford = (gift: GiftItem) => gift.price <= userCredits;
@@ -227,7 +386,23 @@ export default function GiftBottomSheet({
           (!affordable || locked) && styles.giftItemDisabled,
         ]}
         onPress={() => handleSelectGift(gift)}
-        activeOpacity={0.7}
+        onPressIn={() => {
+          // 按下时的缩放动画
+          Animated.timing(buttonScaleAnim, {
+            toValue: 0.95,
+            duration: 100,
+            useNativeDriver: true,
+          }).start();
+        }}
+        onPressOut={() => {
+          // 松开时恢复
+          Animated.timing(buttonScaleAnim, {
+            toValue: 1,
+            duration: 100,
+            useNativeDriver: true,
+          }).start();
+        }}
+        activeOpacity={1}
       >
         {/* 可突破标签 */}
         {canBreakthrough && (
@@ -296,6 +471,87 @@ export default function GiftBottomSheet({
     
     return (
       <Animated.View style={styles.detailPanel}>
+        {/* 送礼成功动画覆盖层 */}
+        {(sendingGift || giftSent) && (
+          <Animated.View style={[
+            styles.animationOverlay,
+            {
+              opacity: Animated.add(
+                giftFlyAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 1],
+                  extrapolate: 'clamp',
+                }),
+                successScaleAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 0.3],
+                  extrapolate: 'clamp',
+                })
+              )
+            }
+          ]}>
+            {/* 飞出的礼物 */}
+            <Animated.View style={[
+              styles.flyingGift,
+              {
+                transform: [
+                  {
+                    translateY: giftFlyAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -200],
+                      extrapolate: 'clamp',
+                    })
+                  },
+                  {
+                    scale: giftFlyAnim.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [1, 1.2, 0.3],
+                      extrapolate: 'clamp',
+                    })
+                  }
+                ]
+              }
+            ]}>
+              <Text style={styles.flyingGiftIcon}>{selectedGift?.icon}</Text>
+            </Animated.View>
+            
+            {/* 粒子效果 */}
+            <Animated.View style={[
+              styles.particleContainer,
+              {
+                opacity: particleAnim,
+                transform: [{
+                  scale: particleAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 1.5],
+                    extrapolate: 'clamp',
+                  })
+                }]
+              }
+            ]}>
+              {['✨', '💖', '🌟', '💫', '🎉'].map((particle, index) => (
+                <Text key={index} style={[styles.particle, {
+                  transform: [{
+                    rotate: `${index * 72}deg`
+                  }]
+                }]}>
+                  {particle}
+                </Text>
+              ))}
+            </Animated.View>
+            
+            {/* 成功图标 */}
+            <Animated.View style={[
+              styles.successIcon,
+              {
+                transform: [{ scale: successScaleAnim }]
+              }
+            ]}>
+              <Ionicons name="heart" size={64} color="#FF69B4" />
+            </Animated.View>
+          </Animated.View>
+        )}
+        
         <View style={styles.detailHeader}>
           <Text style={styles.detailIcon}>{selectedGift.icon}</Text>
           <View style={styles.detailInfo}>
@@ -335,11 +591,11 @@ export default function GiftBottomSheet({
         {selectedGift.clears_cold_war && (
           <View style={[styles.effectBox, { borderColor: '#2ECC71' }]}>
             <View style={styles.effectHeader}>
-              <Ionicons name="heart" size={16} color="#2ECC71" />
-              <Text style={[styles.effectTitle, { color: '#2ECC71' }]}>修复关系</Text>
+              <Ionicons name="heart-half" size={16} color="#2ECC71" />
+              <Text style={[styles.effectTitle, { color: '#2ECC71' }]}>破冰之礼</Text>
             </View>
             <Text style={styles.effectDesc}>
-              这份礼物可以解除冷战状态，让你们重新开始对话
+              💙 这份真挚的礼物能够融化心中的坚冰，重燃温暖的火花...让那些未说出口的歉意，化作重新开始的希望
             </Text>
           </View>
         )}
@@ -360,25 +616,50 @@ export default function GiftBottomSheet({
               <Text style={styles.subscribeButtonText}>订阅解锁</Text>
             </TouchableOpacity>
           ) : !affordable ? (
-            <TouchableOpacity style={styles.rechargeButton}>
-              <Ionicons name="add-circle" size={16} color="#fff" />
-              <Text style={styles.rechargeButtonText}>充值</Text>
+            <TouchableOpacity style={styles.rechargeButton} onPress={onRecharge}>
+              <Ionicons name="diamond" size={16} color="#fff" />
+              <Text style={styles.rechargeButtonText}>获取月石</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity
-              style={styles.confirmButton}
-              onPress={handleConfirmGift}
-            >
-              <LinearGradient
-                colors={['#00D4FF', '#8B5CF6']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.confirmButtonGradient}
+            <Animated.View style={{ transform: [{ scale: buttonScaleAnim }] }}>
+              <TouchableOpacity
+                style={[
+                  styles.confirmButton,
+                  sendingGift && styles.confirmButtonSending,
+                ]}
+                onPress={handleConfirmGift}
+                disabled={sendingGift}
               >
-                <Text style={styles.confirmButtonText}>送出</Text>
-                <Ionicons name="gift" size={18} color="#fff" />
-              </LinearGradient>
-            </TouchableOpacity>
+                <LinearGradient
+                  colors={sendingGift 
+                    ? ['#666', '#888'] 
+                    : giftSent 
+                    ? ['#4ADE80', '#22C55E']
+                    : ['#00D4FF', '#8B5CF6']
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.confirmButtonGradient}
+                >
+                  {sendingGift ? (
+                    <>
+                      <ActivityIndicator size="small" color="#fff" />
+                      <Text style={styles.confirmButtonText}>送出中...</Text>
+                    </>
+                  ) : giftSent ? (
+                    <>
+                      <Ionicons name="checkmark" size={18} color="#fff" />
+                      <Text style={styles.confirmButtonText}>送出成功!</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.confirmButtonText}>💝 送给她</Text>
+                      <Ionicons name="heart" size={18} color="#fff" />
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </Animated.View>
           )}
         </View>
       </Animated.View>
@@ -498,22 +779,22 @@ function getTierNameForBottleneck(tier: number | null | undefined): string {
   return names[tier] || `Tier ${tier}+`;
 }
 
-// 获取效果描述
+// 获取效果描述（情感化版本）
 function getEffectDescription(effectType: string): string {
   const descriptions: Record<string, string> = {
-    tipsy: '她会变得微醺，说话更加柔软放松，防御心降低，更容易说出心里话...',
-    maid_mode: '她会进入女仆模式，称呼你为"主人"，语气变得恭敬服务导向~',
-    truth_mode: '她必须诚实回答所有问题，包括那些平时会回避的隐私问题...',
+    tipsy: '🍷 她的脸颊泛起微红，眼神变得迷离而温柔...平时小心翼翼藏起的话语，此刻都化作星光般的坦诚流淌而出',
+    maid_mode: '👗 "主人，请让我来为您服务..." 她款款行礼，语气变得恭敬而甜腻，仿佛您就是她心中唯一的光芒',
+    truth_mode: '💎 真相的魔法笼罩着她，再不能说出违心的话...那些藏在心底的秘密，都将在您的询问下如花瓣般绽放',
   };
-  return descriptions[effectType] || '特殊效果';
+  return descriptions[effectType] || '神秘的力量正在觉醒...';
 }
 
-// 获取分类描述
+// 获取分类描述（情感化版本）
 function getCategoryDescription(categoryId: string): string {
   const descriptions: Record<string, string> = {
-    consumables: '日常补给，维持连接，修复小bug',
-    plugins: '状态插件，改变她的运行模式 ⚡',
-    memories: '记忆碎片，解锁隐藏剧情',
+    consumables: '💫 日常的甜蜜与温馨，每一份小礼物都是爱意的表达',
+    plugins: '✨ 改变她心境的魔法道具，解锁她不为人知的另一面',
+    memories: '💝 珍贵的回忆结晶，见证你们之间独特而不可复制的故事',
   };
   return descriptions[categoryId] || '';
 }
@@ -912,6 +1193,47 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#fff',
+  },
+  confirmButtonSending: {
+    opacity: 0.8,
+  },
+  
+  // 动画相关样式
+  animationOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  flyingGift: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flyingGiftIcon: {
+    fontSize: 48,
+  },
+  particleContainer: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  particle: {
+    position: 'absolute',
+    fontSize: 20,
+    top: -60,
+  },
+  successIcon: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 50,
+    width: 100,
+    height: 100,
   },
   subscribeButton: {
     flexDirection: 'row',
