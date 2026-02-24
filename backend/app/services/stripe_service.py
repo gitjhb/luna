@@ -486,9 +486,22 @@ class StripeService:
         purchase_type = metadata.get("type")
         user_id = metadata.get("user_id")
         
+        # Fallback to client_reference_id (used by Payment Links)
         if not user_id:
-            logger.error("No user_id in checkout metadata")
+            user_id = session.get("client_reference_id")
+            logger.info(f"Using client_reference_id as user_id: {user_id}")
+        
+        if not user_id:
+            logger.error("No user_id in checkout metadata or client_reference_id")
             return {"error": "Missing user_id"}
+        
+        # For Payment Links: infer purchase type from line_items or amount
+        if not purchase_type:
+            # Check if this is a Payment Link purchase (credits)
+            amount_total = session.get("amount_total", 0)  # in cents
+            if amount_total > 0:
+                purchase_type = "payment_link_credit"
+                logger.info(f"Payment Link purchase detected: {amount_total} cents")
         
         if purchase_type == "credit_purchase":
             # Credit package purchase
@@ -513,6 +526,63 @@ class StripeService:
                 "type": "credit_purchase",
                 "user_id": user_id,
                 "credits_added": total_credits,
+                "session_id": session["id"],
+            }
+        
+        elif purchase_type == "payment_link_credit":
+            # Payment Link purchase (Telegram users)
+            # Map amount to credits (customize based on your pricing)
+            amount_cents = session.get("amount_total", 0)
+            
+            # Credit mapping: $0.99 = 100 credits, $4.99 = 550, $9.99 = 1200, etc.
+            PAYMENT_LINK_CREDITS = {
+                99: 100,      # $0.99 test
+                499: 550,     # $4.99
+                999: 1200,    # $9.99
+                1999: 2600,   # $19.99
+                4999: 7000,   # $49.99
+            }
+            
+            credits = PAYMENT_LINK_CREDITS.get(amount_cents, amount_cents)  # fallback: 1 cent = 1 credit
+            
+            from app.services.payment_service import payment_service
+            
+            # For Telegram users, user_id is telegram_id - need to find or create Luna user
+            # Check if this is a telegram_id (numeric string)
+            actual_user_id = user_id
+            if user_id.isdigit():
+                # This is a Telegram ID, look up the Luna user
+                from app.core.database import get_async_db
+                from app.models.database.user_models import User
+                from sqlalchemy import select
+                
+                async with get_async_db() as db:
+                    result = await db.execute(
+                        select(User).where(User.telegram_id == user_id)
+                    )
+                    luna_user = result.scalar_one_or_none()
+                    if luna_user:
+                        actual_user_id = str(luna_user.user_id)
+                        logger.info(f"Found Luna user {actual_user_id} for Telegram ID {user_id}")
+                    else:
+                        logger.warning(f"No Luna user found for Telegram ID {user_id}, using telegram_id as user_id")
+            
+            wallet = await payment_service.add_credits(
+                user_id=actual_user_id,
+                amount=credits,
+                is_purchased=True,
+                description=f"Payment Link purchase: ${amount_cents/100:.2f} -> {credits} credits",
+            )
+            
+            logger.info(f"Payment Link: Added {credits} credits for user {actual_user_id} (telegram: {user_id})")
+            
+            return {
+                "handled": True,
+                "type": "payment_link_credit",
+                "user_id": actual_user_id,
+                "telegram_id": user_id,
+                "credits_added": credits,
+                "amount_cents": amount_cents,
                 "session_id": session["id"],
             }
         
