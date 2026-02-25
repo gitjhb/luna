@@ -20,7 +20,7 @@ class ChatSession(Base):
     __tablename__ = "chat_sessions"
     
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), nullable=False, index=True)
+    user_id = Column(String(100), nullable=False, index=True)
     character_id = Column(String(36), nullable=False, index=True)
     character_name = Column(String(100), nullable=False)
     character_avatar = Column(String(500), nullable=True)

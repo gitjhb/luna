@@ -17,9 +17,37 @@ from app.services.payment_service import payment_service
 router = APIRouter(prefix="/wallet")
 
 
-@router.get("/balance", response_model=WalletBalance)
+@router.get("/balance", response_model=WalletBalance,
+           summary="Get user's wallet balance and credits",
+           description="""
+           Retrieve the current wallet balance including all credit types and subscription info.
+           
+           **Credit Types:**
+           - **Daily Free Credits**: Refreshed every 24 hours, tier-dependent amount
+           - **Purchased Credits**: Bought through in-app purchases, never expire  
+           - **Bonus Credits**: Promotional or referral rewards
+           - **Total Credits**: Sum of all available credits for spending
+           
+           **Subscription Tiers:**
+           - **Free**: 10 daily credits, basic features
+           - **Premium**: 50 daily credits, spicy content, priority support
+           - **VIP**: 100 daily credits, exclusive characters, early features
+           
+           **Usage:**
+           - Each chat message typically costs 1-3 credits
+           - Image generation costs 5-10 credits  
+           - Voice messages cost 2-5 credits
+           - Spicy content requires Premium+ subscription
+           
+           **Credit Refresh:**
+           Daily credits reset at midnight user's timezone.
+           """,
+           responses={
+               200: {"description": "Current wallet balance and credit breakdown"},
+               401: {"description": "Authentication required"}
+           })
 async def get_balance(req: Request):
-    """Get current wallet balance"""
+    """Get current wallet balance, credits, and subscription info."""
     user = getattr(req.state, "user", None)
     user_id = str(user.user_id) if user else "demo-user-123"
     

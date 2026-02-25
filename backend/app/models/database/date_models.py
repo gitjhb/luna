@@ -13,7 +13,7 @@ class DateSessionDB(Base):
     __tablename__ = "date_sessions"
     
     id = Column(String(36), primary_key=True)
-    user_id = Column(String(36), nullable=False, index=True)
+    user_id = Column(String(100), nullable=False, index=True)
     character_id = Column(String(50), nullable=False, index=True)
     scenario_id = Column(String(50), nullable=False)
     scenario_name = Column(String(100), nullable=False)
@@ -64,7 +64,7 @@ class DateCooldownDB(Base):
     __tablename__ = "date_cooldowns"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(String(36), nullable=False, index=True)
+    user_id = Column(String(100), nullable=False, index=True)
     character_id = Column(String(50), nullable=False, index=True)
     cooldown_until = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)

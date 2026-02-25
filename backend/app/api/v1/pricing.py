@@ -99,9 +99,56 @@ MEMBERSHIP_PLANS = [
 # Endpoints
 # ============================================================================
 
-@router.get("/config", response_model=PricingConfig)
+@router.get("/config", response_model=PricingConfig,
+           summary="Get complete pricing and subscription options",
+           description="""
+           Retrieve all available pricing options including credit packages and subscription plans.
+           
+           **Credit Packages (One-time Purchase):**
+           - Credits never expire once purchased
+           - Bonus credits included with larger packages
+           - Popular packages highlighted for better conversion
+           - Prices in USD, processed via Stripe
+           
+           **Package Tiers:**
+           - **Starter** (60 credits): $0.99 - Perfect for trying premium features
+           - **Value** (300 credits): $4.99 - Most popular for casual users  
+           - **Premium** (980 credits): $14.99 - Best value with bonus credits
+           - **Power User** (1980 credits): $29.99 - For heavy users
+           - **Ultimate** (3280 credits): $49.99 - Maximum single purchase
+           - **Whale** (6480 credits): $99.99 - VIP tier with 20% bonus
+           
+           **Subscription Plans (Recurring):**
+           
+           **Free Tier:**
+           - 10 daily credits (resets every 24h)
+           - Basic characters and safe content only
+           - Standard support
+           
+           **Premium ($4.99/month):**
+           - 50 daily credits + keep unused credits
+           - Access to spicy content (18+)
+           - All characters including premium exclusives
+           - Priority chat responses
+           - Voice message support
+           - Email support
+           
+           **VIP ($9.99/month):**  
+           - 100 daily credits + unlimited carryover
+           - Early access to new features
+           - Exclusive VIP-only characters
+           - Custom avatar generation
+           - Direct developer feedback channel
+           - 50% discount on credit packages
+           
+           **Regional Pricing:** Prices may vary by region/currency
+           **Payment Methods:** Credit cards, Apple Pay, Google Pay via Stripe
+           """,
+           responses={
+               200: {"description": "Complete pricing configuration with all packages and plans"}
+           })
 async def get_pricing_config():
-    """Get full pricing configuration for the app"""
+    """Get all available pricing options and subscription plans."""
     return PricingConfig(
         coinPacks=COIN_PACKS,
         membershipPlans=MEMBERSHIP_PLANS,

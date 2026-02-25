@@ -222,7 +222,7 @@ class EmotionScoreService:
                 if db_emotion:
                     # Update existing
                     db_emotion.emotional_state = emotional_state
-                    db_emotion.emotion_intensity = abs(score)
+                    db_emotion.emotion_intensity = score  # 保留原始分数 (-100 ~ +100)
                     db_emotion.emotion_reason = reason
                     db_emotion.emotion_changed_at = data.get("updated_at")
                     if score <= -50:
@@ -233,7 +233,7 @@ class EmotionScoreService:
                         user_id=user_id,
                         character_id=character_id,
                         emotional_state=emotional_state,
-                        emotion_intensity=abs(score),
+                        emotion_intensity=score,  # 保留原始分数 (-100 ~ +100)
                         emotion_reason=reason,
                         emotion_changed_at=data.get("updated_at"),
                     )

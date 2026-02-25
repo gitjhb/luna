@@ -161,14 +161,20 @@ class ChatPipelineV4:
             
             # 6. 构建System Prompt
             
-            # 6.0 获取临时升阶
+            # 6.0 获取临时升阶和NSFW解锁
             stage_boost = 0
             stage_boost_info = None
+            nsfw_override = False
             try:
                 from app.services.effect_service import effect_service as _effect_svc
                 stage_boost = await _effect_svc.get_stage_boost(
                     request.user_id, request.character_id
                 )
+                # 检查是否有角色特定的NSFW解锁
+                nsfw_override = await _effect_svc.get_nsfw_override(
+                    request.user_id, request.character_id
+                )
+                
                 if stage_boost > 0:
                     # 计算原始阶段和升阶后阶段用于UI展示
                     from app.services.intimacy_constants import (
@@ -187,9 +193,12 @@ class ChatPipelineV4:
                         "original_stage_cn": STAGE_NAMES_CN.get(original_stage, "未知"),
                         "boosted_stage": boosted_stage.name,
                         "boosted_stage_cn": STAGE_NAMES_CN.get(boosted_stage, "未知"),
-                        "hint": f"🍷 临时升阶中：{STAGE_NAMES_CN.get(original_stage)} → {STAGE_NAMES_CN.get(boosted_stage)}"
+                        "hint": f"🍷 临时升阶中：{STAGE_NAMES_CN.get(original_stage)} → {STAGE_NAMES_CN.get(boosted_stage)}",
+                        "nsfw_override": nsfw_override,
                     }
-                    logger.info(f"🎭 Stage boost active: {stage_boost_info['hint']}")
+                    logger.info(f"🎭 Stage boost active: {stage_boost_info['hint']}, nsfw_override={nsfw_override}")
+                elif nsfw_override:
+                    logger.info(f"🍷 NSFW override active (no stage boost)")
             except Exception as e:
                 logger.warning(f"Failed to get stage boost: {e}")
             
@@ -201,6 +210,7 @@ class ChatPipelineV4:
                 memory_context=memory_context_str,
                 user_interests=user_interests,
                 stage_boost=stage_boost,
+                nsfw_override=nsfw_override,
             )
             
             # 6.1 注入状态效果 (Tier 2 礼物 prompt modifier)

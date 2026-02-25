@@ -28,13 +28,43 @@ from app.models.schemas.intimacy_schemas import (
 router = APIRouter(prefix="/intimacy")
 
 
-@router.get("/{character_id}", response_model=IntimacyStatus)
+@router.get("/{character_id}", response_model=IntimacyStatus,
+           summary="Get relationship intimacy status",
+           description="""
+           Retrieve the current relationship progress and intimacy level with an AI character.
+           
+           **Intimacy System:**
+           - **Level**: 1-100 relationship progression scale
+           - **XP**: Experience points earned through interactions
+           - **Stages**: Relationship phases (strangers → friends → romantic → intimate)
+           - **Streak**: Consecutive days of interaction
+           
+           **Level Ranges:**
+           - 1-25: Strangers (formal, polite conversations)
+           - 26-50: Friends (casual, personal topics)
+           - 51-75: Close Friends (deeper emotional connection)
+           - 76-100: Romantic Partners (intimate, romantic content)
+           
+           **XP Sources:**
+           - Daily check-ins: +5-10 XP
+           - Chat messages: +1-3 XP (varies by quality)
+           - Gift exchanges: +10-20 XP
+           - Special actions: +15-30 XP
+           - Milestone achievements: +50-100 XP
+           
+           **Features Unlocked by Level:**
+           - Level 10: Pet names and nicknames
+           - Level 25: Personal photo sharing
+           - Level 40: Voice messages
+           - Level 60: Romantic scenarios
+           - Level 80: Spicy content (Premium required)
+           """,
+           responses={
+               200: {"description": "Current intimacy status and progress"},
+               404: {"description": "Character not found"}
+           })
 async def get_intimacy_status(character_id: UUID, request: Request):
-    """
-    Get current intimacy status with a specific character.
-
-    Returns level, XP progress, stage, streak, and available actions.
-    """
+    """Get current relationship intimacy level and progress with an AI character."""
     # Get user from request state (set by auth middleware)
     user = getattr(request.state, "user", None)
     if not user:

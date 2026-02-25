@@ -94,6 +94,20 @@
 
 ## 📝 Recent Changes
 
+### 2026-02-24
+- ✅ **Fix: 约会结束后发送消息** — `interactive_date_service.py`
+  - 添加 `_send_post_date_message()` 方法
+  - 根据结局类型生成角色反馈消息
+- ✅ **Fix: Memory V2 集成 EventMemory** — `memory_manager.py`
+  - 发现问题：memory_system_v2 完全没读取 EventMemory 表
+  - 添加 `_get_event_memories()` 方法
+  - AI 对话时能看到约会/礼物事件记忆
+- ✅ **Feat: 设置页面语言切换** — `settings.tsx`
+  - 实现完整的中英文切换功能
+  - 与 i18n 系统集成
+- ✅ **Deploy: GCP Cloud Run** — `luna-backend-00060-dt9`
+- 📝 **TODO: Stripe + RevenueCat 集成**（Telegram 支付）
+
 ### 2026-02-23
 - ✅ Fix: `save_semantic_memory` 重复参数
 - ✅ Fix: `INFO_PATTERNS` key 不匹配 (name → user_name)

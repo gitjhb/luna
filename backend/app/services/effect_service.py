@@ -59,12 +59,18 @@ class EffectService:
         prompt_modifier: str,
         duration_messages: int,
         gift_id: Optional[str] = None,
+        stage_boost: int = 0,
+        allows_nsfw: bool = False,
     ) -> dict:
         """
         Apply a new status effect.
         
         If an effect of the same type already exists, it will be replaced
         (not stacked) to prevent exploit.
+        
+        Args:
+            stage_boost: 临时升阶数量 (0-2)
+            allows_nsfw: 是否解锁NSFW内容（角色特定）
         """
         effect_id = str(uuid4())
         now = datetime.utcnow()
@@ -82,6 +88,8 @@ class EffectService:
             "gift_id": gift_id,
             "started_at": now,
             "expires_at": None,  # No hard expiry, only message-based
+            "stage_boost": stage_boost,
+            "allows_nsfw": allows_nsfw,
         }
         
         if self.mock_mode:
@@ -373,15 +381,17 @@ class EffectService:
     # Stage Boost & XP Multiplier System
     # =========================================================================
     
-    # Effect type -> Stage boost (how many stages to temporarily boost)
-    EFFECT_STAGE_BOOSTS = {
+    # Effect type -> Stage boost (fallback for old effects without stage_boost field)
+    EFFECT_STAGE_BOOSTS_FALLBACK = {
         "tipsy": 1,        # 微醺红酒: 临时升1阶
-        "maid_mode": 1,    # 女仆模式: 临时升1阶 (行为更顺从)
+        "maid_mode": 1,    # 女仆模式: 临时升1阶
+        "deeply_tipsy": 2, # 珍藏红酒: 临时升2阶
     }
     
     # Effect type -> XP multiplier
     EFFECT_XP_MULTIPLIERS = {
-        "xp_boost": 2.0,   # 双倍经验
+        "xp_boost": 2.0,        # 双倍经验
+        "xp_boost_triple": 3.0, # 三倍经验
     }
     
     async def get_stage_boost(
@@ -393,17 +403,40 @@ class EffectService:
         Get the maximum stage boost from all active effects.
         
         Returns number of stages to temporarily boost (0 = no boost).
-        Effects like tipsy/maid_mode grant +1 stage.
+        Now reads from effect record's stage_boost field, with fallback to legacy dict.
         """
         effects = await self.get_active_effects(user_id, character_id)
         
         max_boost = 0
         for effect in effects:
-            etype = effect["effect_type"]
-            boost = self.EFFECT_STAGE_BOOSTS.get(etype, 0)
+            # 优先使用效果记录中的 stage_boost 字段
+            boost = effect.get("stage_boost", 0)
+            if boost == 0:
+                # fallback 到旧的硬编码映射
+                etype = effect["effect_type"]
+                boost = self.EFFECT_STAGE_BOOSTS_FALLBACK.get(etype, 0)
             max_boost = max(max_boost, boost)
         
         return max_boost
+    
+    async def get_nsfw_override(
+        self,
+        user_id: str,
+        character_id: str,
+    ) -> bool:
+        """
+        Check if any active effect grants NSFW access for this character.
+        
+        Returns True if user has an active effect with allows_nsfw=True.
+        This is character-specific (e.g., Vera with wine).
+        """
+        effects = await self.get_active_effects(user_id, character_id)
+        
+        for effect in effects:
+            if effect.get("allows_nsfw", False):
+                return True
+        
+        return False
     
     async def get_xp_multiplier(
         self,

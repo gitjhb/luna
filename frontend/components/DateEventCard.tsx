@@ -41,45 +41,49 @@ import Animated, {
 import { BlurView } from 'expo-blur';
 import { api } from '../services/api';
 import { useUserStore } from '../store/userStore';
+import { useLocale, tpl } from '../i18n';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// 结局类型配置
-const ENDING_CONFIG: Record<string, {
-  icon: string;
-  title: string;
-  color: string;
-  gradientColors: [string, string];
-  sparkle: boolean;
-}> = {
-  perfect: {
-    icon: '💕',
-    title: '完美约会',
-    color: '#FF69B4',
-    gradientColors: ['rgba(255, 105, 180, 0.25)', 'rgba(255, 182, 193, 0.15)'],
-    sparkle: true,
-  },
-  good: {
-    icon: '😊',
-    title: '愉快约会',
-    color: '#00D4FF',
-    gradientColors: ['rgba(0, 212, 255, 0.2)', 'rgba(147, 112, 219, 0.15)'],
-    sparkle: false,
-  },
-  normal: {
-    icon: '🙂',
-    title: '普通约会',
-    color: '#A0A0A0',
-    gradientColors: ['rgba(160, 160, 160, 0.15)', 'rgba(128, 128, 128, 0.1)'],
-    sparkle: false,
-  },
-  bad: {
-    icon: '😅',
-    title: '尴尬约会',
-    color: '#808080',
-    gradientColors: ['rgba(128, 128, 128, 0.2)', 'rgba(64, 64, 64, 0.15)'],
-    sparkle: false,
-  },
+// 获取结局类型配置
+const getEndingConfig = (t: any, ending: string) => {
+  const configs: Record<string, {
+    icon: string;
+    title: string;
+    color: string;
+    gradientColors: [string, string];
+    sparkle: boolean;
+  }> = {
+    perfect: {
+      icon: '💕',
+      title: t.date.ending.perfect,
+      color: '#FF69B4',
+      gradientColors: ['rgba(255, 105, 180, 0.25)', 'rgba(255, 182, 193, 0.15)'],
+      sparkle: true,
+    },
+    good: {
+      icon: '😊',
+      title: t.date.ending.good,
+      color: '#00D4FF',
+      gradientColors: ['rgba(0, 212, 255, 0.2)', 'rgba(147, 112, 219, 0.15)'],
+      sparkle: false,
+    },
+    normal: {
+      icon: '🙂',
+      title: t.date.ending.normal,
+      color: '#A0A0A0',
+      gradientColors: ['rgba(160, 160, 160, 0.15)', 'rgba(128, 128, 128, 0.1)'],
+      sparkle: false,
+    },
+    bad: {
+      icon: '😅',
+      title: t.date.ending.bad,
+      color: '#808080',
+      gradientColors: ['rgba(128, 128, 128, 0.2)', 'rgba(64, 64, 64, 0.15)'],
+      sparkle: false,
+    },
+  };
+  return configs[ending] || configs.normal;
 };
 
 // 卡片数据接口
@@ -123,6 +127,9 @@ export default function DateEventCard({
   characterName = '角色',
   onDetailViewed,
 }: DateEventCardProps) {
+  // i18n
+  const { t } = useLocale();
+
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [detailContent, setDetailContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -146,7 +153,7 @@ export default function DateEventCard({
   const hasDetail = !!eventData.detail_id;
   
   // 获取结局配置
-  const endingConfig = ENDING_CONFIG[ending] || ENDING_CONFIG.normal;
+  const endingConfig = getEndingConfig(t, ending);
   
   // 呼吸灯效果（完美结局）
   React.useEffect(() => {
@@ -189,11 +196,11 @@ export default function DateEventCard({
     
     // 需要付费解锁
     Alert.alert(
-      '🔓 解锁约会回忆',
-      `查看完整约会故事需要 ${unlockCost} 月石\n\n当前余额: ${wallet?.totalCredits || 0} 月石`,
+      t.date.unlockMemory,
+      tpl(t.date.unlockPrompt, { cost: unlockCost, balance: wallet?.totalCredits || 0 }),
       [
-        { text: '取消', style: 'cancel' },
-        { text: `解锁 (${unlockCost} 💎)`, onPress: handleUnlock },
+        { text: t.common.cancel, style: 'cancel' },
+        { text: tpl(t.date.unlockButton, { cost: unlockCost }), onPress: handleUnlock },
       ]
     );
   };
@@ -201,7 +208,7 @@ export default function DateEventCard({
   // 解锁详情
   const handleUnlock = async () => {
     if ((wallet?.totalCredits || 0) < unlockCost) {
-      Alert.alert('月石不足', '请先充值月石');
+      Alert.alert(t.date.insufficientFunds, '请先充值月石');
       return;
     }
     
@@ -229,10 +236,10 @@ export default function DateEventCard({
         }
         onDetailViewed?.();
       } else {
-        Alert.alert('解锁失败', result.error || '请稍后重试');
+        Alert.alert(t.date.unlockFailed, result.error || '请稍后重试');
       }
     } catch (e: any) {
-      Alert.alert('解锁失败', e.message || '网络错误');
+      Alert.alert(t.date.unlockFailed, e.message || t.date.networkError);
     } finally {
       setIsLoading(false);
     }
@@ -258,10 +265,10 @@ export default function DateEventCard({
         setShowDetailModal(true);
         onDetailViewed?.();
       } else {
-        Alert.alert('加载失败', result.error || '请稍后重试');
+        Alert.alert(t.date.loadFailed, result.error || '请稍后重试');
       }
     } catch (e: any) {
-      Alert.alert('加载失败', e.message || '网络错误');
+      Alert.alert(t.date.loadFailed, e.message || t.date.networkError);
     } finally {
       setIsLoading(false);
     }
@@ -328,7 +335,7 @@ export default function DateEventCard({
           <View style={styles.statsRow}>
             {/* 好感度 */}
             <View style={styles.statItem}>
-              <Text style={styles.statLabel}>好感度</Text>
+              <Text style={styles.statLabel}>{t.date.affection}</Text>
               <Text style={[styles.statValue, { color: getAffectionColor(affection) }]}>
                 {affection >= 0 ? `+${affection}` : affection}
               </Text>
@@ -337,7 +344,7 @@ export default function DateEventCard({
             {/* XP 奖励 */}
             {rewards.xp !== undefined && rewards.xp > 0 && (
               <View style={styles.statItem}>
-                <Text style={styles.statLabel}>经验</Text>
+                <Text style={styles.statLabel}>{t.date.experience}</Text>
                 <Text style={[styles.statValue, { color: '#FFD700' }]}>
                   +{rewards.xp}
                 </Text>
@@ -347,7 +354,7 @@ export default function DateEventCard({
             {/* 情绪变化 */}
             {rewards.emotion !== undefined && (
               <View style={styles.statItem}>
-                <Text style={styles.statLabel}>心情</Text>
+                <Text style={styles.statLabel}>{t.date.mood}</Text>
                 <Text style={[
                   styles.statValue, 
                   { color: rewards.emotion >= 0 ? '#7CFC00' : '#FF6B6B' }
@@ -373,11 +380,11 @@ export default function DateEventCard({
                   {!isUnlocked && unlockCost > 0 ? (
                     <View style={styles.unlockBadge}>
                       <Ionicons name="lock-closed" size={12} color="#C4B5FD" />
-                      <Text style={styles.unlockText}>{unlockCost} 💎 解锁详情</Text>
+                      <Text style={styles.unlockText}>{tpl(t.date.unlockDetails, { cost: unlockCost })}</Text>
                     </View>
                   ) : (
                     <>
-                      <Text style={styles.detailText}>查看完整故事</Text>
+                      <Text style={styles.detailText}>{t.date.viewDetails}</Text>
                       <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.6)" />
                     </>
                   )}
@@ -423,13 +430,13 @@ export default function DateEventCard({
                 showsVerticalScrollIndicator={false}
               >
                 <Text style={styles.storyContent}>
-                  {detailContent || '加载中...'}
+                  {detailContent || t.common.loading}
                 </Text>
                 
                 {/* 与角色的回忆提示 */}
                 <View style={styles.memoryNote}>
                   <Text style={styles.memoryNoteText}>
-                    ✨ 与{characterName}的约会回忆
+                    {tpl(t.date.dateMemoryWith, { name: characterName })}
                   </Text>
                 </View>
               </ScrollView>

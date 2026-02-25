@@ -410,23 +410,35 @@ class GiftService:
             
             logger.info(f"XP awarded: {actual_xp}")
             
-            # Step 8: Apply status effect (Tier 2 gifts)
+            # Step 8: Apply status effect (Tier 2/3 gifts)
             status_effect_applied = None
-            if tier == GiftTier.STATE_TRIGGER and "status_effect" in gift_info:
+            if tier in (GiftTier.STATE_TRIGGER, GiftTier.SPEED_DATING) and "status_effect" in gift_info:
                 effect_config = gift_info["status_effect"]
+                
+                # 检查是否有角色特定的覆盖配置
+                char_overrides = effect_config.get("character_overrides", {})
+                char_config = char_overrides.get(character_id, {})
+                
+                # 使用角色特定的 prompt_modifier，否则用默认的
+                prompt_modifier = char_config.get("prompt_modifier", effect_config["prompt_modifier"])
+                
                 await effect_service.apply_effect(
                     user_id=user_id,
                     character_id=character_id,
                     effect_type=effect_config["type"],
-                    prompt_modifier=effect_config["prompt_modifier"],
+                    prompt_modifier=prompt_modifier,
                     duration_messages=effect_config["duration_messages"],
                     gift_id=gift_id,
+                    stage_boost=effect_config.get("stage_boost", 0),
+                    allows_nsfw=char_config.get("allows_nsfw", False),
                 )
                 status_effect_applied = {
                     "type": effect_config["type"],
                     "duration": effect_config["duration_messages"],
+                    "stage_boost": effect_config.get("stage_boost", 0),
+                    "allows_nsfw": char_config.get("allows_nsfw", False),
                 }
-                logger.info(f"Status effect applied: {effect_config['type']} for {effect_config['duration_messages']} messages")
+                logger.info(f"Status effect applied: {effect_config['type']} for {effect_config['duration_messages']} messages, stage_boost={effect_config.get('stage_boost', 0)}")
             
             # Step 8.5: Handle special gift effects
             cold_war_unlocked = False

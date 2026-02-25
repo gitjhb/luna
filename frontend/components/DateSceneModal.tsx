@@ -27,6 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { api } from '../services/api';
 import { getCharacterAvatar } from '../assets/characters';
+import { useLocale, tpl } from '../i18n';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -188,6 +189,9 @@ export default function DateSceneModal({
   onDateCompleted,
   resumeSession,
 }: DateSceneModalProps) {
+  // i18n
+  const { t } = useLocale();
+
   // State
   const [phase, setPhase] = useState<Phase>('select');
   const [selectedScenario, setSelectedScenario] = useState<DateScenario | null>(null);
@@ -359,7 +363,7 @@ export default function DateSceneModal({
       if (!status.can_date && status.reason === 'emotion_too_low') {
         setEmotionTooLow({
           currentEmotion: status.current_emotion,
-          message: status.message || '她现在心情不好，不想和你约会',
+          message: status.message || t.date.emotionTooLow,
         });
         setCooldownInfo(null);
         return;
@@ -389,12 +393,12 @@ export default function DateSceneModal({
       if (result.success) {
         setCooldownInfo(null);
         // Show success message
-        setJudgeComment(`冷却已重置！消费 50 月石`);
+        setJudgeComment(t.date.cooldownReset);
         setTimeout(() => setJudgeComment(null), 2000);
       }
     } catch (e: any) {
       // 从错误响应中提取具体信息
-      const errorMsg = e.response?.data?.detail || e.message || '重置失败';
+      const errorMsg = e.response?.data?.detail || e.message || t.date.loadFailed;
       setJudgeComment(`💎 ${errorMsg}`);
       setTimeout(() => setJudgeComment(null), 3000);
     } finally {
@@ -562,13 +566,13 @@ export default function DateSceneModal({
           });
         } else {
           // 其他错误用通用提示
-          setJudgeComment(`❌ ${result.error || '约会启动失败'}`);
+          setJudgeComment(`❌ ${result.error || t.date.dateStartFailed}`);
           setTimeout(() => setJudgeComment(null), 3000);
         }
       }
     } catch (e: any) {
       console.error('Failed to start date:', e);
-      const errorMsg = e.response?.data?.detail || e.message || '约会启动失败';
+      const errorMsg = e.response?.data?.detail || e.message || t.date.dateStartFailed;
       setJudgeComment(`❌ ${errorMsg}`);
       setTimeout(() => setJudgeComment(null), 3000);
     } finally {
@@ -744,7 +748,7 @@ export default function DateSceneModal({
       }
     } catch (e: any) {
       console.error('Failed to send free input:', e);
-      setJudgeComment('发送失败，请重试');
+      setJudgeComment(t.date.sendFailed);
       setTimeout(() => setJudgeComment(null), 2000);
     } finally {
       setLoading(false);
@@ -792,7 +796,7 @@ export default function DateSceneModal({
         
         // 显示扣费提示
         const cost = result.credits_deducted || 30;
-        setJudgeComment(`💎 -${cost} 月石，解锁后续3章剧情！`);
+        setJudgeComment(tpl(t.date.extendSuccess, { amount: cost }));
         setTimeout(() => setJudgeComment(null), 2500);
       }
       // 处理失败情况
@@ -800,14 +804,17 @@ export default function DateSceneModal({
         if (result.current_balance !== undefined && result.required) {
           // 余额不足 - 显示详细信息
           const shortage = result.required - result.current_balance;
-          setJudgeComment(`💎 月石不足！还需要 ${shortage} 月石（当前: ${result.current_balance}）`);
+          setJudgeComment(tpl(t.date.insufficientFunds, { 
+            shortage, 
+            current: result.current_balance 
+          }));
         } else {
-          setJudgeComment(`❌ ${result.error || '延长失败'}`);
+          setJudgeComment(`❌ ${result.error || t.date.loadFailed}`);
         }
         setTimeout(() => setJudgeComment(null), 4000);
       }
     } catch (e: any) {
-      const errorMsg = e.response?.data?.detail || e.message || '延长失败';
+      const errorMsg = e.response?.data?.detail || e.message || t.date.loadFailed;
       setJudgeComment(`❌ ${errorMsg}`);
       setTimeout(() => setJudgeComment(null), 3000);
     } finally {
@@ -840,7 +847,7 @@ export default function DateSceneModal({
       }
     } catch (e: any) {
       console.error('Failed to finish date:', e);
-      const errorMsg = e.response?.data?.detail || '结束失败';
+      const errorMsg = e.response?.data?.detail || t.date.loadFailed;
       setJudgeComment(`❌ ${errorMsg}`);
       setTimeout(() => setJudgeComment(null), 3000);
     } finally {
@@ -868,12 +875,12 @@ export default function DateSceneModal({
       <View style={styles.selectHeader}>
         <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
           <Ionicons name="chevron-back" size={24} color="#fff" />
-          <Text style={styles.cancelBtnText}>返回</Text>
+          <Text style={styles.cancelBtnText}>{t.date.backToChat}</Text>
         </TouchableOpacity>
       </View>
       
-      <Text style={styles.selectTitle}>选择约会地点</Text>
-      <Text style={styles.selectSubtitle}>和 {characterName} 去哪里？</Text>
+      <Text style={styles.selectTitle}>{t.date.selectScenario}</Text>
+      <Text style={styles.selectSubtitle}>{tpl(t.date.chooseLocation, { name: characterName })}</Text>
       
       {/* 情绪太低提示 */}
       {emotionTooLow && !activeSession && (
@@ -883,7 +890,7 @@ export default function DateSceneModal({
             {emotionTooLow.message}
           </Text>
           <Text style={styles.emotionWarningHint}>
-            💡 送她一份礼物来改善心情吧
+            {t.date.emotionHint}
           </Text>
         </View>
       )}
@@ -893,10 +900,10 @@ export default function DateSceneModal({
         <View style={styles.staminaWarningBox}>
           <Text style={styles.staminaWarningIcon}>⚡</Text>
           <Text style={styles.staminaWarningText}>
-            体力不足！约会需要 {staminaInsufficient.required} 体力
+            {tpl(t.date.staminaInsufficient, { required: staminaInsufficient.required })}
           </Text>
           <Text style={styles.staminaWarningCurrent}>
-            当前体力：{staminaInsufficient.current}
+            {tpl(t.date.currentStamina, { current: staminaInsufficient.current })}
           </Text>
           <Text style={styles.staminaWarningHint}>
             💡 {staminaInsufficient.hint}
@@ -909,15 +916,17 @@ export default function DateSceneModal({
         <View style={styles.cooldownBox}>
           <Text style={styles.cooldownIcon}>⏰</Text>
           <Text style={styles.cooldownText}>
-            约会冷却中，还需等待 {(() => {
-              const mins = cooldownInfo.remainingMinutes;
-              if (mins >= 60) {
-                const hours = Math.floor(mins / 60);
-                const remainMins = mins % 60;
-                return remainMins > 0 ? `${hours} 小时 ${remainMins} 分钟` : `${hours} 小时`;
-              }
-              return `${mins} 分钟`;
-            })()}
+            {tpl(t.date.dateCooldown, { 
+              time: (() => {
+                const mins = cooldownInfo.remainingMinutes;
+                if (mins >= 60) {
+                  const hours = Math.floor(mins / 60);
+                  const remainMins = mins % 60;
+                  return remainMins > 0 ? `${hours} 小时 ${remainMins} 分钟` : `${hours} 小时`;
+                }
+                return `${mins} 分钟`;
+              })()
+            })}
           </Text>
           <TouchableOpacity 
             style={styles.resetCooldownBtn}
@@ -928,8 +937,8 @@ export default function DateSceneModal({
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <>
-                <Text style={styles.resetCooldownText}>立即重置</Text>
-                <Text style={styles.resetCooldownPrice}>💎 50</Text>
+                <Text style={styles.resetCooldownText}>{t.date.resetCooldown}</Text>
+                <Text style={styles.resetCooldownPrice}>{t.date.cooldownResetPrice}</Text>
               </>
             )}
           </TouchableOpacity>
@@ -951,7 +960,7 @@ export default function DateSceneModal({
               ]}
               onPress={() => {
                 if (isLocked) {
-                  setJudgeComment(`🔒 需要 Lv.${requiredLevel} 解锁`);
+                  setJudgeComment(`🔒 ${tpl(t.date.levelRequirement, { level: requiredLevel })} 解锁`);
                   setTimeout(() => setJudgeComment(null), 2000);
                 } else {
                   setSelectedScenario(scenario);
@@ -996,7 +1005,7 @@ export default function DateSceneModal({
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.startButtonText}>💕 开始约会</Text>
+            <Text style={styles.startButtonText}>{t.date.startDate}</Text>
           )}
         </LinearGradient>
       </TouchableOpacity>
@@ -1007,10 +1016,13 @@ export default function DateSceneModal({
           <View style={styles.activeSessionCard}>
             <Text style={styles.activeSessionIcon}>💕</Text>
             <Text style={styles.activeSessionText}>
-              有一场未完成的约会
+              {t.date.unfinishedDate}
             </Text>
             <Text style={styles.activeSessionDetail}>
-              {activeSession.scenario_name} · 第 {activeSession.stage_num} 阶段
+              {tpl(t.date.unfinishedDateDetail, { 
+                scenarioName: activeSession.scenario_name,
+                stageNum: activeSession.stage_num
+              })}
             </Text>
             <View style={styles.activeSessionButtons}>
               <TouchableOpacity 
@@ -1021,7 +1033,7 @@ export default function DateSceneModal({
                 {loading ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.continueBtnText}>继续约会</Text>
+                  <Text style={styles.continueBtnText}>{t.date.continueDate}</Text>
                 )}
               </TouchableOpacity>
               <TouchableOpacity 
@@ -1036,7 +1048,7 @@ export default function DateSceneModal({
                   }
                 }}
               >
-                <Text style={styles.abandonBtnText}>放弃</Text>
+                <Text style={styles.abandonBtnText}>{t.date.abandonDate}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1066,7 +1078,7 @@ export default function DateSceneModal({
         
         {/* 阶段进度 + 延长按钮 */}
         <View style={styles.phaseContainer}>
-          <Text style={styles.phaseText}>PHASE {progress.current} / {progress.total}</Text>
+          <Text style={styles.phaseText}>{tpl(t.date.phase, { current: progress.current, total: progress.total })}</Text>
           {/* ➕ 延长按钮：未延长且未结束时显示 */}
           {!isExtended && !ending && progress.total === 5 && (
             <TouchableOpacity
@@ -1156,7 +1168,7 @@ export default function DateSceneModal({
           {/* 跳过按钮 */}
           {isTyping && (
             <TouchableOpacity style={styles.skipButton} onPress={handleSkipTyping}>
-              <Text style={styles.skipHint}>跳过 →</Text>
+              <Text style={styles.skipHint}>{t.date.skipTyping}</Text>
             </TouchableOpacity>
           )}
           
@@ -1177,7 +1189,7 @@ export default function DateSceneModal({
                 <TextInput
                   ref={freeInputRef}
                   style={styles.freeInputField}
-                  placeholder="说点什么..."
+                  placeholder={t.date.freeInputPlaceholder}
                   placeholderTextColor="rgba(255,255,255,0.4)"
                   value={freeInputText}
                   onChangeText={setFreeInputText}
@@ -1194,14 +1206,14 @@ export default function DateSceneModal({
                       bottomSheetRef.current?.snapToIndex(1); // 恢复到 50%
                     }}
                   >
-                    <Text style={styles.freeInputCancelText}>取消</Text>
+                    <Text style={styles.freeInputCancelText}>{t.date.freeInputCancel}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
                     style={[styles.freeInputSend, !freeInputText.trim() && styles.freeInputSendDisabled]}
                     onPress={handleFreeInput}
                     disabled={!freeInputText.trim()}
                   >
-                    <Text style={styles.freeInputSendText}>发送</Text>
+                    <Text style={styles.freeInputSendText}>{t.date.freeInputSend}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1237,7 +1249,7 @@ export default function DateSceneModal({
                   onPress={() => setShowFreeInput(true)}
                 >
                   <Ionicons name="chatbubble-ellipses-outline" size={16} color="rgba(255,255,255,0.5)" />
-                  <Text style={styles.freeInputTriggerText}>我想自己说点什么...</Text>
+                  <Text style={styles.freeInputTriggerText}>{t.date.freeInputTrigger}</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -1265,7 +1277,7 @@ export default function DateSceneModal({
         
         {/* 阶段进度 */}
         <View style={styles.phaseContainer}>
-          <Text style={styles.phaseText}>PHASE {progress.current} / {progress.total}</Text>
+          <Text style={styles.phaseText}>{tpl(t.date.phase, { current: progress.current, total: progress.total })}</Text>
         </View>
       </View>
       
@@ -1316,11 +1328,11 @@ export default function DateSceneModal({
                affectionScore <= 80 ? '😊' : '💕'}
             </Text>
             <Text style={styles.checkpointTitle}>
-              {affectionScore <= 20 ? '约会...有点糟糕' :
-               affectionScore <= 35 ? '气氛有些尴尬...' :
-               affectionScore <= 50 ? '约会还算顺利' :
-               affectionScore <= 65 ? '约会进行得不错~' :
-               affectionScore <= 80 ? '约会进行得很顺利！' : '完美的约会💕'}
+              {affectionScore <= 20 ? t.date.dateProgress.terrible :
+               affectionScore <= 35 ? t.date.dateProgress.awkward :
+               affectionScore <= 50 ? t.date.dateProgress.okay :
+               affectionScore <= 65 ? t.date.dateProgress.good :
+               affectionScore <= 80 ? t.date.dateProgress.great : t.date.dateProgress.perfect}
             </Text>
           </View>
           
@@ -1333,8 +1345,8 @@ export default function DateSceneModal({
           
           <Text style={styles.checkpointText}>
             {affectionScore <= 35 
-              ? '基础章节已完成。要尝试挽回局面吗？' 
-              : '基础章节已完成！要继续享受更多甜蜜时光吗？'}
+              ? t.date.checkpointMessageBad
+              : t.date.checkpointMessage}
           </Text>
           
           {/* 选择按钮 */}
@@ -1354,8 +1366,8 @@ export default function DateSceneModal({
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
                     <>
-                      <Text style={styles.extendButtonText}>💎 继续剧情</Text>
-                      <Text style={styles.extendButtonPrice}>30 月石 · 解锁后续 3 章</Text>
+                      <Text style={styles.extendButtonText}>{t.date.extendStory}</Text>
+                      <Text style={styles.extendButtonPrice}>{t.date.extendPrice}</Text>
                     </>
                   )}
                 </LinearGradient>
@@ -1371,7 +1383,7 @@ export default function DateSceneModal({
               {loading ? (
                 <ActivityIndicator size="small" color="#FF6B9D" />
               ) : (
-                <Text style={styles.finishButtonText}>结束约会，查看结局 →</Text>
+                <Text style={styles.finishButtonText}>{t.date.finishDate}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -1398,7 +1410,7 @@ export default function DateSceneModal({
         
         {/* 完结标记 */}
         <View style={styles.phaseContainer}>
-          <Text style={styles.phaseText}>~ THE END ~</Text>
+          <Text style={styles.phaseText}>{t.date.theEnd}</Text>
         </View>
       </View>
       
@@ -1447,7 +1459,7 @@ export default function DateSceneModal({
                  ending?.type === 'good' ? '😊' :
                  ending?.type === 'normal' ? '🙂' : '😅'}
               </Text>
-              <Text style={styles.finaleTitle}>{ending?.title || '约会结束'}</Text>
+              <Text style={styles.finaleTitle}>{ending?.title || t.date.dateEnded}</Text>
             </View>
             
             {/* 结局剧情文字 */}
@@ -1471,7 +1483,7 @@ export default function DateSceneModal({
                 colors={['#FF6B9D', '#C44569']}
                 style={styles.finaleContinueGradient}
               >
-                <Text style={styles.finaleContinueText}>查看结算 →</Text>
+                <Text style={styles.finaleContinueText}>{t.date.viewDetails} →</Text>
               </LinearGradient>
             </TouchableOpacity>
           </Animated.View>
@@ -1503,9 +1515,9 @@ export default function DateSceneModal({
         {/* Rewards */}
         {rewards && (
           <View style={styles.rewardsBox}>
-            <Text style={styles.rewardsTitle}>🎁 获得奖励</Text>
+            <Text style={styles.rewardsTitle}>🎁 {t.date.rewardsEarned}</Text>
             <Text style={styles.rewardsText}>
-              +{rewards.xp} XP
+              {tpl(t.date.experienceGained, { xp: rewards.xp })}
             </Text>
           </View>
         )}
@@ -1513,12 +1525,12 @@ export default function DateSceneModal({
         {/* Unlocked Photo */}
         {unlockedPhoto?.is_new && (
           <View style={[styles.rewardsBox, { backgroundColor: 'rgba(236, 72, 153, 0.15)', borderColor: 'rgba(236, 72, 153, 0.3)' }]}>
-            <Text style={styles.rewardsTitle}>📸 解锁新照片</Text>
+            <Text style={styles.rewardsTitle}>{t.date.unlockedPhoto}</Text>
             <Text style={[styles.rewardsText, { color: '#00D4FF' }]}>
-              {unlockedPhoto.photo_type === 'perfect' ? '💕 特别版照片' : '📷 普通照片'}
+              {unlockedPhoto.photo_type === 'perfect' ? t.date.photoTypeSpecial : t.date.photoTypeNormal}
             </Text>
             <Text style={{ color: '#888', fontSize: 12, marginTop: 4 }}>
-              前往相册查看
+              {t.date.checkAlbum}
             </Text>
           </View>
         )}
@@ -1526,7 +1538,7 @@ export default function DateSceneModal({
         {/* Story Summary Saved Notice */}
         {storySummary && (
           <View style={styles.summaryBox}>
-            <Text style={styles.summaryTitle}>📖 回忆已保存</Text>
+            <Text style={styles.summaryTitle}>{t.date.memorySaved}</Text>
           </View>
         )}
         
@@ -1536,7 +1548,7 @@ export default function DateSceneModal({
             colors={['#FF6B9D', '#C44569']}
             style={styles.doneButtonGradient}
           >
-            <Text style={styles.doneButtonText}>完成</Text>
+            <Text style={styles.doneButtonText}>{t.date.done}</Text>
           </LinearGradient>
         </TouchableOpacity>
       </Animated.View>

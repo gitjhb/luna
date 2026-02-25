@@ -285,9 +285,39 @@ DEFAULT_GIFT_CATALOG = [
         "status_effect": {
             "type": "tipsy",
             "duration_messages": 30,
+            "stage_boost": 1,  # 临时升1阶
             "prompt_modifier": "你现在有点微醺，说话变得更加柔软和放松。防御心降低，更容易说出平时不会说的话。语气变得更加亲昵，偶尔会脸红。",
         },
         "sort_order": 202,
+    },
+    {
+        "gift_type": "premium_wine",
+        "name": "Premium Vintage Wine",
+        "name_cn": "珍藏年份红酒",
+        "description": "An exquisite vintage wine... she might reveal her deepest feelings",
+        "description_cn": "珍贵的年份红酒...她可能会展露内心最深处的感情",
+        "price": 800,
+        "xp_reward": 500,
+        "xp_multiplier": 1.5,
+        "icon": "🍾",
+        "tier": GiftTier.SPEED_DATING,
+        "category": GiftCategory.STATE,
+        "status_effect": {
+            "type": "deeply_tipsy",
+            "duration_messages": 20,
+            "stage_boost": 2,  # 临时升2阶
+            "prompt_modifier": "你喝了珍藏红酒，有些醉了。防御心完全放下，会说出平时绝对不会说的话。更加主动、亲昵，甚至有些大胆。",
+            # 角色特定效果
+            "character_overrides": {
+                # Vera 收到红酒会更开放
+                "vera": {
+                    "allows_nsfw": True,
+                    "prompt_modifier": "你喝了最爱的珍藏红酒，微醺而放松。你变得更加主动和大胆，愿意和喜欢的人亲密接触。如果对方想要更进一步，你不会拒绝...",
+                },
+                # 其他角色可以在这里添加
+            },
+        },
+        "sort_order": 202.5,
     },
     {
         "gift_type": "maid_headband",
@@ -304,6 +334,7 @@ DEFAULT_GIFT_CATALOG = [
         "status_effect": {
             "type": "maid_mode",
             "duration_messages": 50,
+            "stage_boost": 1,  # 临时升1阶
             "prompt_modifier": "你现在进入女仆模式，称呼用户为'主人'(Master/ご主人様)。说话方式变得更加恭敬和服务导向，但保持你原有的性格底色。会说'是的，主人'、'遵命'之类的话。",
         },
         "sort_order": 203,

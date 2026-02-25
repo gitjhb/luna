@@ -16,12 +16,57 @@ tts_service = DoubaoTTSService()
 MOCK_MODE = os.getenv("MOCK_TTS", "true").lower() == "true"
 
 
-@router.post("/tts")
+@router.post("/tts",
+            summary="Convert text to speech",
+            description="""
+            Generate natural-sounding voice audio from text using advanced TTS technology.
+            
+            **Features:**
+            - High-quality neural voices with emotion support
+            - Adjustable speech speed (0.2x to 3.0x)
+            - Multiple voice options for different characters
+            - Emotion modulation for expressive speech
+            
+            **Supported Languages:**
+            - Chinese (Mandarin) with various regional accents
+            - English with native pronunciation
+            - Japanese for anime-style character voices
+            
+            **Available Voices:**
+            - **灿灿**: Sweet, gentle female voice (default)
+            - **晓梦**: Energetic, youthful tone
+            - **云希**: Mature, sophisticated style
+            - **妙妙**: Playful, cute character voice
+            
+            **Emotions:**
+            - `happy`: Cheerful and upbeat tone
+            - `sad`: Melancholic and softer delivery
+            - `excited`: High energy and enthusiasm  
+            - `neutral`: Balanced, natural speech (default)
+            - `romantic`: Warm, intimate tone
+            
+            **Cost:** 2-5 credits depending on text length
+            
+            **Output Format:** MP3 audio (128kbps, 22kHz)
+            **Max Length:** 2000 characters per request
+            **Generation Time:** 2-8 seconds depending on text length
+            
+            **Usage Tips:**
+            - Add punctuation for natural pauses
+            - Use shorter sentences for better pronunciation
+            - Emojis and emoticons may affect voice emotion
+            """,
+            responses={
+                200: {
+                    "description": "Generated audio file",
+                    "content": {"audio/mpeg": {"schema": {"type": "string", "format": "binary"}}}
+                },
+                400: {"description": "Text too long or invalid parameters"},
+                402: {"description": "Insufficient credits"},
+                500: {"description": "TTS service error"}
+            })
 async def text_to_speech(request: TTSRequest):
-    """
-    Convert text to speech using 豆包 TTS.
-    Returns audio/mpeg.
-    """
+    """Convert text to natural-sounding speech audio."""
     if MOCK_MODE:
         # Return empty audio in mock mode
         return Response(

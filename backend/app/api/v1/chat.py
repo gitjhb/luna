@@ -82,12 +82,38 @@ def _get_user_id(request: Request) -> str:
     return request.headers.get("X-User-ID", "demo-user-123")
 
 
-@router.post("/sessions", response_model=CreateSessionResponse)
+@router.post("/sessions", response_model=CreateSessionResponse,
+            summary="Start new chat session with AI character",
+            description="""
+            Initialize a new conversation session with an AI companion character.
+            
+            **Behavior:**
+            - Creates a new chat session if none exists for this user+character pair
+            - Returns existing session if one already exists (maintains conversation continuity)
+            - Each session tracks conversation history, intimacy progress, and context
+            
+            **Session Features:**
+            - Persistent conversation memory
+            - Character-specific personality and responses
+            - Intimacy level progression tracking
+            - Message history and pagination support
+            
+            **Character Types:**
+            - **Romantic**: Relationship-focused companions with intimacy progression
+            - **Buddy**: Friendship-focused with casual conversation dynamics
+            
+            **Next Steps:**
+            1. Call `/sessions/{session_id}/greeting` to get character's opening message
+            2. Use `/completions` endpoint to send messages in this session
+            3. Mark `/sessions/{session_id}/intro-shown` after tutorial completion
+            """,
+            responses={
+                200: {"description": "Session created or existing session returned"},
+                404: {"description": "Character not found"},
+                403: {"description": "Character requires premium subscription"}
+            })
 async def create_session(request: CreateSessionRequest, req: Request):
-    """
-    Create a new chat session with a character.
-    If a session already exists for this character, return the existing one.
-    """
+    """Create or retrieve chat session for an AI character."""
     # Get user ID (from auth or header)
     user_id = _get_user_id(req)
     
@@ -311,13 +337,43 @@ async def get_session_messages(
     }
 
 
-@router.post("/completions", response_model=ChatCompletionResponse)
+@router.post("/completions", response_model=ChatCompletionResponse,
+            summary="Send chat message to AI companion",
+            description="""
+            Send a message to your AI companion and receive a personalized response.
+            
+            **Features:**
+            - Real-time AI conversations with personality consistency
+            - Relationship progression tracking (intimacy levels 1-100)
+            - Content rating system (safe/flirty/spicy)
+            - Optional scenario contexts for roleplay
+            - Anti-spam duplicate detection
+            - Stamina/credit system integration
+            
+            **Content Ratings:**
+            - `safe`: General conversations, suitable for all users
+            - `flirty`: Light romantic content, available to all users
+            - `spicy`: Adult content, requires Premium subscription
+            
+            **Intimacy Levels:**
+            - 1-25: Strangers, formal interactions
+            - 26-50: Friends, casual conversations
+            - 51-75: Close friends, personal topics
+            - 76-100: Romantic partners, intimate conversations
+            
+            **Error Handling:**
+            - 404: Session not found
+            - 429: Rate limit exceeded (insufficient credits/stamina)
+            - 402: Premium content requires subscription
+            """,
+            responses={
+                200: {"description": "AI companion response with metadata"},
+                404: {"description": "Chat session not found"},
+                429: {"description": "Rate limit exceeded"},
+                402: {"description": "Premium subscription required"}
+            })
 async def chat_completion(request: ChatCompletionRequest, req: Request):
-    """
-    Main chat completion endpoint.
-    In mock mode: returns echo response.
-    In production: calls Grok API with RAG context.
-    """
+    """Process chat message and generate AI companion response."""
     import time
     request_id = f"{int(time.time()*1000)}"
     chat_debug.set_request_id(request_id)
@@ -1249,26 +1305,28 @@ async def chat_debug_endpoint(req: ChatDebugRequest, request: Request):
 {memory_prompt if memory_prompt else '(无记忆上下文)'}
 """
     
-    # Generate response using mock or real LLM
-    ai_response = f"(模拟回复) 收到你的消息: {message}"
+    # Generate response using real LLM
+    ai_response = ""
     
     try:
-        # Use pipeline if available
         from app.services.llm_service import GrokService
         grok = GrokService()
         
-        messages = [
+        llm_messages = [
             {"role": "system", "content": system_prompt},
         ]
         for m in context[-5:]:
-            messages.append({"role": m.get("role", "user"), "content": m.get("content", "")})
-        messages.append({"role": "user", "content": message})
+            llm_messages.append({"role": m.get("role", "user"), "content": m.get("content", "")})
+        llm_messages.append({"role": "user", "content": message})
         
-        result = await grok.chat(messages)
+        result = await grok.chat_completion(messages=llm_messages, temperature=0.8)
         if result and "choices" in result:
             ai_response = result["choices"][0]["message"]["content"]
+        else:
+            ai_response = "(LLM返回为空)"
     except Exception as e:
-        logger.warning(f"LLM call failed: {e}")
+        logger.error(f"LLM call failed: {e}")
+        ai_response = f"(LLM调用失败: {str(e)[:100]})"
     
     # Process memory extraction (store new memories)
     try:

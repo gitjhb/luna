@@ -475,9 +475,36 @@ def get_character_by_id(character_id: str) -> Optional[dict]:
     return None
 
 
-@router.get("", response_model=CharacterListResponse)
+@router.get("", response_model=CharacterListResponse,
+          summary="Get all available AI characters",
+          description="""
+          Retrieve a list of all AI companion characters available for chat.
+          
+          **Character Types:**
+          - **Romantic**: Relationship-focused companions with intimacy progression
+          - **Buddy**: Casual friends for general conversation
+          
+          **Character Tiers:**
+          - **Free**: Available to all users
+          - **Premium**: Requires active subscription
+          - **VIP**: Requires highest tier subscription
+          
+          **Content Filtering:**
+          - Use `include_spicy=false` to hide adult-oriented characters
+          - Spicy characters require age verification and Premium subscription
+          - Safe characters are appropriate for all audiences
+          
+          **Character Attributes:**
+          - Unique personalities with distinct speaking styles
+          - Custom avatars and background images
+          - Detailed profiles with age, occupation, hobbies
+          - MBTI personality types and zodiac signs
+          """,
+          responses={
+              200: {"description": "List of available characters with metadata"}
+          })
 async def list_characters(include_spicy: bool = True):
-    """List available characters"""
+    """Get all available AI companion characters."""
     characters = [
         CharacterResponse(**{**c, "character_id": UUID(c["character_id"])})
         for c in CHARACTERS

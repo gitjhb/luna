@@ -171,12 +171,35 @@ async def demo_login(request: DemoLoginRequest):
 ALLOW_GUEST = os.getenv("ALLOW_GUEST", "false").lower() == "true"
 
 
-@router.post("/guest", response_model=TokenResponse)
+@router.post("/guest", response_model=TokenResponse,
+            summary="Create temporary guest account",
+            description="""
+            Create a temporary guest account for instant app access without registration.
+            
+            **Features:**
+            - No email or personal information required
+            - Full access to Luna AI companion features
+            - 10 daily free credits included
+            - Temporary account (data may be cleaned up)
+            
+            **Limitations:**
+            - Only available when ALLOW_GUEST=true (development/testing)
+            - Cannot upgrade to premium without linking to Apple/Google account
+            - Account may be deleted during maintenance
+            
+            **Use Cases:**
+            - Quick app demos and testing
+            - Onboarding new users without signup friction
+            - Development and QA testing
+            
+            **Production:** Disabled by default. Users should use Apple/Google Sign-In.
+            """,
+            responses={
+                200: {"description": "Guest account created successfully"},
+                403: {"description": "Guest login disabled in production"}
+            })
 async def guest_login():
-    """
-    Guest login - creates a temporary user for testing.
-    Only available in test environment (ALLOW_GUEST=true).
-    """
+    """Create a temporary guest account for instant access."""
     if not ALLOW_GUEST:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

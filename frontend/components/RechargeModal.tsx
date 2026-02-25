@@ -23,6 +23,7 @@ import Constants from 'expo-constants';
 import { PurchasesPackage } from 'react-native-purchases';
 import { revenueCatService } from '../services/revenueCatService';
 import { useUserStore } from '../store/userStore';
+import { useLocale } from '../i18n';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -35,15 +36,15 @@ const getShardCount = (productId: string): number => {
   return match ? parseInt(match[1], 10) : 0;
 };
 
-// Bonus amounts for each tier (not stored in RevenueCat)
-const SHARD_BONUSES: { [key: number]: { bonus: number; tag?: string } } = {
+// Get bonus amounts for each tier (not stored in RevenueCat)
+const getShardBonuses = (t: any): { [key: number]: { bonus: number; tag?: string } } => ({
   60: { bonus: 0 },
   300: { bonus: 30 },
-  980: { bonus: 110, tag: '热卖' },
+  980: { bonus: 110, tag: t.recharge.tagHotSale },
   1980: { bonus: 260 },
   3280: { bonus: 600 },
-  6480: { bonus: 1600, tag: '超值' },
-};
+  6480: { bonus: 1600, tag: t.recharge.tagGreatValue },
+});
 
 interface RechargeModalProps {
   visible: boolean;
@@ -56,6 +57,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
   onClose,
   onPurchaseSuccess,
 }) => {
+  const { t } = useLocale();
   const { wallet, updateWallet } = useUserStore();
   const [packages, setPackages] = useState<PurchasesPackage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -79,7 +81,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
 
   const loadPackages = async () => {
     if (isExpoGo) {
-      setError('IAP 在 Expo Go 中不可用，请使用 dev build');
+      setError(t.recharge.iapNotAvailableInExpo);
       return;
     }
 
@@ -100,11 +102,11 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
         console.log('[RechargeModal] Loaded', sorted.length, 'packages');
       } else {
         console.warn('[RechargeModal] No sale offering found');
-        setError('暂无可用商品');
+        setError(t.recharge.noProductsAvailable);
       }
     } catch (err: any) {
       console.error('[RechargeModal] Failed to load packages:', err);
-      setError(err.message || '加载商品失败');
+      setError(err.message || t.recharge.loadProductsFailed);
     } finally {
       setLoading(false);
     }
@@ -112,16 +114,26 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
 
   const handlePurchase = async (pkg: PurchasesPackage) => {
     const shardCount = getShardCount(pkg.product.identifier);
+    const SHARD_BONUSES = getShardBonuses(t);
     const bonusInfo = SHARD_BONUSES[shardCount] || { bonus: 0 };
     const totalShards = shardCount + bonusInfo.bonus;
 
+    const bonusText = bonusInfo.bonus ? 
+      t.recharge.bonusText.replace('{bonus}', bonusInfo.bonus.toString()) : 
+      '';
+    
+    const message = t.recharge.confirmPurchaseMessage
+      .replace('{shards}', shardCount.toLocaleString())
+      .replace('{bonusText}', bonusText)
+      .replace('{price}', pkg.product.priceString);
+
     Alert.alert(
-      '确认购买',
-      `购买 ${shardCount.toLocaleString()} 碎片${bonusInfo.bonus ? ` (+${bonusInfo.bonus} 赠送)` : ''}，价格 ${pkg.product.priceString}？`,
+      t.recharge.confirmPurchaseTitle,
+      message,
       [
-        { text: '取消', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: '购买',
+          text: t.recharge.confirm,
           onPress: async () => {
             try {
               setPurchasing(pkg.identifier);
@@ -156,7 +168,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
               }
             } catch (err: any) {
               if (!err.userCancelled) {
-                Alert.alert('购买失败', err.message || '请稍后重试');
+                Alert.alert(t.recharge.purchaseFailed, err.message || t.common.retryLater || t.gift.retryLater);
               }
             } finally {
               setPurchasing(null);
@@ -233,6 +245,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
 
   const renderPackage = (pkg: PurchasesPackage) => {
     const shardCount = getShardCount(pkg.product.identifier);
+    const SHARD_BONUSES = getShardBonuses(t);
     const bonusInfo = SHARD_BONUSES[shardCount] || { bonus: 0 };
     const isPurchasing = purchasing === pkg.identifier;
 
@@ -258,7 +271,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
           </Text>
         </View>
         {bonusInfo.bonus > 0 && (
-          <Text style={styles.bonusText}>+{bonusInfo.bonus} 赠送</Text>
+          <Text style={styles.bonusText}>+{bonusInfo.bonus} {t.recharge.bonus}</Text>
         )}
         <Text style={styles.priceText}>{pkg.product.priceString}</Text>
         {isPurchasing && (
@@ -330,12 +343,12 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
                   <Text style={styles.successIconText}>💎</Text>
                 </Animated.View>
                 
-                <Text style={styles.successTitle}>🎉 购买成功!</Text>
+                <Text style={styles.successTitle}>{t.recharge.purchaseSuccessTitle}</Text>
                 <Text style={styles.successAmount}>
-                  +{purchasedAmount.toLocaleString()} 月石
+                  +{purchasedAmount.toLocaleString()} {t.recharge.moonShards}
                 </Text>
                 <Text style={styles.successSubtitle}>
-                  已添加到您的账户
+                  {t.recharge.purchaseSuccessSubtitle}
                 </Text>
               </Animated.View>
             </Animated.View>
@@ -343,7 +356,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
           
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>购买月光碎片</Text>
+            <Text style={styles.title}>{t.recharge.title}</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
               <Ionicons name="close" size={24} color="#fff" />
             </TouchableOpacity>
@@ -351,7 +364,7 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
 
           {/* Current Balance */}
           <View style={styles.balanceRow}>
-            <Text style={styles.balanceLabel}>当前余额</Text>
+            <Text style={styles.balanceLabel}>{t.recharge.currentBalance}</Text>
             <View style={styles.balanceValue}>
               <Image 
                 source={require('../assets/icons/moon-shard.png')} 
@@ -367,14 +380,14 @@ export const RechargeModal: React.FC<RechargeModalProps> = ({
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#00D4FF" />
-              <Text style={styles.loadingText}>加载中...</Text>
+              <Text style={styles.loadingText}>{t.recharge.loading}</Text>
             </View>
           ) : error ? (
             <View style={styles.errorContainer}>
               <Ionicons name="alert-circle" size={48} color="#ff6b6b" />
               <Text style={styles.errorText}>{error}</Text>
               <TouchableOpacity style={styles.retryButton} onPress={loadPackages}>
-                <Text style={styles.retryText}>重试</Text>
+                <Text style={styles.retryText}>{t.recharge.retry}</Text>
               </TouchableOpacity>
             </View>
           ) : (

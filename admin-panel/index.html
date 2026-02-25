@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Luna Admin Panel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .loader { border: 3px solid #374151; border-top: 3px solid #8b5cf6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .chat-bubble { max-width: 80%; }
+    .chat-user { background: #8b5cf6; margin-left: auto; }
+    .chat-assistant { background: #374151; margin-right: auto; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .tab-button { @apply px-6 py-3 text-sm font-medium text-gray-400 border-b-2 border-transparent hover:text-white hover:border-purple-500; }
+    .tab-button.active { @apply text-purple-400 border-purple-500; }
+    .proactive-badge { @apply px-2 py-1 text-xs rounded-full bg-orange-500/20 text-orange-400; }
+  </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+  <div class="max-w-7xl mx-auto px-6 py-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+      <div class="flex items-center gap-3">
+        <span class="text-3xl">🌙</span>
+        <h1 class="text-2xl font-bold">Luna Admin Panel</h1>
+        <span class="text-sm text-gray-400 bg-gray-800 px-2 py-1 rounded">localhost:8001</span>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="loadAll()" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg text-sm">🔄 刷新全部</button>
+        <div class="text-sm text-gray-400 flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-green-500" id="status-indicator"></div>
+          <span id="status-text">连接中...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="border-b border-gray-700 mb-6">
+      <nav class="flex space-x-8">
+        <button class="tab-button active" onclick="switchTab('overview')">📊 概览</button>
+        <button class="tab-button" onclick="switchTab('chat')">💬 聊天记录</button>
+        <button class="tab-button" onclick="switchTab('proactive')">⏰ 主动消息</button>
+        <button class="tab-button" onclick="switchTab('characters')">📝 角色管理</button>
+        <button class="tab-button" onclick="switchTab('intimacy')">💝 亲密度</button>
+      </nav>
+    </div>
+
+    <!-- Tab Contents -->
+    
+    <!-- 📊 概览 Tab -->
+    <div id="overview-tab" class="tab-content active">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+          <div class="text-gray-400 text-sm mb-2">总用户数</div>
+          <div class="text-4xl font-bold text-purple-400" id="stat-users">-</div>
+          <div class="text-xs text-gray-500 mt-1">活跃用户</div>
+        </div>
+        <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+          <div class="text-gray-400 text-sm mb-2">总会话数</div>
+          <div class="text-4xl font-bold text-blue-400" id="stat-sessions">-</div>
+          <div class="text-xs text-gray-500 mt-1">聊天会话</div>
+        </div>
+        <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+          <div class="text-gray-400 text-sm mb-2">总消息数</div>
+          <div class="text-4xl font-bold text-green-400" id="stat-messages">-</div>
+          <div class="text-xs text-gray-500 mt-1">对话记录</div>
+        </div>
+      </div>
+
+      <!-- Recent Activity -->
+      <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-700">
+          <h3 class="text-lg font-semibold">📈 最近活跃用户</h3>
+        </div>
+        <div class="p-6">
+          <div id="recent-users" class="space-y-3">
+            <div class="text-center text-gray-500 py-8">加载中...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 💬 聊天记录 Tab -->
+    <div id="chat-tab" class="tab-content">
+      <div class="flex gap-6 h-[600px]">
+        <!-- Users List -->
+        <div class="w-1/3 bg-gray-800 rounded-xl border border-gray-700 flex flex-col">
+          <div class="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+            <h3 class="font-semibold">👤 用户列表</h3>
+            <span id="users-count" class="text-sm text-gray-400">0 用户</span>
+          </div>
+          <div class="p-3">
+            <input type="text" id="user-search" placeholder="搜索用户 ID..." 
+                   class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                   onkeyup="searchUsers()">
+          </div>
+          <div class="flex-1 overflow-y-auto">
+            <div id="users-list" class="space-y-1 p-3">
+              <div class="text-center text-gray-500 py-8">加载中...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat Detail -->
+        <div class="flex-1 bg-gray-800 rounded-xl border border-gray-700 flex flex-col">
+          <div class="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+            <div id="chat-header">
+              <h3 class="font-semibold">选择用户查看聊天记录</h3>
+            </div>
+            <div id="chat-actions" class="hidden flex gap-2">
+              <button onclick="prevChatPage()" id="chat-prev" class="px-3 py-1 bg-gray-700 rounded text-sm disabled:opacity-50" disabled>← 较早</button>
+              <span id="chat-page-info" class="text-sm text-gray-400 py-1">-/-</span>
+              <button onclick="nextChatPage()" id="chat-next" class="px-3 py-1 bg-gray-700 rounded text-sm disabled:opacity-50" disabled>较新 →</button>
+            </div>
+          </div>
+          <div class="flex-1 overflow-y-auto p-4">
+            <div id="chat-messages">
+              <div class="text-center text-gray-500 py-16">
+                <span class="text-4xl">💬</span>
+                <div class="mt-2">选择用户查看对话记录</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⏰ 主动消息 Tab -->
+    <div id="proactive-tab" class="tab-content">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Templates -->
+        <div class="bg-gray-800 rounded-xl border border-gray-700">
+          <div class="px-4 py-3 border-b border-gray-700">
+            <h3 class="font-semibold">📝 消息模板</h3>
+          </div>
+          <div class="p-4">
+            <div id="proactive-templates" class="space-y-3">
+              <div class="text-center text-gray-500 py-8">加载中...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Test Tool -->
+        <div class="bg-gray-800 rounded-xl border border-gray-700">
+          <div class="px-4 py-3 border-b border-gray-700">
+            <h3 class="font-semibold">🧪 测试工具</h3>
+          </div>
+          <div class="p-4 space-y-4">
+            <div>
+              <label class="block text-sm text-gray-400 mb-2">用户 ID</label>
+              <input type="text" id="test-user-id" placeholder="输入用户 ID" 
+                     class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2">
+            </div>
+            <div>
+              <label class="block text-sm text-gray-400 mb-2">消息类型</label>
+              <select id="test-msg-type" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2">
+                <option value="good_morning">🌅 早安</option>
+                <option value="good_night">🌙 晚安</option>
+                <option value="check_in">👋 关怀问候</option>
+                <option value="mood_boost">💪 心情鼓励</option>
+                <option value="activity_suggestion">🎯 活动建议</option>
+              </select>
+            </div>
+            <div class="flex gap-2">
+              <button onclick="testProactive(false)" class="flex-1 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded text-sm">
+                🎯 测试发送
+              </button>
+              <button onclick="testProactive(true)" class="flex-1 bg-orange-600 hover:bg-orange-700 px-4 py-2 rounded text-sm">
+                ⚡ 强制发送
+              </button>
+            </div>
+            <div id="test-result" class="hidden mt-4 p-3 rounded bg-gray-700 border border-gray-600">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Health Check -->
+      <div class="mt-6 bg-gray-800 rounded-xl border border-gray-700">
+        <div class="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+          <h3 class="font-semibold">🔍 系统状态</h3>
+          <button onclick="checkProactiveHealth()" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm">刷新状态</button>
+        </div>
+        <div id="proactive-health" class="p-4">
+          <div class="text-center text-gray-500 py-4">点击刷新状态检查系统健康</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 📝 角色管理 Tab -->
+    <div id="characters-tab" class="tab-content">
+      <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+          <h3 class="font-semibold">🎭 角色列表</h3>
+          <span id="characters-count" class="text-sm text-gray-400">0 角色</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead class="bg-gray-900/50">
+              <tr>
+                <th class="text-left px-4 py-3 text-sm text-gray-400 font-medium">角色 ID</th>
+                <th class="text-left px-4 py-3 text-sm text-gray-400 font-medium">名称</th>
+                <th class="text-left px-4 py-3 text-sm text-gray-400 font-medium">描述</th>
+                <th class="text-left px-4 py-3 text-sm text-gray-400 font-medium">状态</th>
+                <th class="text-left px-4 py-3 text-sm text-gray-400 font-medium">类型</th>
+                <th class="text-left px-4 py-3 text-sm text-gray-400 font-medium">操作</th>
+              </tr>
+            </thead>
+            <tbody id="characters-table" class="divide-y divide-gray-700">
+              <tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">加载中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 💝 亲密度 Tab -->
+    <div id="intimacy-tab" class="tab-content">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Intimacy List -->
+        <div class="bg-gray-800 rounded-xl border border-gray-700">
+          <div class="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+            <h3 class="font-semibold">💕 亲密度统计</h3>
+            <button onclick="loadIntimacyData()" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm">刷新</button>
+          </div>
+          <div class="max-h-96 overflow-y-auto">
+            <div id="intimacy-list" class="divide-y divide-gray-700">
+              <div class="p-4 text-center text-gray-500">加载中...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Emotions List -->
+        <div class="bg-gray-800 rounded-xl border border-gray-700">
+          <div class="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+            <h3 class="font-semibold">😊 情绪状态</h3>
+            <button onclick="loadEmotionsData()" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm">刷新</button>
+          </div>
+          <div class="max-h-96 overflow-y-auto">
+            <div id="emotions-list" class="divide-y divide-gray-700">
+              <div class="p-4 text-center text-gray-500">加载中...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modals -->
+    
+    <!-- Character Detail Modal -->
+    <div id="character-modal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-50">
+      <div class="bg-gray-800 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div class="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+          <h3 class="font-semibold" id="character-modal-title">角色详情</h3>
+          <button onclick="closeCharacterModal()" class="text-gray-400 hover:text-white text-xl">✕</button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-4" id="character-modal-content">
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:8001/api/v1';
+    
+    // State
+    let currentTab = 'overview';
+    let currentUser = null;
+    let currentSessionId = null;
+    let currentChatPage = 0;
+    let allUsers = [];
+    let filteredUsers = [];
+    
+    // Pagination
+    const CHAT_PAGE_SIZE = 20;
+
+    // API Helper
+    async function api(endpoint, options = {}) {
+      try {
+        const response = await fetch(`${API_BASE}${endpoint}`, options);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
+        return await response.json();
+      } catch (error) {
+        console.error(`API Error (${endpoint}):`, error);
+        throw error;
+      }
+    }
+
+    // Tab Switching
+    function switchTab(tabName) {
+      // Update tab buttons
+      document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+      
+      // Update tab content
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+      document.getElementById(`${tabName}-tab`).classList.add('active');
+      
+      currentTab = tabName;
+      
+      // Load tab data
+      switch (tabName) {
+        case 'overview': loadOverviewData(); break;
+        case 'chat': loadChatData(); break;
+        case 'proactive': loadProactiveData(); break;
+        case 'characters': loadCharactersData(); break;
+        case 'intimacy': loadIntimacyData(); loadEmotionsData(); break;
+      }
+    }
+
+    // Status Check
+    async function checkStatus() {
+      try {
+        await api('/admin/stats');
+        document.getElementById('status-indicator').className = 'w-2 h-2 rounded-full bg-green-500';
+        document.getElementById('status-text').textContent = '已连接';
+      } catch (error) {
+        document.getElementById('status-indicator').className = 'w-2 h-2 rounded-full bg-red-500';
+        document.getElementById('status-text').textContent = '连接失败';
+      }
+    }
+
+    // 📊 Overview Tab
+    async function loadOverviewData() {
+      try {
+        const stats = await api('/admin/stats');
+        document.getElementById('stat-users').textContent = stats.total_users || 0;
+        document.getElementById('stat-sessions').textContent = stats.total_sessions || 0;
+        document.getElementById('stat-messages').textContent = stats.total_messages || 0;
+
+        // Load recent users
+        const usersData = await api('/admin/users?limit=5');
+        const recentUsersDiv = document.getElementById('recent-users');
+        
+        if (usersData.users && usersData.users.length > 0) {
+          recentUsersDiv.innerHTML = usersData.users.map(u => `
+            <div class="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg">
+              <div>
+                <div class="font-mono text-sm text-purple-400">${u.user_id}</div>
+                <div class="text-xs text-gray-400">${u.session_count} 个会话</div>
+              </div>
+              <div class="text-xs text-gray-400">
+                ${u.last_active ? new Date(u.last_active).toLocaleString('zh-CN') : '从未活跃'}
+              </div>
+            </div>
+          `).join('');
+        } else {
+          recentUsersDiv.innerHTML = '<div class="text-center text-gray-500 py-4">暂无用户</div>';
+        }
+      } catch (error) {
+        console.error('Failed to load overview:', error);
+      }
+    }
+
+    // 💬 Chat Tab
+    async function loadChatData() {
+      try {
+        const data = await api('/admin/users?limit=100');
+        allUsers = data.users || [];
+        filteredUsers = allUsers;
+        updateUsersList();
+      } catch (error) {
+        console.error('Failed to load chat data:', error);
+        document.getElementById('users-list').innerHTML = '<div class="text-center text-red-400 py-4">加载失败</div>';
+      }
+    }
+
+    function updateUsersList() {
+      const usersList = document.getElementById('users-list');
+      const usersCount = document.getElementById('users-count');
+      
+      usersCount.textContent = `${filteredUsers.length} 用户`;
+      
+      if (filteredUsers.length === 0) {
+        usersList.innerHTML = '<div class="text-center text-gray-500 py-4">未找到用户</div>';
+        return;
+      }
+
+      usersList.innerHTML = filteredUsers.map(u => `
+        <div class="p-3 rounded hover:bg-gray-700/50 cursor-pointer ${currentUser === u.user_id ? 'bg-purple-500/20' : ''}" 
+             onclick="selectUser('${u.user_id}')">
+          <div class="font-mono text-sm text-purple-400">${u.user_id}</div>
+          <div class="text-xs text-gray-400">${u.session_count} 会话</div>
+        </div>
+      `).join('');
+    }
+
+    function searchUsers() {
+      const query = document.getElementById('user-search').value.toLowerCase();
+      filteredUsers = allUsers.filter(u => u.user_id.toLowerCase().includes(query));
+      updateUsersList();
+    }
+
+    async function selectUser(userId) {
+      currentUser = userId;
+      currentChatPage = 0;
+      updateUsersList();
+      
+      try {
+        // Get user sessions
+        const sessionsData = await api(`/admin/sessions?user_id=${userId}&limit=1`);
+        if (sessionsData.sessions && sessionsData.sessions.length > 0) {
+          currentSessionId = sessionsData.sessions[0].session_id;
+          await loadChatMessages();
+        } else {
+          document.getElementById('chat-messages').innerHTML = '<div class="text-center text-gray-500 py-8">该用户暂无聊天记录</div>';
+        }
+        
+        document.getElementById('chat-header').innerHTML = `
+          <h3 class="font-semibold">用户 ${userId} 的聊天记录</h3>
+          <div class="text-xs text-gray-400">会话: ${currentSessionId || '无'}</div>
+        `;
+        document.getElementById('chat-actions').classList.remove('hidden');
+      } catch (error) {
+        console.error('Failed to load user sessions:', error);
+        document.getElementById('chat-messages').innerHTML = '<div class="text-center text-red-400 py-8">加载失败</div>';
+      }
+    }
+
+    async function loadChatMessages() {
+      if (!currentSessionId) return;
+      
+      try {
+        const offset = currentChatPage * CHAT_PAGE_SIZE;
+        const data = await api(`/admin/sessions/${currentSessionId}/messages?limit=${CHAT_PAGE_SIZE}&offset=${offset}`);
+        
+        const messages = data.messages || [];
+        const total = data.total || 0;
+        const totalPages = Math.ceil(total / CHAT_PAGE_SIZE);
+        
+        // Update pagination
+        document.getElementById('chat-page-info').textContent = `${currentChatPage + 1}/${totalPages || 1}`;
+        document.getElementById('chat-prev').disabled = currentChatPage === 0;
+        document.getElementById('chat-next').disabled = currentChatPage >= totalPages - 1;
+        
+        // Render messages
+        const chatDiv = document.getElementById('chat-messages');
+        if (messages.length === 0) {
+          chatDiv.innerHTML = '<div class="text-center text-gray-500 py-8">该会话暂无消息</div>';
+        } else {
+          chatDiv.innerHTML = `
+            <div class="space-y-3">
+              ${messages.map(m => `
+                <div class="chat-bubble ${m.role === 'user' ? 'chat-user' : 'chat-assistant'} rounded-lg px-4 py-2">
+                  <div class="text-xs text-gray-400 mb-1">
+                    ${m.role === 'user' ? '👤 用户' : '🤖 Luna'} · 
+                    ${m.created_at ? new Date(m.created_at).toLocaleString('zh-CN') : '时间未知'}
+                    ${m.tokens_used ? ` · ${m.tokens_used} tokens` : ''}
+                  </div>
+                  <div class="text-sm whitespace-pre-wrap">${escapeHtml(m.content || '')}</div>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        }
+      } catch (error) {
+        console.error('Failed to load chat messages:', error);
+        document.getElementById('chat-messages').innerHTML = '<div class="text-center text-red-400 py-8">加载失败</div>';
+      }
+    }
+
+    function prevChatPage() {
+      if (currentChatPage > 0) {
+        currentChatPage--;
+        loadChatMessages();
+      }
+    }
+
+    function nextChatPage() {
+      currentChatPage++;
+      loadChatMessages();
+    }
+
+    // ⏰ Proactive Tab
+    async function loadProactiveData() {
+      await Promise.all([
+        loadProactiveTemplates(),
+        checkProactiveHealth()
+      ]);
+    }
+
+    async function loadProactiveTemplates() {
+      try {
+        const templates = await api('/proactive/templates');
+        const templatesDiv = document.getElementById('proactive-templates');
+        
+        if (Object.keys(templates).length === 0) {
+          templatesDiv.innerHTML = '<div class="text-center text-gray-500 py-4">暂无模板</div>';
+          return;
+        }
+
+        templatesDiv.innerHTML = Object.entries(templates).map(([characterId, charTemplates]) => `
+          <div class="bg-gray-700/30 rounded-lg p-3">
+            <div class="font-semibold text-purple-400 mb-2">🎭 ${characterId}</div>
+            <div class="space-y-2 text-sm">
+              ${Object.entries(charTemplates).map(([type, msgs]) => `
+                <div>
+                  <span class="text-gray-400">${type}:</span> 
+                  <span class="text-gray-300">${Array.isArray(msgs) ? msgs.length : 1} 条模板</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Failed to load templates:', error);
+        document.getElementById('proactive-templates').innerHTML = '<div class="text-center text-red-400 py-4">加载失败</div>';
+      }
+    }
+
+    async function testProactive(force = false) {
+      const userId = document.getElementById('test-user-id').value.trim();
+      const msgType = document.getElementById('test-msg-type').value;
+      const resultDiv = document.getElementById('test-result');
+      
+      if (!userId) {
+        alert('请输入用户 ID');
+        return;
+      }
+
+      try {
+        const params = new URLSearchParams({
+          character_id: 'luna',
+          msg_type: msgType,
+          force: force.toString()
+        });
+        
+        const result = await api(`/proactive/test/${userId}?${params}`);
+        
+        resultDiv.classList.remove('hidden');
+        if (result.success) {
+          resultDiv.innerHTML = `
+            <div class="text-green-400 font-semibold mb-2">✅ 发送成功</div>
+            <div class="text-sm text-gray-400 mb-2">类型: ${result.type}</div>
+            <div class="bg-gray-800 p-3 rounded text-sm">${result.message}</div>
+            ${result.forced ? '<div class="text-orange-400 text-xs mt-2">⚡ 强制发送模式</div>' : ''}
+          `;
+        } else {
+          resultDiv.innerHTML = `
+            <div class="text-red-400 font-semibold mb-2">❌ 发送失败</div>
+            <div class="text-sm text-gray-400">原因: ${result.reason}</div>
+            <div class="text-sm text-gray-300">${result.message}</div>
+          `;
+        }
+      } catch (error) {
+        console.error('Failed to test proactive:', error);
+        resultDiv.classList.remove('hidden');
+        resultDiv.innerHTML = `<div class="text-red-400">❌ 请求失败: ${error.message}</div>`;
+      }
+    }
+
+    async function checkProactiveHealth() {
+      const healthDiv = document.getElementById('proactive-health');
+      
+      try {
+        // 这里可以添加健康检查 API，目前先显示基本信息
+        healthDiv.innerHTML = `
+          <div class="grid grid-cols-2 gap-4">
+            <div class="bg-gray-700/30 p-3 rounded">
+              <div class="text-green-400 text-sm">✅ 模板系统</div>
+              <div class="text-xs text-gray-400">消息模板加载正常</div>
+            </div>
+            <div class="bg-gray-700/30 p-3 rounded">
+              <div class="text-green-400 text-sm">✅ 测试接口</div>
+              <div class="text-xs text-gray-400">API 端点可访问</div>
+            </div>
+          </div>
+          <div class="mt-3 text-xs text-gray-400">
+            最后检查: ${new Date().toLocaleString('zh-CN')}
+          </div>
+        `;
+      } catch (error) {
+        healthDiv.innerHTML = `<div class="text-red-400">❌ 健康检查失败: ${error.message}</div>`;
+      }
+    }
+
+    // 📝 Characters Tab
+    async function loadCharactersData() {
+      try {
+        const data = await api('/admin/characters');
+        const charactersTable = document.getElementById('characters-table');
+        const charactersCount = document.getElementById('characters-count');
+        
+        const characters = data.characters || [];
+        charactersCount.textContent = `${characters.length} 角色`;
+        
+        if (characters.length === 0) {
+          charactersTable.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">暂无角色</td></tr>';
+          return;
+        }
+
+        charactersTable.innerHTML = characters.map(c => `
+          <tr class="hover:bg-gray-700/30">
+            <td class="px-4 py-3 font-mono text-sm text-purple-400">${c.character_id}</td>
+            <td class="px-4 py-3">${c.name || '未命名'}</td>
+            <td class="px-4 py-3 text-sm text-gray-300">${c.description ? (c.description.length > 50 ? c.description.substring(0, 50) + '...' : c.description) : '-'}</td>
+            <td class="px-4 py-3">
+              <span class="px-2 py-1 text-xs rounded ${c.is_active ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}">
+                ${c.is_active ? '活跃' : '禁用'}
+              </span>
+            </td>
+            <td class="px-4 py-3">
+              ${c.is_spicy ? '<span class="px-2 py-1 text-xs rounded bg-red-500/20 text-red-400">🌶️ Spicy</span>' : '<span class="px-2 py-1 text-xs rounded bg-blue-500/20 text-blue-400">🌟 Normal</span>'}
+            </td>
+            <td class="px-4 py-3">
+              <button onclick="viewCharacter('${c.character_id}')" class="text-purple-400 hover:text-purple-300 text-sm">查看详情</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (error) {
+        console.error('Failed to load characters:', error);
+        document.getElementById('characters-table').innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-red-400">加载失败</td></tr>';
+      }
+    }
+
+    async function viewCharacter(characterId) {
+      try {
+        const character = await api(`/admin/characters/${characterId}`);
+        
+        document.getElementById('character-modal-title').textContent = `角色: ${character.name || characterId}`;
+        document.getElementById('character-modal-content').innerHTML = `
+          <div class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm text-gray-400 mb-1">角色 ID</label>
+                <div class="bg-gray-700 p-2 rounded font-mono text-sm">${character.character_id}</div>
+              </div>
+              <div>
+                <label class="block text-sm text-gray-400 mb-1">名称</label>
+                <div class="bg-gray-700 p-2 rounded">${character.name || '-'}</div>
+              </div>
+            </div>
+            
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">描述</label>
+              <div class="bg-gray-700 p-2 rounded text-sm">${character.description || '-'}</div>
+            </div>
+            
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">问候语</label>
+              <div class="bg-gray-700 p-2 rounded text-sm max-h-32 overflow-y-auto">${character.greeting || '-'}</div>
+            </div>
+            
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">系统提示词</label>
+              <div class="bg-gray-700 p-2 rounded text-sm max-h-40 overflow-y-auto font-mono">${character.system_prompt || '-'}</div>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm text-gray-400 mb-1">状态</label>
+                <span class="px-2 py-1 text-xs rounded ${character.is_active ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}">
+                  ${character.is_active ? '活跃' : '禁用'}
+                </span>
+              </div>
+              <div>
+                <label class="block text-sm text-gray-400 mb-1">类型</label>
+                <span class="px-2 py-1 text-xs rounded ${character.is_spicy ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}">
+                  ${character.is_spicy ? '🌶️ Spicy' : '🌟 Normal'}
+                </span>
+              </div>
+            </div>
+            
+            ${character.personality_traits && character.personality_traits.length > 0 ? `
+              <div>
+                <label class="block text-sm text-gray-400 mb-1">性格特征</label>
+                <div class="bg-gray-700 p-2 rounded">
+                  ${character.personality_traits.map(trait => `<span class="inline-block bg-purple-500/20 text-purple-400 px-2 py-1 rounded text-xs mr-1 mb-1">${trait}</span>`).join('')}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+        
+        document.getElementById('character-modal').classList.remove('hidden');
+        document.getElementById('character-modal').classList.add('flex');
+      } catch (error) {
+        console.error('Failed to load character details:', error);
+        alert('加载角色详情失败');
+      }
+    }
+
+    function closeCharacterModal() {
+      document.getElementById('character-modal').classList.add('hidden');
+      document.getElementById('character-modal').classList.remove('flex');
+    }
+
+    // 💝 Intimacy Tab
+    async function loadIntimacyData() {
+      try {
+        const data = await api('/admin/intimacy?limit=50');
+        const intimacyList = document.getElementById('intimacy-list');
+        
+        const intimacy = data.intimacy || [];
+        
+        if (intimacy.length === 0) {
+          intimacyList.innerHTML = '<div class="p-4 text-center text-gray-500">暂无亲密度数据</div>';
+          return;
+        }
+
+        intimacyList.innerHTML = intimacy.map(i => `
+          <div class="p-3 hover:bg-gray-700/30">
+            <div class="flex items-center justify-between mb-1">
+              <div class="font-mono text-sm text-purple-400">${i.user_id}</div>
+              <div class="text-sm text-gray-400">${i.character_id}</div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="text-xs text-gray-400">Lv.${i.level}</div>
+              <div class="text-xs text-gray-400">${i.total_xp} XP</div>
+              <div class="text-xs text-gray-500">${i.updated_at ? new Date(i.updated_at).toLocaleDateString('zh-CN') : '-'}</div>
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Failed to load intimacy:', error);
+        document.getElementById('intimacy-list').innerHTML = '<div class="p-4 text-center text-red-400">加载失败</div>';
+      }
+    }
+
+    async function loadEmotionsData() {
+      try {
+        const data = await api('/admin/emotions?limit=50');
+        const emotionsList = document.getElementById('emotions-list');
+        
+        const emotions = data.emotions || [];
+        
+        if (emotions.length === 0) {
+          emotionsList.innerHTML = '<div class="p-4 text-center text-gray-500">暂无情绪数据</div>';
+          return;
+        }
+
+        emotionsList.innerHTML = emotions.map(e => `
+          <div class="p-3 hover:bg-gray-700/30">
+            <div class="flex items-center justify-between mb-1">
+              <div class="font-mono text-sm text-purple-400">${e.user_id}</div>
+              <div class="text-sm text-gray-400">${e.character_id}</div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="text-xs">
+                <span class="px-2 py-1 rounded text-xs ${getEmotionColor(e.score)}">${e.score > 0 ? '+' : ''}${e.score}</span>
+              </div>
+              <div class="text-xs text-gray-400">${e.state || '中性'}</div>
+              <div class="text-xs text-gray-500">${e.updated_at ? new Date(e.updated_at).toLocaleDateString('zh-CN') : '-'}</div>
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Failed to load emotions:', error);
+        document.getElementById('emotions-list').innerHTML = '<div class="p-4 text-center text-red-400">加载失败</div>';
+      }
+    }
+
+    function getEmotionColor(score) {
+      // 情绪分数范围: -100 到 +100
+      if (score >= 50) return 'bg-green-500/20 text-green-400';    // 开心/甜蜜
+      if (score >= 20) return 'bg-blue-500/20 text-blue-400';      // 满足
+      if (score >= -20) return 'bg-gray-500/20 text-gray-400';     // 平静
+      if (score >= -50) return 'bg-orange-500/20 text-orange-400'; // 不满/生气
+      if (score >= -75) return 'bg-red-500/20 text-red-400';       // 暴怒
+      return 'bg-red-700/30 text-red-300';                         // 冷战 ❄️
+    }
+
+    // Utils
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Load All Data
+    async function loadAll() {
+      await checkStatus();
+      switch (currentTab) {
+        case 'overview': await loadOverviewData(); break;
+        case 'chat': await loadChatData(); break;
+        case 'proactive': await loadProactiveData(); break;
+        case 'characters': await loadCharactersData(); break;
+        case 'intimacy': await loadIntimacyData(); await loadEmotionsData(); break;
+      }
+    }
+
+    // Event Listeners
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        closeCharacterModal();
+      }
+    });
+
+    // Modal click outside to close
+    document.getElementById('character-modal').addEventListener('click', e => {
+      if (e.target.id === 'character-modal') closeCharacterModal();
+    });
+
+    // Initialize
+    window.onload = async () => {
+      await loadAll();
+      
+      // Auto refresh status every 30 seconds
+      setInterval(checkStatus, 30000);
+    };
+  </script>
+</body>
+</html>

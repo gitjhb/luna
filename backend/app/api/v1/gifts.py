@@ -123,18 +123,48 @@ class GiftSummary(BaseModel):
 # API Routes
 # ============================================================================
 
-@router.get("/catalog", response_model=List[GiftCatalogItem])
+@router.get("/catalog", response_model=List[GiftCatalogItem],
+           summary="Get available gift catalog",
+           description="""
+           Browse the complete catalog of virtual gifts available for purchase.
+           
+           **Gift Tiers:**
+           
+           **Tier 1 - Daily Essentials (5-15 Moon Stones)**
+           - Coffee ☕ - Gives energy boost effect
+           - Flowers 🌹 - Classic romantic gesture
+           - Books 📚 - For intellectual characters
+           - Snacks 🍫 - Sweet treats and comfort food
+           
+           **Tier 2 - Status Triggers (20-50 Moon Stones)**  
+           - Perfume 💃 - Triggers romantic mood
+           - Music Box 🎵 - Creates dreamy atmosphere
+           - Jewelry 💎 - Shows serious commitment
+           - Electronics 📱 - Modern lifestyle gifts
+           
+           **Tier 3 - Relationship Accelerators (75-200 Moon Stones)**
+           - Designer Items 👗 - Fashion and luxury
+           - Experience Gifts 🎭 - Virtual dates and activities  
+           - Premium Collectibles ⭐ - Rare limited items
+           - Couple Items 💏 - Shared relationship symbols
+           
+           **Tier 4 - Whale Exclusives (500+ Moon Stones)**
+           - Ultra-Rare Items 🦄 - Unique legendary gifts
+           - Custom Commissions 🎨 - Personalized content
+           - VIP Experiences 👑 - Exclusive character interactions
+           - Anniversary Specials 💝 - Celebration packages
+           
+           **Filter Options:**
+           - `tier`: Filter by gift tier (1-4)
+           - Response includes name, description, cost, XP reward, and rarity
+           
+           **Currency:** All prices in Moon Stones (premium currency)
+           """,
+           responses={
+               200: {"description": "List of available gifts with pricing and effects"}
+           })
 async def get_gift_catalog(tier: Optional[int] = None):
-    """
-    Get available gift catalog.
-    
-    Returns list of all purchasable gifts with pricing and XP rewards.
-    Optionally filter by tier (1-4):
-    - Tier 1: 日常消耗品 (Consumables)
-    - Tier 2: 状态触发器 (State Triggers)
-    - Tier 3: 关系加速器 (Speed Dating)
-    - Tier 4: 榜一大哥尊享 (Whale Bait)
-    """
+    """Browse virtual gifts available for purchase with Moon Stones."""
     catalog = await gift_service.get_catalog(tier=tier)
     return [GiftCatalogItem(**g) for g in catalog]
 
@@ -170,22 +200,49 @@ async def get_active_effects(character_id: str, req: Request):
     return status
 
 
-@router.post("/send", response_model=SendGiftResponse)
+@router.post("/send", response_model=SendGiftResponse,
+            summary="Send gift to AI character",
+            description="""
+            Send a virtual gift to an AI character to boost intimacy and unlock special responses.
+            
+            **Gift System:**
+            - Gifts cost Moon Stones (premium currency)
+            - Each gift type provides different XP rewards and status effects
+            - Characters respond with personalized thank-you messages
+            - Higher-tier gifts unlock special animations and interactions
+            
+            **Gift Tiers & Costs:**
+            - **Basic** (5-15 Moon Stones): Flowers, coffee, books
+            - **Premium** (20-50 Moon Stones): Jewelry, perfume, electronics
+            - **Luxury** (100-500 Moon Stones): Designer items, experiences
+            - **Exclusive** (1000+ Moon Stones): Ultra-rare items with unique animations
+            
+            **Status Effects:**
+            Some gifts provide temporary conversation modifiers:
+            - **Happiness Boost**: More cheerful responses for 10 messages
+            - **Romantic Mood**: Increased flirtation for 5 messages 
+            - **Energy Boost**: More enthusiastic replies for 15 messages
+            
+            **Idempotency Protection:**
+            Include a unique `idempotency_key` to prevent duplicate charges from network retries.
+            Same key returns original result without additional cost.
+            
+            **XP & Intimacy:**
+            - Basic gifts: +10-20 XP
+            - Premium gifts: +30-50 XP  
+            - Luxury gifts: +75-100 XP
+            - Exclusive gifts: +150+ XP
+            
+            **AI Response:**
+            Set `trigger_ai_response=true` to automatically generate a personalized thank-you message.
+            """,
+            responses={
+                200: {"description": "Gift sent successfully with XP reward"},
+                400: {"description": "Invalid gift type or insufficient funds"},
+                409: {"description": "Duplicate request (idempotency key already used)"}
+            })
 async def send_gift(request: SendGiftRequest, req: Request):
-    """
-    Send a gift to a character.
-    
-    **Idempotency**: Include a unique `idempotency_key` (UUID) with each request.
-    If the same key is sent again (e.g., network retry), the original result
-    is returned without duplicate charges.
-    
-    **Flow**:
-    1. Validates gift type and user credits
-    2. Deducts credits
-    3. Creates gift record
-    4. Awards XP
-    5. Optionally triggers AI response
-    """
+    """Send virtual gift to AI character and receive personalized response."""
     # Get user ID from auth
     user = getattr(req.state, "user", None)
     user_id = str(user.user_id) if user else "demo-user-123"

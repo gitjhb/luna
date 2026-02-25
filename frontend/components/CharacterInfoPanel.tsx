@@ -27,6 +27,7 @@ import { api } from '../services/api';
 import { intimacyService } from '../services/intimacyService';
 import { emotionService } from '../services/emotionService';
 import { useUserStore } from '../store/userStore';
+import { useLocale } from '../i18n';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -101,6 +102,7 @@ export default function CharacterInfoPanel({
   emotionState: propEmotionState,
   onOpenMemories,
 }: CharacterInfoPanelProps) {
+  const { t } = useLocale();
   const [activeTab, setActiveTab] = useState<TabType>('profile');
   const [loading, setLoading] = useState(false);
   
@@ -239,28 +241,28 @@ export default function CharacterInfoPanel({
     }
   };
 
-  // 所有可解锁的照片配置（按角色）
-  // 每个场景有 3 种图片：基础版、普通版、完美版
+  // All unlockable photos configuration (by character)
+  // Each scene has 3 types: base, normal, perfect
   const getAllPhotos = (charId: string) => {
-    // Sakura 的场景照片
+    // Sakura's scene photos
     if (charId === 'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e') {
       return [
-        // 卧室 - 3 张
-        { scene: 'bedroom', name: '卧室', photoType: 'base', image: require('../assets/characters/sakura/scenes/bedroom.jpeg') },
-        { scene: 'bedroom', name: '卧室 💕', photoType: 'normal', image: require('../assets/characters/sakura/scenes/bedroom-normal.jpeg') },
-        { scene: 'bedroom', name: '卧室 ✨', photoType: 'perfect', image: require('../assets/characters/sakura/scenes/bedroom-perfect.jpeg') },
-        // 沙滩 - 3 张
-        { scene: 'beach', name: '沙滩', photoType: 'base', image: require('../assets/characters/sakura/scenes/beach.jpeg') },
-        { scene: 'beach', name: '沙滩 💕', photoType: 'normal', image: require('../assets/characters/sakura/scenes/beach-normal.jpeg') },
-        { scene: 'beach', name: '沙滩 ✨', photoType: 'perfect', image: require('../assets/characters/sakura/scenes/beach-perfect.jpeg') },
-        // 海边 - 3 张
-        { scene: 'ocean', name: '海边', photoType: 'base', image: require('../assets/characters/sakura/scenes/ocean.jpeg') },
-        { scene: 'ocean', name: '海边 💕', photoType: 'normal', image: require('../assets/characters/sakura/scenes/ocean-normal.jpeg') },
-        { scene: 'ocean', name: '海边 ✨', photoType: 'perfect', image: require('../assets/characters/sakura/scenes/ocean-perfect.jpeg') },
-        // 学校 - 3 张
-        { scene: 'school', name: '学校', photoType: 'base', image: require('../assets/characters/sakura/scenes/school.jpeg') },
-        { scene: 'school', name: '学校 💕', photoType: 'normal', image: require('../assets/characters/sakura/scenes/school-normal.jpeg') },
-        { scene: 'school', name: '学校 ✨', photoType: 'perfect', image: require('../assets/characters/sakura/scenes/school-perfect.jpeg') },
+        // Bedroom - 3 photos
+        { scene: 'bedroom', name: t.characterProfile.scenes.bedroom, photoType: 'base', image: require('../assets/characters/sakura/scenes/bedroom.jpeg') },
+        { scene: 'bedroom', name: t.characterProfile.scenes.bedroom + ' 💕', photoType: 'normal', image: require('../assets/characters/sakura/scenes/bedroom-normal.jpeg') },
+        { scene: 'bedroom', name: t.characterProfile.scenes.bedroom + ' ✨', photoType: 'perfect', image: require('../assets/characters/sakura/scenes/bedroom-perfect.jpeg') },
+        // Beach - 3 photos
+        { scene: 'beach', name: t.characterProfile.scenes.beach, photoType: 'base', image: require('../assets/characters/sakura/scenes/beach.jpeg') },
+        { scene: 'beach', name: t.characterProfile.scenes.beach + ' 💕', photoType: 'normal', image: require('../assets/characters/sakura/scenes/beach-normal.jpeg') },
+        { scene: 'beach', name: t.characterProfile.scenes.beach + ' ✨', photoType: 'perfect', image: require('../assets/characters/sakura/scenes/beach-perfect.jpeg') },
+        // Ocean - 3 photos
+        { scene: 'ocean', name: t.characterProfile.scenes.ocean, photoType: 'base', image: require('../assets/characters/sakura/scenes/ocean.jpeg') },
+        { scene: 'ocean', name: t.characterProfile.scenes.ocean + ' 💕', photoType: 'normal', image: require('../assets/characters/sakura/scenes/ocean-normal.jpeg') },
+        { scene: 'ocean', name: t.characterProfile.scenes.ocean + ' ✨', photoType: 'perfect', image: require('../assets/characters/sakura/scenes/ocean-perfect.jpeg') },
+        // School - 3 photos
+        { scene: 'school', name: t.characterProfile.scenes.school, photoType: 'base', image: require('../assets/characters/sakura/scenes/school.jpeg') },
+        { scene: 'school', name: t.characterProfile.scenes.school + ' 💕', photoType: 'normal', image: require('../assets/characters/sakura/scenes/school-normal.jpeg') },
+        { scene: 'school', name: t.characterProfile.scenes.school + ' ✨', photoType: 'perfect', image: require('../assets/characters/sakura/scenes/school-perfect.jpeg') },
       ];
     }
     return [];
@@ -371,15 +373,15 @@ export default function CharacterInfoPanel({
     return '#E74C3C';
   };
 
-  // 情绪状态文本
+  // Emotion state text
   const getEmotionText = () => {
-    if (emotionScore >= 75) return '甜蜜 💕';
-    if (emotionScore >= 50) return '开心 😊';
-    if (emotionScore >= 20) return '满足 🙂';
-    if (emotionScore >= -20) return '平静 😐';
-    if (emotionScore >= -50) return '不满 😒';
-    if (emotionScore >= -75) return '生气 😠';
-    return '冷战 ❄️';
+    if (emotionScore >= 75) return t.characterProfile.emotions.sweet;
+    if (emotionScore >= 50) return t.characterProfile.emotions.happy;
+    if (emotionScore >= 20) return t.characterProfile.emotions.satisfied;
+    if (emotionScore >= -20) return t.characterProfile.emotions.calm;
+    if (emotionScore >= -50) return t.characterProfile.emotions.unsatisfied;
+    if (emotionScore >= -75) return t.characterProfile.emotions.angry;
+    return t.characterProfile.emotions.coldWar;
   };
 
   const renderTabs = () => (

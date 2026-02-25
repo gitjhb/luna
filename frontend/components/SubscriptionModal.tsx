@@ -23,23 +23,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { iapService, IAPProduct, IAPPurchaseResult, SUBSCRIPTION_SKUS } from '../services/iapService';
 import { paymentService } from '../services/paymentService';
 import { useUserStore } from '../store/userStore';
+import { useLocale } from '../i18n';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// Fallback display info when products aren't loaded from store yet
-const PLAN_DISPLAY_INFO: Record<string, { name: string; features: string[]; dailyCredits: number }> = {
+// Get fallback display info when products aren't loaded from store yet
+const getPlanDisplayInfo = (t: any): Record<string, { name: string; features: string[]; dailyCredits: number }> => ({
   'luna_premium_monthly': {
     name: 'Premium',
     dailyCredits: 100,
     features: [
-      '每日 100 碎片',
-      '更快的回复速度',
-      '高级角色解锁',
-      '成人内容解锁 🔞',
-      '优先客服支持',
+      t.subscription.dailyCredits.replace('{amount}', '100'),
+      t.subscription.fasterResponse,
+      t.subscription.premiumCharacters,
+      t.subscription.adultContent,
+      t.subscription.prioritySupport,
     ],
   },
-};
+});
 
 interface SubscriptionModalProps {
   visible: boolean;
@@ -54,6 +55,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   onSubscribeSuccess,
   highlightFeature,
 }) => {
+  const { t } = useLocale();
   const { user, updateUser, isSubscribed } = useUserStore();
   const [products, setProducts] = useState<IAPProduct[]>([]);
   const [loading, setLoading] = useState(false);
@@ -107,16 +109,19 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
             onSubscribeSuccess?.(result.tier);
             onClose();
 
+            const PLAN_DISPLAY_INFO = getPlanDisplayInfo(t);
+            const planName = PLAN_DISPLAY_INFO[result.productId]?.name || result.tier.toUpperCase();
+            
             Alert.alert(
-              '🎉 订阅成功！',
-              `欢迎成为 ${PLAN_DISPLAY_INFO[result.productId]?.name || result.tier.toUpperCase()} 会员！`
+              t.subscription.subscribeSuccessTitle,
+              t.subscription.subscribeSuccessMessage.replace('{planName}', planName)
             );
           } else {
-            Alert.alert('验证失败', verification.message || '请联系客服');
+            Alert.alert(t.subscription.verificationFailed, verification.message || t.subscription.contactSupport);
           }
         } catch (err: any) {
           console.error('[SubscriptionModal] Receipt verification failed:', err);
-          Alert.alert('验证失败', '订阅可能已成功，请重启 App 或联系客服');
+          Alert.alert(t.subscription.verificationFailed, t.subscription.subscriptionMightSucceed);
         }
       },
       // On error
@@ -130,8 +135,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         }
 
         Alert.alert(
-          '购买失败',
-          error.message || '请稍后重试'
+          t.subscription.purchaseFailed,
+          error.message || t.gift.retryLater
         );
       }
     );
@@ -148,7 +153,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
       setPurchasing(null);
       
       if (err.code !== 'E_USER_CANCELLED') {
-        Alert.alert('购买失败', err.message || '请稍后重试');
+        Alert.alert(t.subscription.purchaseFailed, err.message || t.gift.retryLater);
       }
     }
   };
@@ -177,17 +182,17 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
             subscriptionExpiresAt: verification.expiresAt,
           });
 
-          Alert.alert('恢复成功', `已恢复 ${tier.toUpperCase()} 会员资格`);
+          Alert.alert(t.subscription.restoreSuccess, t.subscription.restoreSuccessMessage.replace('{tier}', tier.toUpperCase()));
           onClose();
         } else {
-          Alert.alert('恢复失败', '未找到有效订阅');
+          Alert.alert(t.subscription.restoreFailed, t.subscription.noValidSubscription);
         }
       } else {
-        Alert.alert('未找到订阅', '没有可恢复的购买记录');
+        Alert.alert(t.subscription.noSubscriptionFound, t.subscription.noPurchaseHistory);
       }
     } catch (err: any) {
       console.error('[SubscriptionModal] Restore error:', err);
-      Alert.alert('恢复失败', err.message || '请稍后重试');
+      Alert.alert(t.subscription.restoreFailed, err.message || t.gift.retryLater);
     } finally {
       setRestoring(false);
     }
@@ -203,6 +208,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   };
 
   const renderProductCard = (product: IAPProduct) => {
+    const PLAN_DISPLAY_INFO = getPlanDisplayInfo(t);
     const displayInfo = PLAN_DISPLAY_INFO[product.productId];
     const isCurrentPlan = user?.subscriptionTier === product.tier;
     const isPurchasing = purchasing === product.productId;
@@ -232,7 +238,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
             <Text style={styles.planName}>{displayInfo?.name || product.title}</Text>
             {isCurrentPlan && (
               <View style={styles.currentBadge}>
-                <Text style={styles.currentBadgeText}>当前</Text>
+                <Text style={styles.currentBadgeText}>{t.subscription.current}</Text>
               </View>
             )}
           </View>
@@ -240,14 +246,14 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           {/* Price - from App Store */}
           <View style={styles.priceRow}>
             <Text style={styles.priceAmount}>{product.price}</Text>
-            <Text style={styles.pricePeriod}>/月</Text>
+            <Text style={styles.pricePeriod}>{t.subscription.perMonth}</Text>
           </View>
 
           {/* Daily Credits */}
           <View style={styles.dailyCreditsRow}>
             <Image source={require('../assets/icons/moon-shard.png')} style={styles.shardIcon} />
             <Text style={styles.dailyCredits}>
-              每日 +{displayInfo?.dailyCredits || 100} 碎片
+              {t.subscription.dailyBonus.replace('{amount}', (displayInfo?.dailyCredits || 100).toString())}
             </Text>
           </View>
 
@@ -286,7 +292,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                 <ActivityIndicator size="small" color="#8B5CF6" />
               ) : (
                 <Text style={styles.subscribeButtonText}>
-                  {canUpgrade ? '升级' : '立即订阅'}
+                  {canUpgrade ? t.subscription.upgrade : t.subscription.subscribe}
                 </Text>
               )}
             </TouchableOpacity>
@@ -294,14 +300,14 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 
           {isDowngrade && (
             <View style={[styles.subscribedBadge, { opacity: 0.5 }]}>
-              <Text style={styles.subscribedText}>当前等级更高</Text>
+              <Text style={styles.subscribedText}>{t.subscription.higherTier}</Text>
             </View>
           )}
 
           {isCurrentPlan && (
             <View style={styles.subscribedBadge}>
               <Ionicons name="checkmark-circle" size={18} color="#fff" />
-              <Text style={styles.subscribedText}>已订阅</Text>
+              <Text style={styles.subscribedText}>{t.subscription.subscribed}</Text>
             </View>
           )}
         </LinearGradient>
@@ -314,12 +320,12 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     return (
       <View style={styles.fallbackContainer}>
         <Ionicons name="alert-circle-outline" size={48} color="rgba(255,255,255,0.4)" />
-        <Text style={styles.fallbackTitle}>订阅产品加载中</Text>
+        <Text style={styles.fallbackTitle}>{t.subscription.productsLoading}</Text>
         <Text style={styles.fallbackText}>
-          请稍后重试，或检查 App Store Connect 配置
+          {t.subscription.checkConfiguration}
         </Text>
         <Text style={styles.fallbackSkus}>
-          需要配置: {SUBSCRIPTION_SKUS.join(', ')}
+          {t.subscription.requiresConfiguration}{SUBSCRIPTION_SKUS.join(', ')}
         </Text>
       </View>
     );
@@ -337,8 +343,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           {/* Header */}
           <View style={styles.header}>
             <View>
-              <Text style={styles.title}>升级会员</Text>
-              <Text style={styles.subtitle}>解锁全部高级功能</Text>
+              <Text style={styles.title}>{t.subscription.title}</Text>
+              <Text style={styles.subtitle}>{t.subscription.subtitle}</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
               <Ionicons name="close" size={24} color="#fff" />
@@ -351,8 +357,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               <Ionicons name="sparkles" size={18} color="#FFD700" />
               <Text style={styles.highlightText}>
                 {highlightFeature === 'nsfw' 
-                  ? '订阅解锁成人内容，体验更亲密的对话 🔞'
-                  : `订阅解锁 ${highlightFeature} 功能`
+                  ? t.subscription.unlockAdultContent
+                  : t.subscription.unlockFeature.replace('{feature}', highlightFeature)
                 }
               </Text>
             </View>
@@ -362,7 +368,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#00D4FF" />
-              <Text style={styles.loadingText}>加载中...</Text>
+              <Text style={styles.loadingText}>{t.subscription.loading}</Text>
             </View>
           ) : (
             <ScrollView 
@@ -384,14 +390,16 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                 {restoring ? (
                   <ActivityIndicator size="small" color="rgba(255,255,255,0.6)" />
                 ) : (
-                  <Text style={styles.restoreText}>恢复购买</Text>
+                  <Text style={styles.restoreText}>{t.subscription.restorePurchases}</Text>
                 )}
               </TouchableOpacity>
               
               {/* Terms */}
               <Text style={styles.termsText}>
-                订阅将通过您的 {Platform.OS === 'ios' ? 'Apple ID' : 'Google Play'} 账户自动续费。{'\n'}
-                可在设备设置中随时取消。
+                {t.subscription.autoRenewTerms.replace(
+                  '{platform}', 
+                  Platform.OS === 'ios' ? t.subscription.appleId : t.subscription.googlePlay
+                )}
               </Text>
             </ScrollView>
           )}

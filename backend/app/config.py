@@ -28,7 +28,11 @@ class Settings(BaseSettings):
     PORT: int = Field(default=8000)
     
     # ========== CORS ==========
-    CORS_ORIGINS: List[str] = Field(default=["*"])
+    CORS_ORIGINS: List[str] = Field(default=[
+        "https://luna2077-ai.vercel.app",
+        "http://localhost:3000",  # Local development
+        "http://localhost:8081",  # Expo dev server
+    ])
     
     # ========== Database ==========
     DATABASE_URL: str = Field(default="sqlite+aiosqlite:///./data/app.db")

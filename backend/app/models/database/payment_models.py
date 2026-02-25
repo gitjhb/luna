@@ -33,7 +33,7 @@ class UserSubscription(Base):
     __tablename__ = "user_subscriptions"
     
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), nullable=False, unique=True, index=True)
+    user_id = Column(String(100), nullable=False, unique=True, index=True)
     
     # 订阅信息
     tier = Column(String(20), default="free", nullable=False)  # free, premium, vip
@@ -81,7 +81,7 @@ class UserWallet(Base):
     __tablename__ = "user_wallets"
     
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), nullable=False, unique=True, index=True)
+    user_id = Column(String(100), nullable=False, unique=True, index=True)
     
     # 余额
     total_credits = Column(Integer, default=100)  # 总金币
@@ -112,7 +112,7 @@ class Transaction(Base):
     __tablename__ = "transactions"
     
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), nullable=False, index=True)
+    user_id = Column(String(100), nullable=False, index=True)
     
     # 交易信息
     transaction_type = Column(String(20), nullable=False)  # purchase, subscription, gift, refund

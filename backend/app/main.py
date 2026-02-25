@@ -27,7 +27,7 @@ from app.middleware.billing_middleware import BillingMiddleware
 from app.middleware.logging_middleware import LoggingMiddleware
 
 # Import routers
-from app.api.v1 import auth, chat, characters, wallet, market, voice, image, images, intimacy, pricing, payment, gifts, scenarios, emotion, user_settings, interests, referral, events, interactions, debug, dates, photos, stamina, push, daily_reward, admin, proactive, user_insights, stories, telegram
+from app.api.v1 import auth, chat, characters, wallet, market, voice, image, images, intimacy, pricing, payment, gifts, scenarios, emotion, user_settings, interests, referral, events, interactions, debug, dates, photos, stamina, push, daily_reward, admin, proactive, proactive_v2, user_insights, stories, telegram
 
 
 # Lifespan context manager for startup/shutdown
@@ -77,13 +77,59 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI application
 app = FastAPI(
-    title="AI Companion API",
-    description="Backend API for AI Emotional Companion Platform",
+    title="Luna AI Companion API",
+    description="""
+    🌙 Luna AI Companion Platform - Backend API
+
+    A sophisticated emotional AI companion platform that provides:
+    
+    - **Chat System**: Real-time conversations with AI characters
+    - **Character Management**: Multiple unique AI personalities
+    - **Intimacy & Progress**: Relationship building mechanics
+    - **Voice & Audio**: Text-to-speech and voice interactions
+    - **Image Generation**: AI-powered image creation
+    - **Gamification**: Points, gifts, scenarios, and achievements
+    - **Subscription Management**: Tiered access and billing
+    - **User Personalization**: Settings, interests, and preferences
+    
+    ## Authentication
+    Supports both Firebase Auth (Google/Apple Sign-In) and guest access.
+    
+    ## Rate Limiting
+    API usage is tracked by credits. Free users get daily limits, premium users get higher allowances.
+    
+    ## Content Ratings
+    - **Safe**: General conversations
+    - **Flirty**: Light romantic content 
+    - **Spicy**: Adult content (Premium+ only)
+    
+    ## Development
+    This API supports both production and development modes with extensive debugging endpoints.
+    """,
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc",
+    redoc_url="/redoc", 
     openapi_url="/openapi.json",
-    lifespan=lifespan
+    lifespan=lifespan,
+    contact={
+        "name": "Luna AI Team",
+        "email": "support@luna-ai.com",
+        "url": "https://luna2077-ai.vercel.app"
+    },
+    license_info={
+        "name": "Proprietary",
+        "url": "https://luna2077-ai.vercel.app/terms-of-service"
+    },
+    servers=[
+        {
+            "url": "https://luna-backend-1081215078404.us-west1.run.app", 
+            "description": "Production server"
+        },
+        {
+            "url": "http://localhost:8000",
+            "description": "Development server"
+        }
+    ]
 )
 
 # Setup logging
@@ -178,6 +224,7 @@ app.include_router(push.router, prefix="/api/v1", tags=["Push"])
 app.include_router(daily_reward.router, prefix="/api/v1", tags=["DailyReward"])
 app.include_router(admin.router, prefix="/api/v1", tags=["Admin"])
 app.include_router(proactive.router, prefix="/api/v1", tags=["Proactive"])
+app.include_router(proactive_v2.router, prefix="/api/v1", tags=["Proactive-v2"])
 app.include_router(user_insights.router, prefix="/api/v1", tags=["User Insights"])
 app.include_router(stories.router, prefix="/api/v1", tags=["Stories"])
 app.include_router(telegram.router, prefix="/api/v1", tags=["Telegram"])

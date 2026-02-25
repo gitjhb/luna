@@ -19,6 +19,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../services/api';
+import { useLocale, tpl } from '../i18n';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -86,6 +87,9 @@ export default function DateModal({
   currentLevel,
   onDateCompleted,
 }: DateModalProps) {
+  // i18n
+  const { t } = useLocale();
+
   const [scenarios, setScenarios] = useState<DateScenario[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -125,7 +129,7 @@ export default function DateModal({
 
   const handleStartDate = async () => {
     if (!selectedScenario) {
-      Alert.alert('请选择场景', '请先选择一个约会场景');
+      Alert.alert(t.date.selectScenario, t.date.choiceRequired);
       return;
     }
     
@@ -137,10 +141,10 @@ export default function DateModal({
         setDateResult(result);
         onDateCompleted?.(result);
       } else {
-        Alert.alert('约会失败', result.error || '生成故事时出错');
+        Alert.alert(t.date.ending.failed, result.error || t.date.storyGenerationError);
       }
     } catch (e: any) {
-      Alert.alert('约会失败', e.message || '网络错误');
+      Alert.alert(t.date.ending.failed, e.message || t.date.networkError);
     } finally {
       setGenerating(false);
     }
@@ -169,7 +173,7 @@ export default function DateModal({
             style={styles.header}
           >
             <Text style={styles.headerTitle}>
-              {generatedStory ? '💕 约会回忆' : '💕 邀请约会'}
+              {generatedStory ? t.date.dateMemory : t.date.inviteDate}
             </Text>
             <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
               <Ionicons name="close" size={24} color="#fff" />
@@ -180,16 +184,15 @@ export default function DateModal({
             {loading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#FF6B9D" />
-                <Text style={styles.loadingText}>加载中...</Text>
+                <Text style={styles.loadingText}>{t.common.loading}</Text>
               </View>
             ) : generating ? (
               /* 生成中 */
               <View style={styles.generatingContainer}>
                 <ActivityIndicator size="large" color="#FF6B9D" />
-                <Text style={styles.generatingTitle}>正在生成约会故事...</Text>
+                <Text style={styles.generatingTitle}>{t.date.generatingStory}</Text>
                 <Text style={styles.generatingDesc}>
-                  {characterName}正在准备和你的约会～{'\n'}
-                  请稍等片刻...
+                  {tpl(t.date.generatingDescription, { name: characterName })}
                 </Text>
               </View>
             ) : generatedStory ? (
@@ -205,12 +208,12 @@ export default function DateModal({
                 
                 {dateResult?.rewards && (
                   <View style={styles.rewardsContainer}>
-                    <Text style={styles.rewardsTitle}>🎉 约会完成！</Text>
+                    <Text style={styles.rewardsTitle}>{t.date.dateCompleted}</Text>
                     <Text style={styles.rewardsText}>
-                      +{dateResult.rewards.xp} XP | 好感度 +{dateResult.rewards.emotion_boost}
+                      {tpl(t.date.experienceGained, { xp: dateResult.rewards.xp })} | {t.date.affection} +{dateResult.rewards.emotion_boost}
                     </Text>
                     <Text style={styles.rewardsHint}>
-                      回忆已保存，可在回忆录中查看 💕
+                      {t.date.memoryHint}
                     </Text>
                   </View>
                 )}
@@ -220,7 +223,7 @@ export default function DateModal({
                     colors={['#FF6B9D', '#C44569']}
                     style={styles.doneButtonGradient}
                   >
-                    <Text style={styles.doneButtonText}>完成</Text>
+                    <Text style={styles.doneButtonText}>{t.date.done}</Text>
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
@@ -228,24 +231,24 @@ export default function DateModal({
               /* 未解锁 */
               <View style={styles.lockedContainer}>
                 <Text style={styles.lockedIcon}>🔒</Text>
-                <Text style={styles.lockedTitle}>约会功能未解锁</Text>
+                <Text style={styles.lockedTitle}>{t.date.dateUnlockTitle}</Text>
                 <Text style={styles.lockedReason}>{unlockStatus?.reason}</Text>
                 <View style={styles.unlockRequirements}>
-                  <Text style={styles.reqTitle}>解锁条件：</Text>
+                  <Text style={styles.reqTitle}>{t.date.unlockConditions}</Text>
                   <Text style={[styles.reqItem, unlockStatus?.level_met && styles.reqItemDone]}>
-                    {unlockStatus?.level_met ? '✅' : '⬜'} 达到 LV {unlockStatus?.unlock_level || 10} (当前 LV {unlockStatus?.current_level || currentLevel})
+                    {unlockStatus?.level_met ? t.date.requirementMet : t.date.requirementNotMet} {tpl(t.date.levelRequirement, { level: unlockStatus?.unlock_level || 10 })} {tpl(t.date.currentLevel, { level: unlockStatus?.current_level || currentLevel })}
                   </Text>
                   <Text style={[styles.reqItem, unlockStatus?.gift_sent && styles.reqItemDone]}>
-                    {unlockStatus?.gift_sent ? '✅' : '⬜'} 送出过礼物
+                    {unlockStatus?.gift_sent ? t.date.requirementMet : t.date.requirementNotMet} {t.date.giftRequirement}
                   </Text>
                 </View>
               </View>
             ) : (
               /* 场景选择 */
               <>
-                <Text style={styles.sectionTitle}>选择约会场景</Text>
+                <Text style={styles.sectionTitle}>{t.date.selectScenario}</Text>
                 <Text style={styles.sectionDesc}>
-                  选一个浪漫的地方，邀请{characterName}约会吧！
+                  {tpl(t.date.chooseLocation, { name: characterName })}
                 </Text>
                 
                 <View style={styles.scenarioGrid}>
@@ -283,13 +286,13 @@ export default function DateModal({
                     style={styles.startButtonGradient}
                   >
                     <Text style={styles.startButtonText}>
-                      💕 开始约会
+                      {t.date.startDate}
                     </Text>
                   </LinearGradient>
                 </TouchableOpacity>
                 
                 <Text style={styles.hintText}>
-                  约会将生成一段浪漫故事，保存到回忆录中
+                  {t.date.memoryHint}
                 </Text>
               </>
             )}

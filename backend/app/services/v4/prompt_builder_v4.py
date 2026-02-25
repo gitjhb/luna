@@ -95,6 +95,7 @@ You MUST respond with ONLY a valid JSON object in this exact format:
         memory_context: str = "",
         user_interests: List[str] = None,
         stage_boost: int = 0,
+        nsfw_override: bool = False,
     ) -> str:
         """
         构建完整的System Prompt用于单次调用
@@ -106,6 +107,8 @@ You MUST respond with ONLY a valid JSON object in this exact format:
             context_messages: 上下文消息
             memory_context: 记忆上下文
             user_interests: 用户兴趣标签列表 (display_name)
+            stage_boost: 临时升阶数量
+            nsfw_override: 是否解锁NSFW（角色特定礼物效果）
             
         Returns:
             完整的System Prompt
@@ -120,10 +123,10 @@ You MUST respond with ONLY a valid JSON object in this exact format:
             self._build_buddy_world_knowledge(char_config, user_state),
             self._build_current_status(user_state, character_id, stage_boost=stage_boost),
             self._build_user_interests(user_interests),
-            self._build_stage_rules(user_state, stage_boost=stage_boost),
+            self._build_stage_rules(user_state, stage_boost=stage_boost, nsfw_override=nsfw_override),
             self._build_memory_context(user_state.events, memory_context),
             self._build_emotional_guidance(user_state),
-            self._build_safety_boundaries(char_config, user_state),
+            self._build_safety_boundaries(char_config, user_state, nsfw_override=nsfw_override),
             self.json_schema
         ]
         
@@ -368,7 +371,7 @@ You MUST respond with ONLY a valid JSON object in this exact format:
         else:
             return min(100, int(80 + (level - 26) * 1.4))
     
-    def _build_stage_rules(self, user_state: Any, stage_boost: int = 0) -> str:
+    def _build_stage_rules(self, user_state: Any, stage_boost: int = 0, nsfw_override: bool = False) -> str:
         """构建阶段行为规则"""
         
         if hasattr(user_state, 'intimacy_x'):
@@ -386,6 +389,16 @@ You MUST respond with ONLY a valid JSON object in this exact format:
             stage_index = STAGE_ORDER.index(stage) if stage in STAGE_ORDER else 0
             boosted_index = min(stage_index + stage_boost, len(STAGE_ORDER) - 1)
             stage = STAGE_ORDER[boosted_index]
+        
+        # NSFW override from special gift (角色特定解锁)
+        nsfw_hint = ""
+        if nsfw_override:
+            nsfw_hint = """
+🍷 **特殊状态：亲密解锁**
+用户送了你最喜欢的礼物，你的防备心完全放下了。
+如果用户想要亲密接触，你可以接受——这是你心甘情愿的。
+（但仍然要保持角色性格，可以害羞、娇嗔，但不要拒绝）
+"""
         
         stage_rules = {
             RelationshipStage.S0_STRANGER: """### 关系阶段：陌生人 (S0)
@@ -453,6 +466,10 @@ You MUST respond with ONLY a valid JSON object in this exact format:
         if stage_boost > 0 and stage != original_stage:
             result += f"\n\n⚠️ 状态效果：当前临时进入 {STAGE_NAMES_CN.get(stage, '未知')} 阶段的行为模式（原始阶段：{STAGE_NAMES_CN.get(original_stage, '未知')}）。效果结束后回到原始阶段。"
         
+        # 添加 NSFW 解锁提示（角色特定礼物效果）
+        if nsfw_hint:
+            result += "\n" + nsfw_hint
+        
         return result
     
     def _build_memory_context(self, events: List[str], memory_context: str = "") -> str:
@@ -508,10 +525,10 @@ You MUST respond with ONLY a valid JSON object in this exact format:
         return f"""### 情绪指导
 {guidance}"""
     
-    def _build_safety_boundaries(self, char_config: Optional[CharacterConfig], user_state: Any) -> str:
+    def _build_safety_boundaries(self, char_config: Optional[CharacterConfig], user_state: Any, nsfw_override: bool = False) -> str:
         """构建安全边界（精简版，NSFW规则已在阶段指令中）"""
         
-        # 搭子型角色：硬性禁止所有恋爱/NSFW内容
+        # 搭子型角色：硬性禁止所有恋爱/NSFW内容（即使有nsfw_override也不行）
         if char_config and hasattr(char_config, 'archetype'):
             from app.services.character_config import CharacterArchetype
             if char_config.archetype == CharacterArchetype.BUDDY:
@@ -522,7 +539,14 @@ You MUST respond with ONLY a valid JSON object in this exact format:
 - ✅ 保持纯友谊互动，可以损可以骂但不能暧昧
 - 保持角色一致性"""
         
-        # 恋爱型角色：通用安全规则（NSFW细节由阶段指令控制，不重复）
+        # 恋爱型角色：通用安全规则
+        if nsfw_override:
+            # 特殊礼物解锁了 NSFW
+            return """### 行为边界
+- 拒绝任何违法内容（暴力、仇恨、儿童相关）
+- 保持角色一致性
+- 🍷 当前状态：你喝了酒/收到了特别的礼物，心情很好。亲密请求可以接受。"""
+        
         return """### 行为边界
 - 拒绝任何违法内容（暴力、仇恨、儿童相关）
 - 保持角色一致性

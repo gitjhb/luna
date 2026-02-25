@@ -29,6 +29,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/config';
+import { useLocale } from '../i18n';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.75;
@@ -41,11 +42,11 @@ const MoonShardIcon = ({ size = 16, style }: { size?: number; style?: any }) => 
   />
 );
 
-// 情感化分类 (映射到原有tier)
-const GIFT_CATEGORIES = [
-  { id: 'consumables', tiers: [1], name: '心意', nameEn: 'Heartfelt', icon: 'heart-outline', color: '#FF69B4' },
-  { id: 'plugins', tiers: [2, 3], name: '魔法', nameEn: 'Enchantments', icon: 'diamond-outline', color: '#8B5CF6' },
-  { id: 'memories', tiers: [4], name: '永恒', nameEn: 'Eternal', icon: 'infinite-outline', color: '#FFD700' },
+// Gift categories mapped to original tiers
+const getGiftCategories = (t: any) => [
+  { id: 'consumables', tiers: [1], name: t.gift.categoryHeartfelt, nameEn: 'Heartfelt', icon: 'heart-outline', color: '#FF69B4' },
+  { id: 'plugins', tiers: [2, 3], name: t.gift.categoryEnchantments, nameEn: 'Enchantments', icon: 'diamond-outline', color: '#8B5CF6' },
+  { id: 'memories', tiers: [4], name: t.gift.categoryEternal, nameEn: 'Eternal', icon: 'infinite-outline', color: '#FFD700' },
 ];
 
 interface StatusEffect {
@@ -106,6 +107,7 @@ export default function GiftBottomSheet({
   bottleneckRequiredTier = null,
   bottleneckLockLevel = null,
 }: GiftBottomSheetProps) {
+  const { t } = useLocale();
   const [selectedCategory, setSelectedCategory] = useState('consumables');
   const [selectedGift, setSelectedGift] = useState<GiftItem | null>(null);
   const [showDetail, setShowDetail] = useState(false);
@@ -115,6 +117,8 @@ export default function GiftBottomSheet({
     selectedGift: GiftItem | null;
     selectedCategory: string;
   } | null>(null);
+  
+  const GIFT_CATEGORIES = getGiftCategories(t);
   
   // 动画引用
   const translateY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
@@ -218,12 +222,15 @@ export default function GiftBottomSheet({
       });
       
       Alert.alert(
-        '💰 余额不足',
-        `送出${selectedGift.name_cn}需要${selectedGift.price}月石\n当前余额：${userCredits}月石`,
+        t.gift.insufficientTitle,
+        t.gift.insufficientMessage
+          .replace('{giftName}', selectedGift.name_cn)
+          .replace('{price}', selectedGift.price.toString())
+          .replace('{balance}', userCredits.toString()),
         [
-          { text: '取消', style: 'cancel' },
+          { text: t.common.cancel, style: 'cancel' },
           {
-            text: '去充值',
+            text: t.gift.goRecharge,
             onPress: () => {
               onRecharge();
             },
@@ -285,7 +292,7 @@ export default function GiftBottomSheet({
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
       
-      Alert.alert('送礼失败', '请稍后重试');
+      Alert.alert(t.gift.sendFailed, t.gift.retryLater);
     } finally {
       setSendingGift(false);
     }
@@ -404,10 +411,10 @@ export default function GiftBottomSheet({
         }}
         activeOpacity={1}
       >
-        {/* 可突破标签 */}
+        {/* Breakthrough label */}
         {canBreakthrough && (
           <View style={styles.breakthroughBadge}>
-            <Text style={styles.breakthroughBadgeText}>可突破</Text>
+            <Text style={styles.breakthroughBadgeText}>{t.gift.canBreakthrough}</Text>
           </View>
         )}
         
@@ -445,10 +452,10 @@ export default function GiftBottomSheet({
           )}
         </Text>
         
-        {/* 效果持续时间 */}
+        {/* Effect duration */}
         {hasEffect && (
           <Text style={styles.effectDuration}>
-            ⏱️ {gift.status_effect?.duration_messages}条
+            ⏱️ {t.gift.statusDuration.replace('{duration}', gift.status_effect?.duration_messages || '')}
           </Text>
         )}
         
@@ -568,34 +575,34 @@ export default function GiftBottomSheet({
           </TouchableOpacity>
         </View>
         
-        {/* 效果说明 */}
+        {/* Effect description */}
         {hasEffect && (
           <View style={styles.effectBox}>
             <View style={styles.effectHeader}>
               <Ionicons name="sparkles" size={16} color="#FF6B9D" />
-              <Text style={styles.effectTitle}>状态效果</Text>
+              <Text style={styles.effectTitle}>{t.gift.statusEffectsTitle}</Text>
             </View>
             <Text style={styles.effectDesc}>
-              {getEffectDescription(selectedGift.status_effect!.type)}
+              {getEffectDescription(selectedGift.status_effect!.type, t)}
             </Text>
             <View style={styles.effectMeta}>
               <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.6)" />
               <Text style={styles.effectMetaText}>
-                持续 {selectedGift.status_effect!.duration_messages} 条对话
+                {t.gift.statusDuration.replace('{duration}', selectedGift.status_effect!.duration_messages.toString())}
               </Text>
             </View>
           </View>
         )}
         
-        {/* 道歉礼物说明 */}
+        {/* Apology gift description */}
         {selectedGift.clears_cold_war && (
           <View style={[styles.effectBox, { borderColor: '#2ECC71' }]}>
             <View style={styles.effectHeader}>
               <Ionicons name="heart-half" size={16} color="#2ECC71" />
-              <Text style={[styles.effectTitle, { color: '#2ECC71' }]}>破冰之礼</Text>
+              <Text style={[styles.effectTitle, { color: '#2ECC71' }]}>{t.gift.apologyGiftTitle}</Text>
             </View>
             <Text style={styles.effectDesc}>
-              💙 这份真挚的礼物能够融化心中的坚冰，重燃温暖的火花...让那些未说出口的歉意，化作重新开始的希望
+              {t.gift.apologyGiftDesc}
             </Text>
           </View>
         )}
@@ -607,18 +614,18 @@ export default function GiftBottomSheet({
             <Text style={[styles.detailPrice, !affordable && { color: '#E74C3C' }]}>
               {selectedGift.price}
             </Text>
-            <Text style={styles.detailUnit}>月石</Text>
+            <Text style={styles.detailUnit}>{t.gift.moonShards}</Text>
           </View>
           
           {locked ? (
             <TouchableOpacity style={styles.subscribeButton}>
               <Ionicons name="lock-open" size={16} color="#fff" />
-              <Text style={styles.subscribeButtonText}>订阅解锁</Text>
+              <Text style={styles.subscribeButtonText}>{t.gift.unlockWithSub}</Text>
             </TouchableOpacity>
           ) : !affordable ? (
             <TouchableOpacity style={styles.rechargeButton} onPress={onRecharge}>
               <Ionicons name="diamond" size={16} color="#fff" />
-              <Text style={styles.rechargeButtonText}>获取月石</Text>
+              <Text style={styles.rechargeButtonText}>{t.gift.getMoonShards}</Text>
             </TouchableOpacity>
           ) : (
             <Animated.View style={{ transform: [{ scale: buttonScaleAnim }] }}>
@@ -644,16 +651,16 @@ export default function GiftBottomSheet({
                   {sendingGift ? (
                     <>
                       <ActivityIndicator size="small" color="#fff" />
-                      <Text style={styles.confirmButtonText}>送出中...</Text>
+                      <Text style={styles.confirmButtonText}>{t.gift.sending}</Text>
                     </>
                   ) : giftSent ? (
                     <>
                       <Ionicons name="checkmark" size={18} color="#fff" />
-                      <Text style={styles.confirmButtonText}>送出成功!</Text>
+                      <Text style={styles.confirmButtonText}>{t.gift.sendSuccess}</Text>
                     </>
                   ) : (
                     <>
-                      <Text style={styles.confirmButtonText}>💝 送给她</Text>
+                      <Text style={styles.confirmButtonText}>{t.gift.sendGift}</Text>
                       <Ionicons name="heart" size={18} color="#fff" />
                     </>
                   )}
@@ -696,18 +703,18 @@ export default function GiftBottomSheet({
           {/* 头部 */}
           <View style={styles.header}>
             <View style={styles.titleRow}>
-              <Text style={styles.title}>💝 送礼物</Text>
+              <Text style={styles.title}>{t.gift.title}</Text>
               {inColdWar && (
                 <View style={styles.coldWarBadge}>
                   <Ionicons name="snow" size={12} color="#fff" />
-                  <Text style={styles.coldWarText}>冷战中</Text>
+                  <Text style={styles.coldWarText}>{t.gift.coldWar}</Text>
                 </View>
               )}
             </View>
             <TouchableOpacity style={styles.creditsDisplay} onPress={onRecharge} activeOpacity={0.7}>
               <MoonShardIcon size={18} />
               <Text style={styles.creditsText}>{userCredits}</Text>
-              <Text style={styles.creditsLabel}>月石</Text>
+              <Text style={styles.creditsLabel}>{t.gift.moonShards}</Text>
               {onRecharge && <Ionicons name="add-circle" size={16} color="#00D4FF" style={{ marginLeft: 4 }} />}
             </TouchableOpacity>
           </View>
@@ -717,20 +724,22 @@ export default function GiftBottomSheet({
             {GIFT_CATEGORIES.map(renderCategoryTab)}
           </View>
 
-          {/* 瓶颈锁提示条 */}
+          {/* Bottleneck lock banner */}
           {bottleneckLocked && (
             <View style={styles.bottleneckBanner}>
               <Ionicons name="lock-closed" size={14} color="#F59E0B" />
               <Text style={styles.bottleneckBannerText}>
-                🔒 亲密度已锁定在 Lv.{bottleneckLockLevel}，送出{getTierNameForBottleneck(bottleneckRequiredTier)}礼物突破
+                {t.gift.lockedAt
+                  .replace('{level}', bottleneckLockLevel?.toString() || '')
+                  .replace('{tierName}', getTierNameForBottleneck(bottleneckRequiredTier, t))}
               </Text>
             </View>
           )}
 
-          {/* 分类描述 */}
+          {/* Category description */}
           <View style={styles.categoryDescContainer}>
             <Text style={styles.categoryDesc}>
-              {getCategoryDescription(selectedCategory)}
+              {getCategoryDescription(selectedCategory, t)}
             </Text>
           </View>
 
@@ -752,7 +761,7 @@ export default function GiftBottomSheet({
               {filteredGifts.length === 0 && (
                 <View style={styles.emptyState}>
                   <Ionicons name="gift-outline" size={48} color="rgba(255,255,255,0.3)" />
-                  <Text style={styles.emptyText}>该分类暂无礼物</Text>
+                  <Text style={styles.emptyText}>{t.gift.noGifts}</Text>
                 </View>
               )}
               
@@ -768,33 +777,33 @@ export default function GiftBottomSheet({
   );
 }
 
-// 获取瓶颈所需 Tier 名称
-function getTierNameForBottleneck(tier: number | null | undefined): string {
-  if (!tier) return '特定';
+// Get tier name for bottleneck
+function getTierNameForBottleneck(tier: number | null | undefined, t: any): string {
+  if (!tier) return t.gift.tierGeneral;
   const names: Record<number, string> = {
-    2: 'Tier 2+ (状态)',
-    3: 'Tier 3+ (加速)',
-    4: 'Tier 4 (尊享)',
+    2: t.gift.tierStatus,
+    3: t.gift.tierAccelerated,
+    4: t.gift.tierPremium,
   };
   return names[tier] || `Tier ${tier}+`;
 }
 
-// 获取效果描述（情感化版本）
-function getEffectDescription(effectType: string): string {
+// Get effect description (emotional version)
+function getEffectDescription(effectType: string, t: any): string {
   const descriptions: Record<string, string> = {
-    tipsy: '🍷 她的脸颊泛起微红，眼神变得迷离而温柔...平时小心翼翼藏起的话语，此刻都化作星光般的坦诚流淌而出',
-    maid_mode: '👗 "主人，请让我来为您服务..." 她款款行礼，语气变得恭敬而甜腻，仿佛您就是她心中唯一的光芒',
-    truth_mode: '💎 真相的魔法笼罩着她，再不能说出违心的话...那些藏在心底的秘密，都将在您的询问下如花瓣般绽放',
+    tipsy: t.gift.effectTipsy,
+    maid_mode: t.gift.effectMaidMode,
+    truth_mode: t.gift.effectTruthMode,
   };
-  return descriptions[effectType] || '神秘的力量正在觉醒...';
+  return descriptions[effectType] || t.gift.effectMystery;
 }
 
-// 获取分类描述（情感化版本）
-function getCategoryDescription(categoryId: string): string {
+// Get category description (emotional version)
+function getCategoryDescription(categoryId: string, t: any): string {
   const descriptions: Record<string, string> = {
-    consumables: '💫 日常的甜蜜与温馨，每一份小礼物都是爱意的表达',
-    plugins: '✨ 改变她心境的魔法道具，解锁她不为人知的另一面',
-    memories: '💝 珍贵的回忆结晶，见证你们之间独特而不可复制的故事',
+    consumables: t.gift.categoryDescHeartfelt,
+    plugins: t.gift.categoryDescEnchantments,
+    memories: t.gift.categoryDescEternal,
   };
   return descriptions[categoryId] || '';
 }
