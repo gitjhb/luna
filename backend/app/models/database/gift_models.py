@@ -317,7 +317,7 @@ DEFAULT_GIFT_CATALOG = [
                 # 其他角色可以在这里添加
             },
         },
-        "sort_order": 202.5,
+        "sort_order": 203,
     },
     {
         "gift_type": "maid_headband",
@@ -337,7 +337,7 @@ DEFAULT_GIFT_CATALOG = [
             "stage_boost": 1,  # 临时升1阶
             "prompt_modifier": "你现在进入女仆模式，称呼用户为'主人'(Master/ご主人様)。说话方式变得更加恭敬和服务导向，但保持你原有的性格底色。会说'是的，主人'、'遵命'之类的话。",
         },
-        "sort_order": 203,
+        "sort_order": 204,
     },
     {
         "gift_type": "truth_serum",
@@ -356,7 +356,7 @@ DEFAULT_GIFT_CATALOG = [
             "duration_messages": 20,
             "prompt_modifier": "你被真话药水影响了，这轮对话你必须诚实回答所有问题，包括那些你平时会回避的隐私问题。你可以表现得害羞或不情愿，但最终必须说实话。",
         },
-        "sort_order": 204,
+        "sort_order": 205,
     },
     {
         "gift_type": "triple_xp_boost",
@@ -375,7 +375,7 @@ DEFAULT_GIFT_CATALOG = [
             "duration_messages": 50,
             "prompt_modifier": "用户使用了三倍经验加速，你们之间的羁绊在快速加深。表现出更多的亲近感和好感。",
         },
-        "sort_order": 205,
+        "sort_order": 206,
     },
     
     # ============ Tier 4: 记忆 (Memories) - 角色专属收藏品 ============
