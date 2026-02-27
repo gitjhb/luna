@@ -272,17 +272,6 @@ export default function ProfileScreen() {
                   <Text style={styles.rechargeText}>{t.profile.recharge}</Text>
                 </TouchableOpacity>
               </View>
-              <View style={styles.creditsDivider} />
-              <View style={styles.creditsDetails}>
-                <View style={styles.creditsDetailItem}>
-                  <Text style={styles.creditsDetailLabel}>{t.profile.dailyFree}</Text>
-                  <Text style={styles.creditsDetailValue}>{tpl(t.profile.perDay, { count: wallet?.dailyFreeCredits || 0 })}</Text>
-                </View>
-                <View style={styles.creditsDetailItem}>
-                  <Text style={styles.creditsDetailLabel}>{t.profile.purchased}</Text>
-                  <Text style={styles.creditsDetailValue}>{wallet?.purchedCredits || 0}</Text>
-                </View>
-              </View>
               {/* Transaction History Button */}
               <TouchableOpacity 
                 style={styles.transactionHistoryButton}

@@ -242,6 +242,8 @@ class StripeService:
                 success_url=success_url,
                 cancel_url=cancel_url,
                 customer_email=customer_email,
+                # IMPORTANT: client_reference_id is used by RevenueCat to identify the user
+                client_reference_id=user_id,
                 metadata={
                     "user_id": user_id,
                     "plan_id": plan_id,
