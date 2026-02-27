@@ -21,6 +21,7 @@ import {
   Image,
   TextInput,
   Keyboard,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,20 +32,48 @@ import { useLocale, tpl } from '../i18n';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Sakura 场景图片映射
-const SAKURA_SCENE_IMAGES: Record<string, any> = {
-  bedroom: require('../assets/characters/sakura/scenes/bedroom.jpeg'),
-  beach: require('../assets/characters/sakura/scenes/beach.jpeg'),
-  ocean: require('../assets/characters/sakura/scenes/ocean.jpeg'),
-  school: require('../assets/characters/sakura/scenes/school.jpeg'),
+// ========== 场景图片系统 ==========
+// 共有场景 - 所有角色共用的通用场景
+const SHARED_SCENE_IMAGES: Record<string, any> = {
+  // 基础场景
+  bookstore_browse: require('../assets/scenes/shared/bookstore.jpg'),
+  cafe_paris: require('../assets/scenes/shared/cafe.jpg'),
+  picnic_park: require('../assets/scenes/shared/park.jpg'),
+  forest_walk: require('../assets/scenes/shared/forest.jpg'),
+  beach_sunset: require('../assets/scenes/shared/beach.jpg'),
+  movie_night: require('../assets/scenes/shared/cinema.jpg'),
+  // 更多共有场景可继续添加...
 };
 
-// 获取场景图片
+// 角色私有场景 - 角色专属的特殊场景
+const CHARACTER_SCENE_IMAGES: Record<string, Record<string, any>> = {
+  // Sakura (芽衣)
+  'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e': {
+    bedroom: require('../assets/scenes/characters/sakura/bedroom.jpeg'),
+    beach: require('../assets/scenes/characters/sakura/beach.jpeg'),
+    ocean: require('../assets/scenes/characters/sakura/ocean.jpeg'),
+    school: require('../assets/scenes/characters/sakura/school.jpeg'),
+  },
+  // Luna - 可以后续添加
+  // 'd2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d': {
+  //   luna_space: require('../assets/scenes/characters/luna/space.jpg'),
+  // },
+};
+
+// 获取场景图片 - 优先角色私有，其次共有场景
 const getSceneImage = (characterId: string, sceneId: string): any | null => {
-  // 目前只有 Sakura 有场景图片
-  if (characterId === 'e3c4d5e6-f7a8-4b9c-0d1e-2f3a4b5c6d7e') {
-    return SAKURA_SCENE_IMAGES[sceneId] || null;
+  // 1. 先查角色私有场景
+  const characterScenes = CHARACTER_SCENE_IMAGES[characterId];
+  if (characterScenes && characterScenes[sceneId]) {
+    return characterScenes[sceneId];
   }
+  
+  // 2. 再查共有场景
+  if (SHARED_SCENE_IMAGES[sceneId]) {
+    return SHARED_SCENE_IMAGES[sceneId];
+  }
+  
+  // 3. 都没有则返回 null（会使用渐变背景）
   return null;
 };
 
@@ -775,51 +804,64 @@ export default function DateSceneModal({
     onClose();
   };
   
-  // 付费延长剧情
+  // 付费延长剧情 - 需要用户确认
   const handleExtend = async () => {
     if (!sessionId || extendLoading) return;
     
-    setExtendLoading(true);
-    try {
-      const result = await dateApi.extendDate(sessionId);
-      
-      if (result.success) {
-        // 标记已延长（一次性解锁3阶段）
-        setIsExtended(true);
-        setCanExtend(false); // 已延长，不能再次延长
-        setRemainingExtends(0);
-        
-        // 回到 playing 阶段，显示新剧情
-        setCurrentStage(result.stage);
-        setProgress(result.progress); // 后端返回 x/8
-        setPhase('playing');
-        
-        // 显示扣费提示
-        const cost = result.credits_deducted || 30;
-        setJudgeComment(tpl(t.date.extendSuccess, { amount: cost }));
-        setTimeout(() => setJudgeComment(null), 2500);
-      }
-      // 处理失败情况
-      if (!result.success) {
-        if (result.current_balance !== undefined && result.required) {
-          // 余额不足 - 显示详细信息
-          const shortage = result.required - result.current_balance;
-          setJudgeComment(tpl(t.date.insufficientFunds, { 
-            shortage, 
-            current: result.current_balance 
-          }));
-        } else {
-          setJudgeComment(`❌ ${result.error || t.date.loadFailed}`);
-        }
-        setTimeout(() => setJudgeComment(null), 4000);
-      }
-    } catch (e: any) {
-      const errorMsg = e.response?.data?.detail || e.message || t.date.loadFailed;
-      setJudgeComment(`❌ ${errorMsg}`);
-      setTimeout(() => setJudgeComment(null), 3000);
-    } finally {
-      setExtendLoading(false);
-    }
+    // 弹出确认弹窗
+    Alert.alert(
+      '✨ 解锁后续剧情',
+      '花费 30 月石解锁后续 3 章精彩剧情？',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '💎 确认解锁',
+          onPress: async () => {
+            setExtendLoading(true);
+            try {
+              const result = await dateApi.extendDate(sessionId);
+              
+              if (result.success) {
+                // 标记已延长（一次性解锁3阶段）
+                setIsExtended(true);
+                setCanExtend(false); // 已延长，不能再次延长
+                setRemainingExtends(0);
+                
+                // 回到 playing 阶段，显示新剧情
+                setCurrentStage(result.stage);
+                setProgress(result.progress); // 后端返回 x/8
+                setPhase('playing');
+                
+                // 显示扣费提示
+                const cost = result.credits_deducted || 30;
+                setJudgeComment(tpl(t.date.extendSuccess, { amount: cost }));
+                setTimeout(() => setJudgeComment(null), 2500);
+              }
+              // 处理失败情况
+              if (!result.success) {
+                if (result.current_balance !== undefined && result.required) {
+                  // 余额不足 - 显示详细信息
+                  const shortage = result.required - result.current_balance;
+                  setJudgeComment(tpl(t.date.insufficientFunds, { 
+                    shortage, 
+                    current: result.current_balance 
+                  }));
+                } else {
+                  setJudgeComment(`❌ ${result.error || t.date.loadFailed}`);
+                }
+                setTimeout(() => setJudgeComment(null), 4000);
+              }
+            } catch (e: any) {
+              const errorMsg = e.response?.data?.detail || e.message || t.date.loadFailed;
+              setJudgeComment(`❌ ${errorMsg}`);
+              setTimeout(() => setJudgeComment(null), 3000);
+            } finally {
+              setExtendLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
   
   // 结束约会（在 checkpoint 阶段选择不延长）
@@ -1899,6 +1941,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 10,
   },
+  // Cyberpunk HUD status bar
   heartIcon: {
     fontSize: 16,
     marginRight: 6,
@@ -1906,24 +1949,32 @@ const styles = StyleSheet.create({
   affectionBarBg: {
     flex: 1,
     maxWidth: 80,
-    height: 6,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 3,
+    height: 4,
+    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    borderRadius: 0,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.4)',
   },
   affectionBarFill: {
     height: '100%',
-    backgroundColor: '#FF6B9D',
-    borderRadius: 3,
+    backgroundColor: '#8B5CF6',
+    borderRadius: 0,
+    // Glow effect
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
   },
   affectionText: {
-    color: '#fff',
+    color: '#00D4FF',
     fontSize: 12,
     marginLeft: 6,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   
-  // 角色头像
+  // 角色头像 - Cyberpunk frame
   characterAvatarContainer: {
     alignItems: 'center',
     marginHorizontal: 15,
@@ -1931,52 +1982,65 @@ const styles = StyleSheet.create({
   characterAvatar: {
     width: 60,
     height: 60,
-    borderRadius: 30,
-    borderWidth: 3,
-    borderColor: '#FF6B9D',
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#00D4FF',
+    // Cyan glow
+    shadowColor: '#00D4FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
   },
   characterAvatarPlaceholder: {
     width: 60,
     height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255,107,157,0.3)',
+    borderRadius: 4,
+    backgroundColor: 'rgba(0, 212, 255, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#FF6B9D',
+    borderWidth: 2,
+    borderColor: '#00D4FF',
   },
   expressionEmoji: {
     fontSize: 32,
   },
   
-  // 阶段进度
+  // 阶段进度 - HUD style
   phaseContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 12,
-    gap: 6,
+    borderRadius: 4,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 255, 0.3)',
   },
   phaseText: {
-    color: '#fff',
+    color: '#00D4FF',
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
     letterSpacing: 1,
   },
   extendPlusButton: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(255, 215, 0, 0.3)',
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0, 212, 255, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 215, 0, 0.5)',
+    borderColor: 'rgba(0, 212, 255, 0.6)',
+    // Cyan glow
+    shadowColor: '#00D4FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
   },
   extendPlusText: {
-    fontSize: 12,
+    fontSize: 14,
+    color: '#00D4FF',
   },
   
   // 好感度反馈
@@ -2031,31 +2095,41 @@ const styles = StyleSheet.create({
     opacity: 0.25,
   },
   
-  // 底部对话框 - BottomSheet
+  // 底部对话框 - BottomSheet Cyberpunk HUD style
   bottomSheetBackground: {
-    backgroundColor: 'rgba(20, 15, 30, 0.98)',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: 'rgba(10, 8, 20, 0.95)',
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    borderTopWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+    // Purple glow from top edge
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
   },
   bottomSheetIndicator: {
-    backgroundColor: 'rgba(255, 255, 255, 0.4)',
-    width: 40,
+    backgroundColor: 'rgba(0, 212, 255, 0.6)',
+    width: 48,
+    height: 3,
   },
   bottomSheetContent: {
     paddingHorizontal: 20,
     paddingBottom: 40,
   },
   typingCursor: {
-    color: '#FF6B9D',
+    color: '#00D4FF',
     fontWeight: '300',
   },
   skipButton: {
     alignSelf: 'flex-end',
-    backgroundColor: 'rgba(255,107,157,0.4)',
+    backgroundColor: 'rgba(0, 212, 255, 0.15)',
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 16,
+    borderRadius: 4,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 255, 0.4)',
   },
   skipHint: {
     color: '#fff',
@@ -2076,79 +2150,106 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   
-  // 评判评论
+  // 评判评论 - Cyberpunk HUD style
   judgeCommentBox: {
-    backgroundColor: 'rgba(255,107,157,0.2)',
-    borderRadius: 8,
+    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+    borderRadius: 4,
     padding: 10,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 255, 0.3)',
+    // Cyan glow effect
+    shadowColor: '#00D4FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
   judgeCommentText: {
-    color: '#FF6B9D',
+    color: '#00D4FF',
     fontSize: 14,
     textAlign: 'center',
-    fontStyle: 'italic',
+    fontWeight: '500',
+    letterSpacing: 0.5,
   },
   
-  // 选项
+  // 选项 - Cyberpunk neon style
   optionsContainer: {
-    gap: 8,
+    gap: 10,
     marginTop: 8,
   },
   optionButton: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 4,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(139, 92, 246, 0.5)',
+    // Purple glow
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
   },
   optionSpecial: {
-    backgroundColor: 'rgba(255,215,0,0.1)',
-    borderColor: 'rgba(255,215,0,0.3)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderColor: 'rgba(0, 212, 255, 0.6)',
+    // Cyan glow for special options
+    shadowColor: '#00D4FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
   },
   optionLocked: {
-    backgroundColor: 'rgba(100,100,100,0.2)',
-    borderColor: 'rgba(100,100,100,0.3)',
+    backgroundColor: 'rgba(30, 30, 30, 0.5)',
+    borderColor: 'rgba(100, 100, 100, 0.3)',
+    shadowOpacity: 0,
   },
   optionText: {
     fontSize: 14,
-    color: '#fff',
+    color: 'rgba(255, 255, 255, 0.9)',
     textAlign: 'center',
     lineHeight: 20,
+    letterSpacing: 0.3,
   },
   optionTextSpecial: {
-    color: '#FFD700',
+    color: '#00D4FF',
+    fontWeight: '500',
   },
   optionTextLocked: {
-    color: 'rgba(255,255,255,0.4)',
+    color: 'rgba(255,255,255,0.35)',
   },
   
-  // 自由输入入口
+  // 自由输入入口 - Cyberpunk style
   freeInputTrigger: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 12,
     gap: 6,
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(139, 92, 246, 0.2)',
   },
   freeInputTriggerText: {
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(139, 92, 246, 0.7)',
     fontSize: 14,
+    letterSpacing: 0.3,
   },
   
-  // 自由输入框
+  // 自由输入框 - Cyberpunk HUD style
   freeInputContainer: {
     gap: 12,
   },
   freeInputField: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 4,
     padding: 14,
-    color: '#fff',
+    color: '#00D4FF',
     fontSize: 15,
     minHeight: 80,
     textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 255, 0.3)',
   },
   freeInputButtons: {
     flexDirection: 'row',
@@ -2156,10 +2257,12 @@ const styles = StyleSheet.create({
   },
   freeInputCancel: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    borderRadius: 4,
     padding: 12,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   freeInputCancelText: {
     color: 'rgba(255,255,255,0.7)',
@@ -2167,18 +2270,28 @@ const styles = StyleSheet.create({
   },
   freeInputSend: {
     flex: 1,
-    backgroundColor: '#FF6B9D',
-    borderRadius: 10,
+    backgroundColor: 'rgba(0, 212, 255, 0.2)',
+    borderRadius: 4,
     padding: 12,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 255, 0.6)',
+    // Cyan glow
+    shadowColor: '#00D4FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
   },
   freeInputSendDisabled: {
-    backgroundColor: 'rgba(255,107,157,0.3)',
+    backgroundColor: 'rgba(0, 212, 255, 0.05)',
+    borderColor: 'rgba(0, 212, 255, 0.2)',
+    shadowOpacity: 0,
   },
   freeInputSendText: {
-    color: '#fff',
+    color: '#00D4FF',
     fontSize: 15,
     fontWeight: '600',
+    letterSpacing: 0.5,
   },
   
   // === Ending Phase ===

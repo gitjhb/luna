@@ -1,0 +1,58 @@
+appId: com.luna.companion
+---
+# Luna 送礼物测试 v2 - by Nikki
+
+- launchApp
+
+# 等待主界面
+- assertVisible: "消息"
+
+# 进入 Luna 聊天
+- tapOn:
+    text: ".*Luna.*"
+    index: 0
+
+# 等待聊天界面加载
+- extendedWaitUntil:
+    visible: ".*Luna.*聊天.*|.*送礼.*"
+    timeout: 10000
+
+# 截图 - 送礼前状态
+- takeScreenshot: before_gift
+
+# 点击送礼物按钮 (在底部，带有礼物emoji)
+- tapOn:
+    text: ".*礼物.*"
+
+# 等待礼物列表/弹窗出现
+- extendedWaitUntil:
+    visible: ".*咖啡.*|.*玫瑰.*|.*蛋糕.*|.*月石.*|.*热咖啡.*"
+    timeout: 10000
+
+# 截图 - 礼物列表
+- takeScreenshot: gift_list
+
+# 选择热咖啡 (最便宜的，10月石)
+- tapOn:
+    text: ".*热咖啡.*|.*咖啡.*|.*Coffee.*"
+
+# 等待详情面板和送出按钮
+- extendedWaitUntil:
+    visible: ".*送给她.*|.*送出.*|.*确认.*"
+    timeout: 5000
+
+# 点击送给她按钮
+- tapOn:
+    text: ".*送给她.*|.*送出.*|.*确认.*"
+
+# 等待送礼结果
+- extendedWaitUntil:
+    visible: ".*谢.*|.*收到.*|.*开心.*|.*好感.*|.*礼物.*反应.*"
+    timeout: 20000
+
+# 截图 - 送礼后的Luna反应
+- takeScreenshot: after_gift_response
+
+# 返回聊天界面验证效果
+- assertVisible:
+    text: ".*Lv.*"

@@ -1,0 +1,35 @@
+appId: com.luna.companion
+---
+# Luna 自动化测试 v2 - by Nikki
+- launchApp
+
+# 等待主界面加载
+- assertVisible: "消息"
+
+# 点击第一个对话 (Luna 在最上面)
+- tapOn:
+    text: ".*Luna.*"
+    index: 0
+
+# 等待聊天界面加载 - 找输入框
+- extendedWaitUntil:
+    visible: ".*聊天.*"
+    timeout: 10000
+
+# 点击输入框
+- tapOn: ".*聊天.*"
+
+# 输入测试消息
+- inputText: "你好Luna，这是Nikki的自动化测试！🤖"
+
+# 点击发送按钮 (绿色图标，在输入框右边)
+- tapOn:
+    point: "95%,95%"
+
+# 等待回复出现
+- extendedWaitUntil:
+    visible: ".*歪头.*|.*好奇.*|.*你好.*|.*Luna.*"
+    timeout: 30000
+
+# 截图保存结果
+- takeScreenshot: /tmp/luna_test_result.png

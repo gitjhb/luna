@@ -94,6 +94,18 @@
 
 ## 📝 Recent Changes
 
+### 2026-02-26
+- ✅ **UI: DateSceneModal Cyberpunk 改造** — `components/DateSceneModal.tsx`
+  - +按钮添加 Alert 确认弹窗，避免误触扣费
+  - 选项按钮改为深黑底+紫色霓虹边框 (`#8B5CF6`)
+  - 特殊选项用青色霓虹 (`#00D4FF`)
+  - 状态栏、BottomSheet、输入框全部HUD风格
+- 🐛 **Bug: 约会记忆保存失败** — 待排查
+  - 现象：显示"回忆已保存"但 EventMemory 表没数据
+  - 可能原因：`save_story_direct()` 静默失败
+- 📝 **TODO: chat页面弹窗UI统一** — `[characterId].tsx`
+  - `levelUpContent` 样式还是旧风格，需改为Cyberpunk
+
 ### 2026-02-24
 - ✅ **Fix: 约会结束后发送消息** — `interactive_date_service.py`
   - 添加 `_send_post_date_message()` 方法

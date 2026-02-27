@@ -25,6 +25,24 @@ import {
   Alert,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+
+// Safe haptics wrapper for simulator compatibility
+const safeHaptics = {
+  impactAsync: async (style: Haptics.ImpactFeedbackStyle) => {
+    try {
+      await Haptics.impactAsync(style);
+    } catch (e) {
+      // Haptics not available (e.g., simulator)
+    }
+  },
+  notificationAsync: async (type: Haptics.NotificationFeedbackType) => {
+    try {
+      await Haptics.notificationAsync(type);
+    } catch (e) {
+      // Haptics not available (e.g., simulator)
+    }
+  },
+};
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -189,7 +207,7 @@ export default function GiftBottomSheet({
       
       // 显示充值成功提示
       if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     }
   }, [onRechargeSuccess, contextBeforeRecharge, visible]);
@@ -201,7 +219,7 @@ export default function GiftBottomSheet({
   const handleSelectGift = (gift: GiftItem) => {
     // 触觉反馈
     if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     
     setSelectedGift(gift);
@@ -259,7 +277,7 @@ export default function GiftBottomSheet({
     
     // 触觉反馈
     if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      safeHaptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     }
     
     try {
@@ -271,7 +289,7 @@ export default function GiftBottomSheet({
       
       // 成功触觉反馈
       if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       
       setGiftSent(true);
@@ -289,7 +307,7 @@ export default function GiftBottomSheet({
       
       // 错误触觉反馈
       if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        safeHaptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
       
       Alert.alert(t.gift.sendFailed, t.gift.retryLater);

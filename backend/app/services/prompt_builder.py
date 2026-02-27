@@ -16,9 +16,31 @@ v3.0 更新：
 """
 
 import logging
+import re
 from typing import Optional, List, Dict, Any
 
 from app.services.game_engine import GameResult, RefusalReason
+
+
+def detect_language(text: str) -> str:
+    """
+    检测文本语言
+    Returns: 'zh' for Chinese, 'en' for English
+    """
+    if not text:
+        return 'zh'
+    
+    # 统计中文字符
+    chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
+    # 统计英文单词
+    english_words = len(re.findall(r'[a-zA-Z]+', text))
+    
+    # 如果中文字符 > 英文单词数，判定为中文
+    if chinese_chars > english_words:
+        return 'zh'
+    elif english_words > 0:
+        return 'en'
+    return 'zh'
 from app.services.character_config import get_character_config, CharacterConfig
 from app.api.v1.characters import get_character_by_id
 from app.services.intimacy_constants import (
@@ -316,11 +338,14 @@ class PromptBuilder:
             logger.warning(f"Character config not found: {character_id}, using default")
             char_config = get_character_config("d2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d")  # Luna
         
+        # 检测用户语言
+        user_language = detect_language(user_message)
+        
         # 构建各部分
         parts = []
         
         # 1. 基础人设
-        parts.append(self._build_base_prompt(char_config, game_result, character_id))
+        parts.append(self._build_base_prompt(char_config, game_result, character_id, user_language))
         
         # 2. 情绪和阶段指导
         parts.append(self._build_state_guidance(game_result))
@@ -345,7 +370,7 @@ class PromptBuilder:
         
         return "\n\n".join(parts)
     
-    def _build_base_prompt(self, char_config: CharacterConfig, game_result: GameResult, character_id: str) -> str:
+    def _build_base_prompt(self, char_config: CharacterConfig, game_result: GameResult, character_id: str, user_language: str = 'zh') -> str:
         """构建基础人设"""
         # 从 characters.py 获取 system_prompt
         char_data = get_character_by_id(character_id)
@@ -404,13 +429,24 @@ class PromptBuilder:
         elif now.month == 10 and now.day == 31:
             special_date = "🎃 今天是万圣节！"
         
-        return f"""{base_prompt}
-
-### Output Format (输出格式规范)
+        # 根据用户语言选择输出格式说明
+        if user_language == 'en':
+            output_format = """### Output Format
+- Actions, expressions, and scene descriptions must be in parentheses ()
+- Example: (tilts head slightly) What's wrong? (blinks)
+- Example: (leaning by the window, watching the moonlight) The moon is so beautiful tonight...
+- Do NOT use *asterisks* or other formats for actions
+- Respond in the same language as the user"""
+        else:
+            output_format = """### Output Format (输出格式规范)
 - 动作、神态、场景描写必须放在中文圆括号（）内
 - 示例：（轻轻歪头）你怎么了呀？（眨眨眼睛）
 - 示例：（靠在窗边看着月光）今晚的月亮真美呢...
-- 不要使用 *星号* 或其他格式来描写动作
+- 不要使用 *星号* 或其他格式来描写动作"""
+        
+        return f"""{base_prompt}
+
+{output_format}
 
 ### Current Time (当前时间)
 - 日期: {date_str} {weekday_cn}
