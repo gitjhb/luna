@@ -431,18 +431,24 @@ class PromptBuilder:
         
         # 根据用户语言选择输出格式说明
         if user_language == 'en':
-            output_format = """### Output Format
+            output_format = """### ⚠️ LANGUAGE REQUIREMENT - CRITICAL
+You MUST respond ENTIRELY in ENGLISH. The user is speaking English.
+- ALL dialogue must be in English
+- ALL action descriptions must be in English
+- Example: (tilts head) What's that? Is it your name?
+
+### Output Format
 - Actions, expressions, and scene descriptions must be in parentheses ()
 - Example: (tilts head slightly) What's wrong? (blinks)
-- Example: (leaning by the window, watching the moonlight) The moon is so beautiful tonight...
 - Do NOT use *asterisks* or other formats for actions
-- Respond in the same language as the user"""
+- Do NOT mix Chinese and English"""
         else:
             output_format = """### Output Format (输出格式规范)
 - 动作、神态、场景描写必须放在中文圆括号（）内
 - 示例：（轻轻歪头）你怎么了呀？（眨眨眼睛）
 - 示例：（靠在窗边看着月光）今晚的月亮真美呢...
-- 不要使用 *星号* 或其他格式来描写动作"""
+- 不要使用 *星号* 或其他格式来描写动作
+- 使用中文回复"""
         
         return f"""{base_prompt}
 
