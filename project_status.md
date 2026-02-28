@@ -49,7 +49,9 @@
 |------|--------|-------|--------|
 | App Store IAP 配置 | LAUNCH_TODO | JHB | ⏳ 待配置 |
 | PostgreSQL 部署 | LAUNCH_TODO | Nikki | ⏳ 待部署 |
-| RevenueCat 连接 | LAUNCH_TODO | JHB | ⏳ 待配置 |
+| RevenueCat 连接 | LAUNCH_TODO | JHB | ✅ 已配置 |
+| Stripe Web 支付 | 2026-02-28 | JHB | ✅ 已配置 |
+| Firebase Auth 登录修复 | 2026-02-28 | Nikki | 🔴 待修复 |
 
 ### 🟡 P1 - 核心功能
 | Task | Source | Status |
@@ -93,6 +95,24 @@
 ---
 
 ## 📝 Recent Changes
+
+### 2026-02-28
+- ✅ **RevenueCat Web Billing** 配置完成
+  - Web App: `appcbf181fccb`
+  - Stripe Sandbox: `acct_1T0dFwBGtpEcBypW`
+  - Webhook: "Luna BE google cloud run webhook" - Active
+  - Entitlements & Products 已配置
+- ✅ **Stripe Payment Links** 创建
+  - Plus $9.90: `https://buy.stripe.com/test_14A9ASeCT1a9diw0qu2Fa01`
+  - Soulmate $19.90: `https://buy.stripe.com/test_9B65kCamDf0ZguI7SW2Fa00`
+- 🐛 **Bug: Firebase Auth 登录失败** — 待修复
+  - 手机上 popup 打开后无响应
+  - 需检查 Authorized Domains 和 Vercel 环境变量
+
+### 2026-02-27
+- ✅ **luna-web 订阅按钮** 改进
+  - 未登录时显示 "Sign In to Subscribe"
+  - 集成后端 Checkout API
 
 ### 2026-02-26
 - ✅ **UI: DateSceneModal Cyberpunk 改造** — `components/DateSceneModal.tsx`
@@ -154,4 +174,4 @@ JHB 验收 → 反馈 / Done
 
 ---
 
-*Last updated: 2026-02-23 00:35 PST*
+*Last updated: 2026-02-28 03:00 PST*
