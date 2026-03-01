@@ -282,6 +282,7 @@ async def create_stripe_subscription_checkout(request: StripeSubscriptionCheckou
     Create a Stripe checkout session for subscription.
     
     Returns checkout URL to redirect user to Stripe's hosted subscription page.
+    Prevents duplicate subscriptions for the same user.
     """
     if not STRIPE_ENABLED:
         raise HTTPException(status_code=501, detail="Stripe is not configured")
@@ -289,6 +290,16 @@ async def create_stripe_subscription_checkout(request: StripeSubscriptionCheckou
     user = getattr(req.state, "user", None)
     user_id = str(user.user_id) if user else "demo-user-123"
     user_email = getattr(user, "email", None) if user else None
+    
+    # Check for existing active subscription
+    from app.services.subscription_service import subscription_service
+    existing_sub = await subscription_service.get_subscription_info(user_id)
+    if existing_sub.get("tier") not in ["free", None] and existing_sub.get("is_active"):
+        # User already has an active subscription - redirect to portal instead
+        raise HTTPException(
+            status_code=400, 
+            detail="You already have an active subscription. Please use the subscription management portal to upgrade or change your plan."
+        )
     
     try:
         result = await stripe_service.create_subscription_checkout(
