@@ -80,16 +80,39 @@ class AuthMiddleware(BaseHTTPMiddleware):
         header_user_id = request.headers.get("X-User-ID")
         user_id = header_user_id if header_user_id else DEMO_USER_ID
         
+        # Fetch real email from database if user exists
+        user_email = await self._get_user_email_from_db(user_id)
+        if not user_email:
+            user_email = "demo@example.com" if user_id == DEMO_USER_ID else None
+        
         subscription_info = await subscription_service.get_subscription_info(user_id)
         subscription_tier = subscription_info.get("effective_tier", "free")
         is_subscribed = subscription_info.get("is_subscribed", False)
         
         return UserContext(
             user_id=user_id,
-            email=f"{user_id}@example.com" if header_user_id else "demo@example.com",
+            email=user_email,
             subscription_tier=subscription_tier,
             is_subscribed=is_subscribed,
         )
+
+    async def _get_user_email_from_db(self, user_id: str) -> Optional[str]:
+        """Fetch user's email from database"""
+        try:
+            from app.core.database import get_db
+            from app.models.database.user_models import User
+            from sqlalchemy import select
+            
+            async with get_db() as db:
+                result = await db.execute(
+                    select(User.email).where(User.user_id == user_id)
+                )
+                row = result.first()
+                if row and row[0]:
+                    return row[0]
+        except Exception:
+            pass
+        return None
 
     async def _validate_token(self, token: str) -> Optional[UserContext]:
         """
@@ -125,25 +148,38 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not user_id:
             return None
         
-        # Look up user
+        # Look up user in memory cache
         user = _users.get(user_id)
+        user_email = None
+        
         if not user:
             # User not in memory (maybe server restarted)
+            # Fetch from database first
+            user_email = await self._get_user_email_from_db(user_id)
+            
             # Auto-create a minimal user record for valid token formats
             if user_id and (user_id.startswith("fb-") or user_id.startswith("guest-") or user_id.startswith("demo-")):
                 logger.info(f"Auto-creating user record for: {user_id}")
                 is_demo = user_id.startswith("demo-")
                 _users[user_id] = {
                     "user_id": user_id,
-                    "email": "jhb@luna.app" if is_demo else None,
+                    "email": user_email or ("jhb@luna.app" if is_demo else None),
                     "display_name": "JHB" if is_demo else "User",
                     "provider": "demo" if is_demo else ("firebase" if user_id.startswith("fb-") else "guest"),
-                    "subscription_tier": "vip" if is_demo else "free",
+                    "subscription_tier": "free",
                 }
                 user = _users[user_id]
             else:
                 logger.warning(f"Token validation failed: user not found for {user_id}")
                 return None
+        else:
+            user_email = user.get("email")
+            # If in-memory email is None/fake, try database
+            if not user_email or "@example.com" in (user_email or "") or "@luna.app" in (user_email or ""):
+                db_email = await self._get_user_email_from_db(user_id)
+                if db_email:
+                    user_email = db_email
+                    user["email"] = db_email  # Update cache
         
         # Get subscription status
         try:
@@ -156,7 +192,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         
         return UserContext(
             user_id=user_id,
-            email=user.get("email"),
+            email=user_email,
             subscription_tier=subscription_tier,
             is_subscribed=is_subscribed,
         )

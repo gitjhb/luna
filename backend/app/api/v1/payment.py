@@ -382,10 +382,17 @@ async def create_stripe_portal(return_url: str, req: Request):
     user_email = getattr(user, "email", None)
     
     try:
+        # If no email, we can't create a proper Stripe customer
+        if not user_email:
+            raise HTTPException(
+                status_code=400, 
+                detail="Email required for billing portal. Please update your account email."
+            )
+        
         # Get customer - uses stored ID first, then falls back to search/create
         customer_id = await stripe_service.get_customer_for_user(
             user_id=user_id,
-            email=user_email or f"{user_id}@luna.app",
+            email=user_email,
             name=getattr(user, "display_name", None),
         )
         
