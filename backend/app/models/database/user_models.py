@@ -47,6 +47,9 @@ class User(Base):
     telegram_id = Column(String(64), unique=True, nullable=True, index=True)  # Telegram user ID
     apple_id = Column(String(128), unique=True, nullable=True, index=True)    # Apple Sign In ID
     
+    # Payment provider IDs
+    stripe_customer_id = Column(String(128), unique=True, nullable=True, index=True)  # Stripe customer ID (cus_xxx)
+    
     # Profile
     display_name = Column(String(255))
     avatar_url = Column(String(512))

@@ -384,6 +384,93 @@ class StripeService:
             logger.error(f"Error managing customer: {e}")
             raise RuntimeError(f"Customer error: {str(e)}")
     
+    async def get_stored_customer_id(self, user_id: str) -> Optional[str]:
+        """
+        Get Stripe customer ID from our database.
+        This is the preferred method - avoids Stripe API calls and ensures correct customer.
+        
+        Returns:
+            Stripe customer ID if stored, None otherwise
+        """
+        try:
+            from app.core.database import get_async_db
+            from app.models.database.user_models import User
+            from sqlalchemy import select
+            
+            async with get_async_db() as db:
+                result = await db.execute(
+                    select(User.stripe_customer_id).where(User.user_id == user_id)
+                )
+                row = result.first()
+                if row and row[0]:
+                    return row[0]
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to get stored customer ID for {user_id}: {e}")
+            return None
+    
+    async def _link_stripe_customer(self, user_id: str, stripe_customer_id: str) -> bool:
+        """
+        Link a Stripe customer ID to our user record.
+        Called when checkout completes to ensure customer<->user mapping.
+        
+        Args:
+            user_id: Our internal user ID
+            stripe_customer_id: Stripe customer ID (cus_xxx)
+            
+        Returns:
+            True if linked successfully
+        """
+        try:
+            from app.core.database import get_async_db
+            from app.models.database.user_models import User
+            from sqlalchemy import update
+            
+            async with get_async_db() as db:
+                await db.execute(
+                    update(User)
+                    .where(User.user_id == user_id)
+                    .values(stripe_customer_id=stripe_customer_id)
+                )
+                await db.commit()
+            
+            logger.info(f"Linked Stripe customer {stripe_customer_id} to user {user_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to link Stripe customer {stripe_customer_id} to user {user_id}: {e}")
+            return False
+    
+    async def get_customer_for_user(
+        self,
+        user_id: str,
+        email: str,
+        name: Optional[str] = None,
+    ) -> str:
+        """
+        Get Stripe customer ID for a user. Checks stored ID first, then Stripe API.
+        
+        Priority:
+        1. Stored stripe_customer_id in our database (most reliable)
+        2. Search Stripe by user_id metadata
+        3. Create new customer
+        
+        Returns:
+            Stripe customer ID
+        """
+        # 1. Check stored customer ID first (fastest, most reliable)
+        stored_id = await self.get_stored_customer_id(user_id)
+        if stored_id:
+            logger.debug(f"Using stored Stripe customer {stored_id} for user {user_id}")
+            return stored_id
+        
+        # 2. Fall back to search/create
+        customer_id = await self.get_or_create_customer(user_id, email, name)
+        
+        # 3. Store for future use
+        await self._link_stripe_customer(user_id, customer_id)
+        
+        return customer_id
+    
     async def create_customer_portal_session(
         self,
         customer_id: str,
@@ -490,10 +577,17 @@ class StripeService:
         purchase_type = metadata.get("type")
         user_id = metadata.get("user_id")
         
-        # Fallback to client_reference_id (used by Payment Links)
+        # Fallback to client_reference_id (used by Payment Links and subscriptions)
         if not user_id:
             user_id = session.get("client_reference_id")
             logger.info(f"Using client_reference_id as user_id: {user_id}")
+        
+        # CRITICAL: Link Stripe customer to our user
+        # This ensures future portal sessions work correctly
+        stripe_customer_id = session.get("customer")
+        if user_id and stripe_customer_id:
+            await self._link_stripe_customer(user_id, stripe_customer_id)
+            logger.info(f"Linked Stripe customer {stripe_customer_id} to user {user_id}")
         
         if not user_id:
             logger.error("No user_id in checkout metadata or client_reference_id")
@@ -604,13 +698,18 @@ class StripeService:
     async def _handle_subscription_created(self, subscription: Dict) -> Dict[str, Any]:
         """Handle customer.subscription.created event."""
         metadata = subscription.get("metadata", {})
-        user_id = metadata.get("user_id")
+        user_id = metadata.get("user_id") or metadata.get("app_user_id")
         tier = metadata.get("tier", "premium")
         billing_period = metadata.get("billing_period", "monthly")
         
         if not user_id:
             logger.error("No user_id in subscription metadata")
             return {"error": "Missing user_id"}
+        
+        # Link Stripe customer to our user (backup in case checkout webhook missed it)
+        stripe_customer_id = subscription.get("customer")
+        if stripe_customer_id:
+            await self._link_stripe_customer(user_id, stripe_customer_id)
         
         # Use subscription_service for consistency
         from app.services.subscription_service import subscription_service

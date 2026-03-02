@@ -330,6 +330,250 @@ class TestWebhookEventProcessing:
 
 
 # ============================================================
+# Stripe Customer Linking Tests (Critical Bug Fix 2026-03-01)
+# ============================================================
+
+class TestStripeCustomerLinking:
+    """
+    测试 Stripe Customer ID 关联功能
+    
+    问题背景：
+    - 用户 Firebase UID: 5Q3mmcUGAuYmr8kZpa8QqSBAGUp2
+    - 用户在 Stripe 付款时用了不同邮箱 (jhbmeta@gmail.com)
+    - 系统创建的 Stripe customer 用了假邮箱 ({user_id}@example.com)
+    - 导致 Customer Portal 无法找到正确的 subscription
+    
+    修复方案：
+    - checkout.session.completed webhook 触发时保存 stripe_customer_id
+    - Portal 使用存储的 customer_id 而不是搜索
+    """
+    
+    @pytest.mark.asyncio
+    async def test_link_stripe_customer_on_checkout_completed(self):
+        """测试 checkout 完成时关联 Stripe customer"""
+        from app.services.stripe_service import StripeService
+        
+        service = StripeService()
+        
+        # 模拟 checkout.session.completed 事件
+        # 关键：session 包含 customer (Stripe 创建的 customer ID)
+        mock_session = {
+            "id": "cs_test_customer_link",
+            "mode": "subscription",
+            "customer": "cus_REAL_CUSTOMER_123",  # 这是 Stripe 创建的真实 customer
+            "client_reference_id": "firebase_uid_abc123",  # 我们的 user_id
+            "metadata": {
+                "user_id": "firebase_uid_abc123",
+                "type": "subscription",
+                "plan_id": "premium_monthly",
+            },
+            "payment_status": "paid",
+        }
+        
+        # 测试 _link_stripe_customer 被调用
+        with patch.object(service, '_link_stripe_customer', new_callable=AsyncMock) as mock_link:
+            mock_link.return_value = True
+            
+            # 模拟 webhook event
+            mock_event = MagicMock()
+            mock_event.type = "checkout.session.completed"
+            mock_event.data.object = mock_session
+            
+            try:
+                await service.handle_webhook_event(mock_event)
+            except Exception:
+                pass  # 数据库相关错误可以忽略
+            
+            # 验证 _link_stripe_customer 被调用
+            mock_link.assert_called_once_with(
+                "firebase_uid_abc123",
+                "cus_REAL_CUSTOMER_123"
+            )
+    
+    @pytest.mark.asyncio
+    async def test_link_stripe_customer_on_subscription_created(self):
+        """测试订阅创建时也关联 Stripe customer（作为备份）"""
+        from app.services.stripe_service import StripeService
+        
+        service = StripeService()
+        
+        # 模拟 subscription.created 事件
+        mock_subscription = {
+            "id": "sub_test_link",
+            "customer": "cus_REAL_CUSTOMER_456",
+            "status": "active",
+            "metadata": {
+                "user_id": "firebase_uid_xyz789",
+                "plan_id": "premium_monthly",
+                "tier": "premium",
+            },
+            "current_period_start": int(datetime.now().timestamp()),
+            "current_period_end": int((datetime.now() + timedelta(days=30)).timestamp()),
+        }
+        
+        with patch.object(service, '_link_stripe_customer', new_callable=AsyncMock) as mock_link:
+            mock_link.return_value = True
+            
+            mock_event = MagicMock()
+            mock_event.type = "customer.subscription.created"
+            mock_event.data.object = mock_subscription
+            
+            try:
+                await service.handle_webhook_event(mock_event)
+            except Exception:
+                pass
+            
+            # 验证 _link_stripe_customer 被调用
+            mock_link.assert_called_once_with(
+                "firebase_uid_xyz789",
+                "cus_REAL_CUSTOMER_456"
+            )
+    
+    @pytest.mark.asyncio
+    async def test_get_customer_for_user_uses_stored_id_first(self):
+        """测试获取 customer 时优先使用存储的 ID"""
+        from app.services.stripe_service import StripeService
+        
+        service = StripeService()
+        service.enabled = True
+        
+        # 模拟已存储的 customer ID
+        stored_customer_id = "cus_STORED_123"
+        
+        with patch.object(service, 'get_stored_customer_id', new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = stored_customer_id
+            
+            # 不应该调用 get_or_create_customer
+            with patch.object(service, 'get_or_create_customer', new_callable=AsyncMock) as mock_create:
+                result = await service.get_customer_for_user(
+                    user_id="test_user",
+                    email="test@example.com",
+                )
+                
+                # 验证返回存储的 ID
+                assert result == stored_customer_id
+                
+                # 验证没有调用 get_or_create_customer
+                mock_create.assert_not_called()
+    
+    @pytest.mark.asyncio
+    async def test_get_customer_for_user_falls_back_to_search(self):
+        """测试没有存储 ID 时 fallback 到搜索"""
+        from app.services.stripe_service import StripeService
+        
+        service = StripeService()
+        service.enabled = True
+        
+        new_customer_id = "cus_NEW_123"
+        
+        with patch.object(service, 'get_stored_customer_id', new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = None  # 没有存储的 ID
+            
+            with patch.object(service, 'get_or_create_customer', new_callable=AsyncMock) as mock_create:
+                mock_create.return_value = new_customer_id
+                
+                with patch.object(service, '_link_stripe_customer', new_callable=AsyncMock) as mock_link:
+                    mock_link.return_value = True
+                    
+                    result = await service.get_customer_for_user(
+                        user_id="test_user",
+                        email="test@example.com",
+                    )
+                    
+                    # 验证返回新创建的 ID
+                    assert result == new_customer_id
+                    
+                    # 验证调用了 get_or_create_customer
+                    mock_create.assert_called_once()
+                    
+                    # 验证存储了新的 customer ID
+                    mock_link.assert_called_once_with("test_user", new_customer_id)
+    
+    @pytest.mark.asyncio
+    async def test_portal_uses_correct_customer(self):
+        """
+        测试 Customer Portal 使用正确的 customer
+        
+        场景：
+        1. 用户 A 用 Firebase UID "fb-user-123" 登录
+        2. 用户在 Stripe 用不同邮箱付款，创建了 customer "cus_stripe_456"
+        3. checkout webhook 把 cus_stripe_456 存到用户记录
+        4. 用户访问 portal，应该用 cus_stripe_456 而不是搜索/新建
+        """
+        from app.services.stripe_service import stripe_service
+        
+        user_id = "fb-user-123"
+        stored_customer_id = "cus_stripe_456"
+        wrong_customer_id = "cus_wrong_999"  # 如果用搜索可能得到这个
+        
+        # 模拟已存储的 customer ID
+        with patch.object(stripe_service, 'get_stored_customer_id', new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = stored_customer_id
+            
+            # 模拟 get_or_create_customer 返回错误的 ID（如果被调用）
+            with patch.object(stripe_service, 'get_or_create_customer', new_callable=AsyncMock) as mock_create:
+                mock_create.return_value = wrong_customer_id
+                
+                # 调用 get_customer_for_user（Portal 用这个）
+                result = await stripe_service.get_customer_for_user(
+                    user_id=user_id,
+                    email="fake@example.com",  # Portal 可能传假邮箱
+                )
+                
+                # 必须返回存储的正确 ID，不是搜索得到的
+                assert result == stored_customer_id
+                assert result != wrong_customer_id
+    
+    @pytest.mark.asyncio 
+    async def test_checkout_with_different_email_links_correctly(self):
+        """
+        端到端测试：用户用不同邮箱付款时的关联
+        
+        场景：
+        - Luna user email: jiahongbinandroid@gmail.com (Firebase)
+        - Stripe checkout email: jhbmeta@gmail.com (用户在 Stripe 输入的)
+        - 应该正确关联到同一个 Luna user
+        """
+        from app.services.stripe_service import StripeService
+        
+        service = StripeService()
+        
+        luna_user_id = "5Q3mmcUGAuYmr8kZpa8QqSBAGUp2"  # Firebase UID
+        stripe_customer_id = "cus_jhbmeta_gmail"  # Stripe 用 jhbmeta@gmail.com 创建的
+        
+        # 模拟 checkout.session.completed
+        mock_session = {
+            "id": "cs_test_different_email",
+            "customer": stripe_customer_id,
+            "client_reference_id": luna_user_id,
+            "metadata": {
+                "user_id": luna_user_id,
+                "type": "subscription",
+            },
+        }
+        
+        link_calls = []
+        
+        async def mock_link(user_id, customer_id):
+            link_calls.append((user_id, customer_id))
+            return True
+        
+        with patch.object(service, '_link_stripe_customer', side_effect=mock_link):
+            mock_event = MagicMock()
+            mock_event.type = "checkout.session.completed"
+            mock_event.data.object = mock_session
+            
+            try:
+                await service.handle_webhook_event(mock_event)
+            except Exception:
+                pass
+            
+            # 验证关联了正确的 user_id 和 customer_id
+            assert len(link_calls) > 0
+            assert link_calls[0] == (luna_user_id, stripe_customer_id)
+
+
+# ============================================================
 # RevenueCat Integration Tests (if applicable)
 # ============================================================
 

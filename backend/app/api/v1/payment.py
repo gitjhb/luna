@@ -369,6 +369,7 @@ async def create_stripe_portal(return_url: str, req: Request):
     Create a Stripe Customer Portal session for subscription management.
     
     Allows users to manage their subscriptions, update payment methods, etc.
+    Uses stored stripe_customer_id to ensure correct customer is used.
     """
     if not STRIPE_ENABLED:
         raise HTTPException(status_code=501, detail="Stripe is not configured")
@@ -381,8 +382,8 @@ async def create_stripe_portal(return_url: str, req: Request):
     user_email = getattr(user, "email", None)
     
     try:
-        # Get or create customer
-        customer_id = await stripe_service.get_or_create_customer(
+        # Get customer - uses stored ID first, then falls back to search/create
+        customer_id = await stripe_service.get_customer_for_user(
             user_id=user_id,
             email=user_email or f"{user_id}@luna.app",
             name=getattr(user, "display_name", None),
