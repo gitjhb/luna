@@ -393,11 +393,11 @@ class StripeService:
             Stripe customer ID if stored, None otherwise
         """
         try:
-            from app.core.database import get_async_db
+            from app.core.database import get_db
             from app.models.database.user_models import User
             from sqlalchemy import select
             
-            async with get_async_db() as db:
+            async with get_db() as db:
                 result = await db.execute(
                     select(User.stripe_customer_id).where(User.user_id == user_id)
                 )
@@ -422,11 +422,11 @@ class StripeService:
             True if linked successfully
         """
         try:
-            from app.core.database import get_async_db
+            from app.core.database import get_db
             from app.models.database.user_models import User
             from sqlalchemy import update
             
-            async with get_async_db() as db:
+            async with get_db() as db:
                 await db.execute(
                     update(User)
                     .where(User.user_id == user_id)
@@ -650,11 +650,11 @@ class StripeService:
             actual_user_id = user_id
             if user_id.isdigit():
                 # This is a Telegram ID, look up the Luna user
-                from app.core.database import get_async_db
+                from app.core.database import get_db
                 from app.models.database.user_models import User
                 from sqlalchemy import select
                 
-                async with get_async_db() as db:
+                async with get_db() as db:
                     result = await db.execute(
                         select(User).where(User.telegram_id == user_id)
                     )
@@ -685,13 +685,73 @@ class StripeService:
             }
         
         elif purchase_type == "subscription":
-            # Subscription checkout - actual subscription handling happens in subscription.created
+            # Subscription via our endpoint (has metadata)
+            # Actual subscription handling happens in subscription.created
             logger.info(f"Subscription checkout completed for user {user_id}")
             return {
                 "handled": True,
                 "type": "subscription_checkout",
                 "user_id": user_id,
             }
+        
+        # Handle Payment Link subscriptions (mode=subscription but no metadata.type)
+        # This is the fallback for subscriptions created via Payment Links
+        session_mode = session.get("mode")
+        subscription_id = session.get("subscription")
+        
+        if session_mode == "subscription" and subscription_id and user_id:
+            logger.info(f"Payment Link subscription detected for user {user_id}, sub: {subscription_id}")
+            
+            # Get subscription details to determine tier
+            try:
+                sub = stripe.Subscription.retrieve(subscription_id)
+                price_id = sub.get("items", {}).get("data", [{}])[0].get("price", {}).get("id")
+                
+                # Infer tier from price_id
+                tier = "premium"  # default
+                for plan_id, plan_config in STRIPE_SUBSCRIPTION_PLANS.items():
+                    if plan_config.get("price_id") == price_id:
+                        tier = plan_config.get("tier", "premium")
+                        break
+                
+                # Calculate duration from Stripe period
+                period_end = sub.get("current_period_end", 0)
+                period_start = sub.get("current_period_start", 0)
+                duration_days = max(30, (period_end - period_start) // 86400)  # at least 30 days
+                
+                # Activate subscription
+                from app.services.subscription_service import subscription_service
+                await subscription_service.activate_subscription(
+                    user_id=user_id,
+                    tier=tier,
+                    duration_days=duration_days,
+                    payment_provider="stripe",
+                    provider_transaction_id=subscription_id,
+                )
+                
+                # Update subscription metadata for future webhook events
+                stripe.Subscription.modify(
+                    subscription_id,
+                    metadata={
+                        "user_id": user_id,
+                        "app_user_id": user_id,
+                        "tier": tier,
+                    }
+                )
+                
+                logger.info(f"Payment Link subscription activated: user={user_id}, tier={tier}, days={duration_days}")
+                
+                return {
+                    "handled": True,
+                    "type": "payment_link_subscription",
+                    "user_id": user_id,
+                    "tier": tier,
+                    "subscription_id": subscription_id,
+                }
+                
+            except Exception as e:
+                logger.error(f"Failed to process Payment Link subscription: {e}")
+                return {"error": f"Payment Link subscription processing failed: {str(e)}"}
         
         return {"handled": False, "reason": "Unknown purchase type"}
     
@@ -702,8 +762,38 @@ class StripeService:
         tier = metadata.get("tier", "premium")
         billing_period = metadata.get("billing_period", "monthly")
         
+        # Fallback: if no user_id in metadata, try to find from checkout session
+        # This handles Payment Link subscriptions where checkout.session.completed
+        # already processed the subscription (skip duplicate activation)
         if not user_id:
-            logger.error("No user_id in subscription metadata")
+            # Check if this subscription was already handled by checkout.session.completed
+            # by looking at whether metadata was populated (we set it there)
+            if metadata.get("user_id"):
+                # Already processed, skip
+                logger.info(f"Subscription {subscription['id']} already has user_id in metadata, skipping")
+                return {"handled": True, "type": "subscription_created", "skipped": True}
+            
+            # Try to find user_id from customer's stored link
+            stripe_customer_id = subscription.get("customer")
+            if stripe_customer_id:
+                try:
+                    from app.core.database import get_db
+                    from app.models.database.user_models import User
+                    from sqlalchemy import select
+                    
+                    async with get_db() as db:
+                        result = await db.execute(
+                            select(User.user_id).where(User.stripe_customer_id == stripe_customer_id)
+                        )
+                        row = result.first()
+                        if row and row[0]:
+                            user_id = str(row[0])
+                            logger.info(f"Found user_id {user_id} from stripe_customer_id {stripe_customer_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to lookup user by stripe_customer_id: {e}")
+        
+        if not user_id:
+            logger.error(f"No user_id for subscription {subscription['id']}, metadata: {metadata}")
             return {"error": "Missing user_id"}
         
         # Link Stripe customer to our user (backup in case checkout webhook missed it)

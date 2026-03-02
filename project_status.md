@@ -96,6 +96,19 @@
 
 ## 📝 Recent Changes
 
+### 2026-03-02
+- ✅ **Fix: Stripe Customer ID 关联** — 关键支付Bug修复
+  - 问题：用户用不同邮箱付款，Customer Portal 找不到 subscription
+  - 修复：User 表加 `stripe_customer_id` 字段，webhook 时保存
+  - 新增 `get_customer_for_user()` 方法，优先用存储的 ID
+  - 6 个测试用例全部通过
+  - Git: `a2489b5` fix: link Stripe customer ID to user on checkout completion
+- ✅ **Deploy: GCP Cloud Run** — `luna-backend-00073-q8w`
+  - 遵循新部署规矩：`--no-traffic` → 验证 → 切流量
+- 📝 **TODO: Stripe Customer 主动创建** — JHB提出更好方案
+  - 在用户注册时创建 Stripe Customer，而不是等到 checkout
+  - 好处：customer 从一开始就绑定 user_id
+
 ### 2026-03-01 (工作完成于 02-28)
 - ✅ **Luna Web 角色资料页** — 新功能
   - 新增 `/character/:id` 路由
@@ -189,4 +202,4 @@ JHB 验收 → 反馈 / Done
 
 ---
 
-*Last updated: 2026-03-01 03:00 PST*
+*Last updated: 2026-03-02 03:00 PST*
