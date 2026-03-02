@@ -245,7 +245,8 @@ class StripeService:
                 # IMPORTANT: client_reference_id is used by RevenueCat to identify the user
                 client_reference_id=user_id,
                 metadata={
-                    "user_id": user_id,
+                    "app_user_id": user_id,  # RevenueCat uses this key
+                    "user_id": user_id,      # Keep for backward compatibility
                     "plan_id": plan_id,
                     "type": "subscription",
                     "tier": plan["tier"],
@@ -253,7 +254,8 @@ class StripeService:
                 # Subscription-specific settings
                 subscription_data={
                     "metadata": {
-                        "user_id": user_id,
+                        "app_user_id": user_id,  # RevenueCat uses this key
+                        "user_id": user_id,      # Keep for backward compatibility
                         "plan_id": plan_id,
                         "tier": plan["tier"],
                     },
