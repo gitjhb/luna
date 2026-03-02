@@ -78,31 +78,41 @@ STRIPE_CREDIT_PACKAGES = {
 }
 
 # Map subscription plans to Stripe Price IDs
+# Luna 订阅分两档：basic / premium
+# Stripe 产品：
+#   - Basic Plan (prod_TyaqYmJJSZjbV9, price_1T3Zy1BGtpEcBypWJlKScOSD) → basic
+#   - Premium (prod_TyaZ8zAFF70OqP, price_1T3ZzKBGtpEcBypWCQBVv5Ek) → premium
 STRIPE_SUBSCRIPTION_PLANS = {
+    "basic_monthly": {
+        "price_id": os.getenv("STRIPE_PRICE_BASIC_MONTHLY", "price_1T3Zy1BGtpEcBypWJlKScOSD"),
+        "tier": "basic",
+        "billing_period": "monthly",
+        "daily_credits": 50,
+    },
+    "basic_yearly": {
+        "price_id": os.getenv("STRIPE_PRICE_BASIC_YEARLY", "price_basic_yearly"),
+        "tier": "basic",
+        "billing_period": "yearly",
+        "daily_credits": 50,
+    },
     "premium_monthly": {
-        "price_id": os.getenv("STRIPE_PRICE_PREMIUM_MONTHLY", "price_premium_monthly"),
+        "price_id": os.getenv("STRIPE_PRICE_PREMIUM_MONTHLY", "price_1T3ZzKBGtpEcBypWCQBVv5Ek"),
         "tier": "premium",
         "billing_period": "monthly",
-        "daily_credits": 100,
+        "daily_credits": 200,
     },
     "premium_yearly": {
         "price_id": os.getenv("STRIPE_PRICE_PREMIUM_YEARLY", "price_premium_yearly"),
         "tier": "premium",
         "billing_period": "yearly",
-        "daily_credits": 100,
+        "daily_credits": 200,
     },
-    "vip_monthly": {
-        "price_id": os.getenv("STRIPE_PRICE_VIP_MONTHLY", "price_vip_monthly"),
-        "tier": "vip",
-        "billing_period": "monthly",
-        "daily_credits": 300,
-    },
-    "vip_yearly": {
-        "price_id": os.getenv("STRIPE_PRICE_VIP_YEARLY", "price_vip_yearly"),
-        "tier": "vip",
-        "billing_period": "yearly",
-        "daily_credits": 300,
-    },
+}
+
+# Reverse lookup: price_id → tier (for webhook processing)
+STRIPE_PRICE_TO_TIER = {
+    "price_1T3Zy1BGtpEcBypWJlKScOSD": "basic",   # Basic Plan monthly
+    "price_1T3ZzKBGtpEcBypWCQBVv5Ek": "premium", # Premium monthly
 }
 
 
@@ -707,12 +717,17 @@ class StripeService:
                 sub = stripe.Subscription.retrieve(subscription_id)
                 price_id = sub.get("items", {}).get("data", [{}])[0].get("price", {}).get("id")
                 
-                # Infer tier from price_id
-                tier = "premium"  # default
-                for plan_id, plan_config in STRIPE_SUBSCRIPTION_PLANS.items():
-                    if plan_config.get("price_id") == price_id:
-                        tier = plan_config.get("tier", "premium")
-                        break
+                # Infer tier from price_id using reverse lookup
+                tier = STRIPE_PRICE_TO_TIER.get(price_id)
+                if not tier:
+                    # Fallback: search in plans
+                    for plan_id, plan_config in STRIPE_SUBSCRIPTION_PLANS.items():
+                        if plan_config.get("price_id") == price_id:
+                            tier = plan_config.get("tier")
+                            break
+                if not tier:
+                    tier = "basic"  # default to basic if unknown
+                    logger.warning(f"Unknown price_id {price_id}, defaulting to basic")
                 
                 # Calculate duration from Stripe period
                 period_end = sub.get("current_period_end", 0)
@@ -759,7 +774,7 @@ class StripeService:
         """Handle customer.subscription.created event."""
         metadata = subscription.get("metadata", {})
         user_id = metadata.get("user_id") or metadata.get("app_user_id")
-        tier = metadata.get("tier", "premium")
+        tier = metadata.get("tier", "basic")  # default to basic if not specified
         billing_period = metadata.get("billing_period", "monthly")
         
         # Fallback: if no user_id in metadata, try to find from checkout session

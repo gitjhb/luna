@@ -28,23 +28,32 @@ logger.info(f"SubscriptionService MOCK_MODE: {MOCK_MODE}")
 
 
 class SubscriptionTier(str, Enum):
-    """订阅等级枚举"""
+    """订阅等级枚举
+    
+    Luna 订阅分两档：
+    - BASIC: 基础版 ($X.XX/月) - 解锁基本付费功能
+    - PREMIUM: 高级版 ($XX.XX/月) - 全部功能 + 更多额度
+    
+    Stripe 产品映射：
+    - Basic Plan (prod_TyaqYmJJSZjbV9) → BASIC
+    - Premium (prod_TyaZ8zAFF70OqP) → PREMIUM
+    """
     FREE = "free"
+    BASIC = "basic"
     PREMIUM = "premium"
-    VIP = "vip"
 
 
-# Tier hierarchy for comparison
+# Tier hierarchy for comparison (higher = better)
 TIER_HIERARCHY = {
     SubscriptionTier.FREE: 0,
     "free": 0,
-    SubscriptionTier.PREMIUM: 1,
-    "premium": 1,
-    SubscriptionTier.VIP: 2,
-    "vip": 2,
+    SubscriptionTier.BASIC: 1,
+    "basic": 1,
+    SubscriptionTier.PREMIUM: 2,
+    "premium": 2,
 }
 
-# Tier benefits
+# Tier benefits configuration
 TIER_BENEFITS = {
     "free": {
         "daily_credits": 0,
@@ -53,15 +62,15 @@ TIER_BENEFITS = {
         "priority_response": False,
         "extended_memory": False,
     },
-    "premium": {
-        "daily_credits": 100,
+    "basic": {
+        "daily_credits": 50,
         "nsfw_enabled": True,
-        "premium_characters": True,
-        "priority_response": True,
+        "premium_characters": False,
+        "priority_response": False,
         "extended_memory": True,
     },
-    "vip": {
-        "daily_credits": 300,
+    "premium": {
+        "daily_credits": 200,
         "nsfw_enabled": True,
         "premium_characters": True,
         "priority_response": True,
@@ -113,7 +122,7 @@ class SubscriptionService:
             user_id: 用户ID
             
         Returns:
-            str: "free", "premium", or "vip"
+            str: "free", "basic", or "premium"
         """
         subscription = await self._get_subscription_record(user_id)
         
@@ -194,10 +203,10 @@ class SubscriptionService:
         检查用户是否有付费订阅
         
         Returns:
-            bool: True if user has premium or vip subscription
+            bool: True if user has basic or premium subscription
         """
         tier = await self.get_effective_tier(user_id)
-        return tier in ["premium", "vip"]
+        return tier in ["basic", "premium"]
     
     async def has_feature(self, user_id: str, feature: str) -> bool:
         """
@@ -219,7 +228,7 @@ class SubscriptionService:
         获取订阅等级的数值（用于比较）
         
         Returns:
-            int: 0=free, 1=premium, 2=vip
+            int: 0=free, 1=basic, 2=premium
         """
         tier = await self.get_effective_tier(user_id)
         return TIER_HIERARCHY.get(tier, 0)
@@ -665,7 +674,7 @@ async def set_mock_subscription(user_id: str, tier: str, expires_in_days: int = 
     
     Args:
         user_id: 用户ID
-        tier: 订阅等级 (free, premium, vip)
+        tier: 订阅等级 (free, basic, premium)
         expires_in_days: 过期天数
     """
     if not MOCK_MODE:
