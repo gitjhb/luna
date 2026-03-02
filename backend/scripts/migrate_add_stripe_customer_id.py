@@ -26,7 +26,7 @@ async def migrate_sqlite():
     """Add column to SQLite database"""
     import aiosqlite
     
-    db_path = os.getenv("SQLITE_DB_PATH", "data/luna.db")
+    db_path = os.getenv("SQLITE_DB_PATH", "data/app.db")
     
     if not os.path.exists(db_path):
         print(f"Database not found at {db_path}")
