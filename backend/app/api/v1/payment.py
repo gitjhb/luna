@@ -381,14 +381,14 @@ async def create_stripe_portal(return_url: str, req: Request):
     user_id = str(user.user_id)
     user_email = getattr(user, "email", None)
     
+    # If no email, we can't create a proper Stripe customer
+    if not user_email:
+        raise HTTPException(
+            status_code=400, 
+            detail="Email required for billing portal. Please update your account email."
+        )
+    
     try:
-        # If no email, we can't create a proper Stripe customer
-        if not user_email:
-            raise HTTPException(
-                status_code=400, 
-                detail="Email required for billing portal. Please update your account email."
-            )
-        
         # Get customer - uses stored ID first, then falls back to search/create
         customer_id = await stripe_service.get_customer_for_user(
             user_id=user_id,
@@ -404,6 +404,8 @@ async def create_stripe_portal(return_url: str, req: Request):
         
         return {"portal_url": portal_url}
         
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
     except Exception as e:
         logger.error(f"Stripe portal error: {e}")
         raise HTTPException(status_code=500, detail="Portal service error")
