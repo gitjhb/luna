@@ -608,3 +608,74 @@ async def get_stats():
             "total_sessions": sessions.scalar(),
             "total_messages": messages.scalar()
         }
+
+
+# ============================================================================
+# Subscriptions (Admin)
+# ============================================================================
+
+class SubscriptionUpdate(BaseModel):
+    tier: str  # "free", "basic", "premium"
+
+
+@router.get("/subscriptions/{user_id}")
+async def get_user_subscription(user_id: str):
+    """获取用户订阅状态"""
+    from app.services.subscription_service import subscription_service
+    
+    info = await subscription_service.get_subscription_info(user_id)
+    return info
+
+
+@router.put("/subscriptions/{user_id}")
+async def update_user_subscription(user_id: str, update: SubscriptionUpdate):
+    """手动更新用户订阅状态（管理员用）"""
+    from app.core.database import get_db
+    from sqlalchemy import text
+    from datetime import datetime, timedelta
+    
+    valid_tiers = ["free", "basic", "premium"]
+    if update.tier not in valid_tiers:
+        raise HTTPException(status_code=400, detail=f"Invalid tier. Must be one of: {valid_tiers}")
+    
+    async with get_db() as db:
+        # Check if subscription record exists
+        result = await db.execute(text(
+            "SELECT id FROM user_subscriptions WHERE user_id = :user_id"
+        ), {"user_id": user_id})
+        existing = result.fetchone()
+        
+        now = datetime.utcnow()
+        
+        if update.tier == "free":
+            # Downgrade to free
+            if existing:
+                await db.execute(text("""
+                    UPDATE user_subscriptions 
+                    SET tier = 'free', is_active = false, auto_renew = false, updated_at = :now
+                    WHERE user_id = :user_id
+                """), {"user_id": user_id, "now": now})
+            # If no record exists, free is the default - no action needed
+        else:
+            # Upgrade to basic/premium
+            expires_at = now + timedelta(days=30)  # 30 day subscription
+            
+            if existing:
+                await db.execute(text("""
+                    UPDATE user_subscriptions 
+                    SET tier = :tier, is_active = true, expires_at = :expires_at, updated_at = :now
+                    WHERE user_id = :user_id
+                """), {"user_id": user_id, "tier": update.tier, "expires_at": expires_at, "now": now})
+            else:
+                from uuid import uuid4
+                await db.execute(text("""
+                    INSERT INTO user_subscriptions (id, user_id, tier, started_at, expires_at, is_active, created_at, updated_at)
+                    VALUES (:id, :user_id, :tier, :now, :expires_at, true, :now, :now)
+                """), {"id": str(uuid4()), "user_id": user_id, "tier": update.tier, "expires_at": expires_at, "now": now})
+        
+        await db.commit()
+    
+    # Return updated info
+    from app.services.subscription_service import subscription_service
+    info = await subscription_service.get_subscription_info(user_id)
+    return {"success": True, "subscription": info}

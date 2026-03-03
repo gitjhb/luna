@@ -51,7 +51,8 @@
 | PostgreSQL 部署 | LAUNCH_TODO | Nikki | ⏳ 待部署 |
 | RevenueCat 连接 | LAUNCH_TODO | JHB | ✅ 已配置 |
 | Stripe Web 支付 | 2026-02-28 | JHB | ✅ 已配置 |
-| Firebase Auth 登录修复 | 2026-02-28 | Nikki | 🔴 待修复 |
+| 移除 fb- 前缀 | 2026-03-02 | JHB+Nikki | ✅ 完成 |
+| Email 认证 | 2026-03-03 | Nikki | ✅ 代码完成 (待启用 Firebase) |
 
 ### 🟡 P1 - 核心功能
 | Task | Source | Status |
@@ -95,6 +96,24 @@
 ---
 
 ## 📝 Recent Changes
+
+### 2026-03-03
+- ✅ **代码重构: 移除 fb- 前缀** — JHB 完成
+  - auth.py: user_id = firebase_uid (无前缀)
+  - auth_middleware.py: 接受 Firebase UID
+  - stripe_service.py: metadata 用 firebase_uid
+  - emotion.py: 移除 fb- bypass
+- ✅ **数据库迁移** — 修复用户 ID
+  - `fb-hdND1zeZOkdP74SdypFmmuF0SA03` → `hdND1zeZOkdP74SdypFmmuF0SA03`
+  - 添加 `BASIC` 到 subscriptiontier enum
+  - 修复 users 表 is_subscribed + subscription_tier
+  - 创建 user_subscriptions 记录
+- ✅ **Deploy: GCP Cloud Run** — `luna-backend-00077-cc6`
+- ✅ **Stripe Metadata 更新** — 订阅和 Customer 改成 firebase_uid
+- ✅ **Luna Web: Email 认证** — 新功能
+  - 添加 Email/Password 登录/注册
+  - 添加 Forgot Password
+  - ⚠️ 需确认 Firebase Console 启用 Email/Password
 
 ### 2026-03-02
 - ✅ **Fix: Stripe Customer ID 关联** — 关键支付Bug修复
@@ -202,4 +221,4 @@ JHB 验收 → 反馈 / Done
 
 ---
 
-*Last updated: 2026-03-02 03:00 PST*
+*Last updated: 2026-03-03 03:00 PST*
