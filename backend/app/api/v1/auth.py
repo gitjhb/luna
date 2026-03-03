@@ -355,8 +355,9 @@ async def authenticate_firebase(request: FirebaseAuthRequest):
         logger.info(f"Token verified for UID: {firebase_uid}")
         
         # Get or create user in DATABASE (persistent)
-        user_id = f"fb-{firebase_uid}"
-        user_email = decoded_token.get("email") or request.email or f"{user_id}@luna.app"
+        # Use Firebase UID directly as user_id (no prefix!)
+        user_id = firebase_uid
+        user_email = decoded_token.get("email") or request.email
         user_display_name = request.display_name or decoded_token.get("name") or "User"
         user_avatar = request.photo_url or decoded_token.get("picture")
         

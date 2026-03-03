@@ -158,14 +158,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
             user_email = await self._get_user_email_from_db(user_id)
             
             # Auto-create a minimal user record for valid token formats
-            if user_id and (user_id.startswith("fb-") or user_id.startswith("guest-") or user_id.startswith("demo-")):
+            # Accept: Firebase UIDs (alphanumeric 20+ chars), guest-*, demo-*
+            is_demo = user_id.startswith("demo-")
+            is_guest = user_id.startswith("guest-")
+            is_firebase = len(user_id) >= 20 and user_id.replace("-", "").replace("_", "").isalnum()
+            
+            if user_id and (is_demo or is_guest or is_firebase):
                 logger.info(f"Auto-creating user record for: {user_id}")
-                is_demo = user_id.startswith("demo-")
                 _users[user_id] = {
                     "user_id": user_id,
                     "email": user_email or ("jhb@luna.app" if is_demo else None),
                     "display_name": "JHB" if is_demo else "User",
-                    "provider": "demo" if is_demo else ("firebase" if user_id.startswith("fb-") else "guest"),
+                    "provider": "demo" if is_demo else ("firebase" if is_firebase else "guest"),
                     "subscription_tier": "free",
                 }
                 user = _users[user_id]

@@ -182,7 +182,7 @@ class StripeService:
                 cancel_url=cancel_url,
                 customer_email=customer_email,
                 metadata={
-                    "user_id": user_id,
+                    "firebase_uid": user_id,  # Primary key - must have!
                     "package_id": package_id,
                     "type": "credit_purchase",
                     "coins": str(package["coins"]),
@@ -255,19 +255,17 @@ class StripeService:
                 # IMPORTANT: client_reference_id is used by RevenueCat to identify the user
                 client_reference_id=user_id,
                 metadata={
-                    "app_user_id": user_id,  # RevenueCat uses this key
-                    "user_id": user_id,      # Keep for backward compatibility
+                    "firebase_uid": user_id,  # Primary key - must have!
+                    "tier": plan["tier"],
                     "plan_id": plan_id,
                     "type": "subscription",
-                    "tier": plan["tier"],
                 },
                 # Subscription-specific settings
                 subscription_data={
                     "metadata": {
-                        "app_user_id": user_id,  # RevenueCat uses this key
-                        "user_id": user_id,      # Keep for backward compatibility
-                        "plan_id": plan_id,
+                        "firebase_uid": user_id,  # Primary key - must have!
                         "tier": plan["tier"],
+                        "plan_id": plan_id,
                     },
                 },
                 allow_promotion_codes=True,
@@ -585,19 +583,15 @@ class StripeService:
         """Handle checkout.session.completed event."""
         metadata = session.get("metadata", {})
         purchase_type = metadata.get("type")
-        user_id = metadata.get("user_id")
         
-        # Fallback to client_reference_id (used by Payment Links and subscriptions)
+        # Get firebase_uid from metadata (primary), fallback to user_id (legacy)
+        user_id = metadata.get("firebase_uid") or metadata.get("user_id")
+        
+        # Fallback to client_reference_id (used by Payment Links)
         if not user_id:
             user_id = session.get("client_reference_id")
-            # Firebase UIDs need 'fb-' prefix to match Luna's user_id format
-            # Firebase UIDs are typically 28-char alphanumeric strings
-            if user_id and not user_id.startswith(("fb-", "guest-", "demo-")):
-                if len(user_id) >= 20 and user_id.isalnum():
-                    user_id = f"fb-{user_id}"
-                    logger.info(f"Added fb- prefix to Firebase UID: {user_id}")
-                else:
-                    logger.info(f"Using client_reference_id as user_id: {user_id}")
+            if user_id:
+                logger.info(f"Using client_reference_id as firebase_uid: {user_id}")
         
         # CRITICAL: Link Stripe customer to our user
         # This ensures future portal sessions work correctly
@@ -755,8 +749,7 @@ class StripeService:
                 stripe.Subscription.modify(
                     subscription_id,
                     metadata={
-                        "user_id": user_id,
-                        "app_user_id": user_id,
+                        "firebase_uid": user_id,  # Primary key
                         "tier": tier,
                     }
                 )
@@ -780,9 +773,9 @@ class StripeService:
     async def _handle_subscription_created(self, subscription: Dict) -> Dict[str, Any]:
         """Handle customer.subscription.created event."""
         metadata = subscription.get("metadata", {})
-        user_id = metadata.get("user_id") or metadata.get("app_user_id")
+        # Get firebase_uid from metadata (primary), fallback to legacy keys
+        user_id = metadata.get("firebase_uid") or metadata.get("user_id") or metadata.get("app_user_id")
         tier = metadata.get("tier", "basic")  # default to basic if not specified
-        billing_period = metadata.get("billing_period", "monthly")
         
         # Fallback: if no user_id in metadata, try to find from checkout session
         # This handles Payment Link subscriptions where checkout.session.completed
@@ -790,9 +783,9 @@ class StripeService:
         if not user_id:
             # Check if this subscription was already handled by checkout.session.completed
             # by looking at whether metadata was populated (we set it there)
-            if metadata.get("user_id"):
+            if metadata.get("firebase_uid"):
                 # Already processed, skip
-                logger.info(f"Subscription {subscription['id']} already has user_id in metadata, skipping")
+                logger.info(f"Subscription {subscription['id']} already has firebase_uid in metadata, skipping")
                 return {"handled": True, "type": "subscription_created", "skipped": True}
             
             # Try to find user_id from customer's stored link
@@ -852,10 +845,10 @@ class StripeService:
     async def _handle_subscription_updated(self, subscription: Dict) -> Dict[str, Any]:
         """Handle customer.subscription.updated event."""
         metadata = subscription.get("metadata", {})
-        user_id = metadata.get("user_id")
+        user_id = metadata.get("firebase_uid") or metadata.get("user_id")
         
         if not user_id:
-            return {"handled": False, "reason": "Missing user_id"}
+            return {"handled": False, "reason": "Missing firebase_uid"}
         
         from app.services.subscription_service import subscription_service
         
@@ -887,10 +880,10 @@ class StripeService:
     async def _handle_subscription_deleted(self, subscription: Dict) -> Dict[str, Any]:
         """Handle customer.subscription.deleted event."""
         metadata = subscription.get("metadata", {})
-        user_id = metadata.get("user_id")
+        user_id = metadata.get("firebase_uid") or metadata.get("user_id")
         
         if not user_id:
-            return {"handled": False, "reason": "Missing user_id"}
+            return {"handled": False, "reason": "Missing firebase_uid"}
         
         from app.services.subscription_service import subscription_service
         
