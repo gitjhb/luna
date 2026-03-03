@@ -590,7 +590,14 @@ class StripeService:
         # Fallback to client_reference_id (used by Payment Links and subscriptions)
         if not user_id:
             user_id = session.get("client_reference_id")
-            logger.info(f"Using client_reference_id as user_id: {user_id}")
+            # Firebase UIDs need 'fb-' prefix to match Luna's user_id format
+            # Firebase UIDs are typically 28-char alphanumeric strings
+            if user_id and not user_id.startswith(("fb-", "guest-", "demo-")):
+                if len(user_id) >= 20 and user_id.isalnum():
+                    user_id = f"fb-{user_id}"
+                    logger.info(f"Added fb- prefix to Firebase UID: {user_id}")
+                else:
+                    logger.info(f"Using client_reference_id as user_id: {user_id}")
         
         # CRITICAL: Link Stripe customer to our user
         # This ensures future portal sessions work correctly
