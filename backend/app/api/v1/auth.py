@@ -542,3 +542,81 @@ async def authenticate_apple_legacy(token: str = ""):
         id_token=token,
         provider="apple"
     ))
+
+
+# ============================================================================
+# Guest Session Migration
+# ============================================================================
+
+class MigrateGuestRequest(BaseModel):
+    guest_id: str
+
+
+@router.post("/migrate-guest")
+async def migrate_guest_sessions(request: MigrateGuestRequest, req: Request):
+    """
+    Migrate guest user's chat sessions to the authenticated user.
+    
+    Call this after successful login/signup to preserve chat history.
+    """
+    from app.core.database import get_db
+    from sqlalchemy import text
+    
+    # Get the authenticated user's ID
+    user = getattr(req.state, "user", None)
+    if not user or not user.user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    new_user_id = str(user.user_id)
+    guest_id = request.guest_id
+    
+    # Validate guest_id format
+    if not guest_id.startswith("guest-"):
+        raise HTTPException(status_code=400, detail="Invalid guest ID format")
+    
+    # Don't migrate to another guest
+    if new_user_id.startswith("guest-"):
+        raise HTTPException(status_code=400, detail="Cannot migrate to guest account")
+    
+    async with get_db() as db:
+        # Migrate chat sessions
+        result = await db.execute(text("""
+            UPDATE chat_sessions 
+            SET user_id = :new_user_id, updated_at = NOW()
+            WHERE user_id = :guest_id
+        """), {"new_user_id": new_user_id, "guest_id": guest_id})
+        
+        sessions_migrated = result.rowcount
+        
+        # Migrate intimacy data
+        await db.execute(text("""
+            UPDATE user_intimacy 
+            SET user_id = :new_user_id, updated_at = NOW()
+            WHERE user_id = :guest_id
+            AND NOT EXISTS (
+                SELECT 1 FROM user_intimacy 
+                WHERE user_id = :new_user_id AND character_id = user_intimacy.character_id
+            )
+        """), {"new_user_id": new_user_id, "guest_id": guest_id})
+        
+        # Migrate emotion data
+        await db.execute(text("""
+            UPDATE user_character_emotions 
+            SET user_id = :new_user_id, updated_at = NOW()
+            WHERE user_id = :guest_id
+            AND NOT EXISTS (
+                SELECT 1 FROM user_character_emotions 
+                WHERE user_id = :new_user_id AND character_id = user_character_emotions.character_id
+            )
+        """), {"new_user_id": new_user_id, "guest_id": guest_id})
+        
+        await db.commit()
+    
+    logger.info(f"Migrated {sessions_migrated} sessions from {guest_id} to {new_user_id}")
+    
+    return {
+        "success": True,
+        "sessions_migrated": sessions_migrated,
+        "from_user": guest_id,
+        "to_user": new_user_id
+    }
