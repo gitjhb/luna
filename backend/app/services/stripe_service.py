@@ -503,12 +503,13 @@ class StripeService:
                 await db.flush()
                 
                 # Create wallet
+                initial_credits = getattr(settings, 'DAILY_CREDITS_FREE', 10.0)
                 wallet = UserWallet(
                     user_id=user.user_id,
-                    free_credits=settings.DAILY_REFRESH_AMOUNT,
+                    free_credits=initial_credits,
                     purchased_credits=0.0,
-                    total_credits=settings.DAILY_REFRESH_AMOUNT,
-                    daily_refresh_amount=settings.DAILY_REFRESH_AMOUNT,
+                    total_credits=initial_credits,
+                    daily_refresh_amount=initial_credits,
                 )
                 db.add(wallet)
                 await db.commit()
