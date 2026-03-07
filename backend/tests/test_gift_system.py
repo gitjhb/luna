@@ -265,3 +265,132 @@ async def test_min_stage_accepted_at_correct_stage():
     )
 
     assert result["success"] is True
+
+
+# ============================================================================
+# Task 6: Breakthrough Gift Tests
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_breakthrough_succeeds_at_bottleneck():
+    """Breakthrough gift should succeed when user is at the bottleneck level."""
+    from app.services.gift_service import gift_service, _MOCK_GIFT_CATALOG
+    from app.services.payment_service import payment_service
+    from app.services.intimacy_service import intimacy_service
+
+    _MOCK_GIFT_CATALOG["breakthrough_s1_to_s2"] = {
+        "gift_type": "breakthrough_s1_to_s2",
+        "name": "Friendship Bracelet",
+        "name_cn": "友谊手链",
+        "price": 200,
+        "xp_reward": 100,
+        "tier": 2,
+        "icon": "📿",
+        "category": "breakthrough",
+        "breakthrough": {
+            "from_stage": "friends",
+            "to_stage": "ambiguous",
+            "required_bottleneck_level": 8,
+        },
+    }
+
+    await payment_service.add_credits("u1", 1000, description="test")
+
+    intimacy = await intimacy_service.get_or_create_intimacy("u1", "c1")
+    intimacy["current_level"] = 8
+    intimacy["intimacy_stage"] = "friends"
+    intimacy["total_xp"] = 550.0
+    intimacy["bottleneck_locked"] = True
+    intimacy["bottleneck_level"] = 8
+
+    result = await gift_service.send_gift(
+        user_id="u1",
+        character_id="c1",
+        gift_type="breakthrough_s1_to_s2",
+        idempotency_key="test-breakthrough-1",
+    )
+
+    assert result["success"] is True
+    assert result.get("bottleneck_unlocked") is True
+
+
+@pytest.mark.asyncio
+async def test_breakthrough_fails_not_at_bottleneck():
+    """Breakthrough gift should fail if user is not bottleneck-locked."""
+    from app.services.gift_service import gift_service, _MOCK_GIFT_CATALOG
+    from app.services.payment_service import payment_service
+    from app.services.intimacy_service import intimacy_service
+
+    _MOCK_GIFT_CATALOG["breakthrough_s1_to_s2"] = {
+        "gift_type": "breakthrough_s1_to_s2",
+        "name": "Friendship Bracelet",
+        "name_cn": "友谊手链",
+        "price": 200,
+        "xp_reward": 100,
+        "tier": 2,
+        "icon": "📿",
+        "category": "breakthrough",
+        "breakthrough": {
+            "from_stage": "friends",
+            "to_stage": "ambiguous",
+            "required_bottleneck_level": 8,
+        },
+    }
+
+    await payment_service.add_credits("u1", 1000, description="test")
+
+    intimacy = await intimacy_service.get_or_create_intimacy("u1", "c1")
+    intimacy["current_level"] = 5
+    intimacy["intimacy_stage"] = "strangers"
+    intimacy["bottleneck_locked"] = False
+
+    result = await gift_service.send_gift(
+        user_id="u1",
+        character_id="c1",
+        gift_type="breakthrough_s1_to_s2",
+        idempotency_key="test-breakthrough-2",
+    )
+
+    assert result["success"] is False
+    assert "瓶颈" in result.get("message", "") or "bottleneck" in result.get("error", "").lower()
+
+
+@pytest.mark.asyncio
+async def test_breakthrough_fails_already_unlocked():
+    """Breakthrough gift should fail if bottleneck is already unlocked."""
+    from app.services.gift_service import gift_service, _MOCK_GIFT_CATALOG
+    from app.services.payment_service import payment_service
+    from app.services.intimacy_service import intimacy_service
+
+    _MOCK_GIFT_CATALOG["breakthrough_s1_to_s2"] = {
+        "gift_type": "breakthrough_s1_to_s2",
+        "name": "Friendship Bracelet",
+        "name_cn": "友谊手链",
+        "price": 200,
+        "xp_reward": 100,
+        "tier": 2,
+        "icon": "📿",
+        "category": "breakthrough",
+        "breakthrough": {
+            "from_stage": "friends",
+            "to_stage": "ambiguous",
+            "required_bottleneck_level": 8,
+        },
+    }
+
+    await payment_service.add_credits("u1", 1000, description="test")
+
+    intimacy = await intimacy_service.get_or_create_intimacy("u1", "c1")
+    intimacy["current_level"] = 8
+    intimacy["intimacy_stage"] = "friends"
+    intimacy["bottleneck_locked"] = False
+    intimacy["bottleneck_level"] = None
+
+    result = await gift_service.send_gift(
+        user_id="u1",
+        character_id="c1",
+        gift_type="breakthrough_s1_to_s2",
+        idempotency_key="test-breakthrough-3",
+    )
+
+    assert result["success"] is False

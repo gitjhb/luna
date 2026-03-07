@@ -308,6 +308,29 @@ class GiftService:
                     "message": f"亲密度不足：需要达到'{stage_names_cn.get(required_stage, required_stage)}'阶段才能使用此礼物",
                 }
 
+        # Validate breakthrough gifts
+        if gift_info.get("breakthrough"):
+            bt = gift_info["breakthrough"]
+            required_level = bt["required_bottleneck_level"]
+            intimacy_record = await intimacy_service.get_or_create_intimacy(user_id, character_id)
+
+            is_locked = intimacy_record.get("bottleneck_locked", False)
+            lock_level = intimacy_record.get("bottleneck_level")
+
+            if not is_locked:
+                return {
+                    "success": False,
+                    "error": "bottleneck_not_locked",
+                    "message": f"当前没有瓶颈锁定，无需使用突破礼物",
+                }
+
+            if lock_level != required_level:
+                return {
+                    "success": False,
+                    "error": "wrong_bottleneck",
+                    "message": f"此礼物用于突破 Lv.{required_level} 瓶颈，当前瓶颈在 Lv.{lock_level}",
+                }
+
         price = gift_info["price"]
         xp_reward = gift_info["xp_reward"]
         tier = gift_info.get("tier", GiftTier.CONSUMABLE)
@@ -409,17 +432,26 @@ class GiftService:
             # Step 6.5: Check and unlock bottleneck lock if applicable
             bottleneck_unlocked = False
             bottleneck_unlock_result = None
-            
-            # Check if user is currently bottleneck-locked
-            lock_status = await intimacy_service.get_bottleneck_lock_status(user_id, character_id)
-            if lock_status.get("is_locked"):
-                # Try to unlock with this gift's tier
+
+            # Breakthrough gifts always unlock their target bottleneck
+            if gift_info.get("breakthrough"):
+                bt = gift_info["breakthrough"]
                 bottleneck_unlock_result = await intimacy_service.unlock_bottleneck(
-                    user_id, character_id, tier
+                    user_id, character_id, gift_tier=4  # Force unlock by passing max tier
                 )
                 if bottleneck_unlock_result.get("unlocked"):
                     bottleneck_unlocked = True
-                    logger.info(f"🔓 Bottleneck unlocked at Lv.{lock_status.get('lock_level')} with Tier {tier} gift")
+                    logger.info(f"🎉 Breakthrough! {bt['from_stage']} -> {bt['to_stage']}")
+            else:
+                # Existing logic for non-breakthrough gifts
+                lock_status = await intimacy_service.get_bottleneck_lock_status(user_id, character_id)
+                if lock_status.get("is_locked"):
+                    bottleneck_unlock_result = await intimacy_service.unlock_bottleneck(
+                        user_id, character_id, tier
+                    )
+                    if bottleneck_unlock_result.get("unlocked"):
+                        bottleneck_unlocked = True
+                        logger.info(f"🔓 Bottleneck unlocked at Lv.{lock_status.get('lock_level')} with Tier {tier} gift")
             
             # Step 7: Award XP
             xp_result = await intimacy_service.award_xp(
