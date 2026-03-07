@@ -333,9 +333,22 @@ class EffectService:
         
         # Map effect types to display names
         effect_display = {
+            # Original effects
             "tipsy": {"name": "微醺", "icon": "🍷", "color": "#FF6B9D"},
+            "deeply_tipsy": {"name": "深度微醺", "icon": "🍾", "color": "#FF4081"},
             "maid_mode": {"name": "女仆模式", "icon": "🎀", "color": "#FF69B4"},
             "truth_mode": {"name": "真话药水", "icon": "🧪", "color": "#9B59B6"},
+            "xp_boost": {"name": "双倍经验", "icon": "✨", "color": "#FFD700"},
+            "xp_boost_triple": {"name": "三倍经验", "icon": "🚀", "color": "#FF8C00"},
+            # Date scenes
+            "date_scene": {"name": "约会中", "icon": "💑", "color": "#E91E63"},
+            # Physical touch
+            "physical_touch": {"name": "亲密接触", "icon": "💕", "color": "#FF1493"},
+            # Costumes
+            "nurse_mode": {"name": "护士模式", "icon": "👩‍⚕️", "color": "#00BCD4"},
+            "teacher_mode": {"name": "教师模式", "icon": "👩‍🏫", "color": "#607D8B"},
+            "cat_mode": {"name": "猫咪模式", "icon": "😺", "color": "#FF9800"},
+            "bunny_mode": {"name": "兔兔模式", "icon": "🐰", "color": "#E91E63"},
         }
         
         active = []
@@ -371,8 +384,17 @@ class EffectService:
         
         effect_names = {
             "tipsy": "微醺效果",
+            "deeply_tipsy": "深度微醺效果",
             "maid_mode": "女仆模式",
             "truth_mode": "真话药水效果",
+            "xp_boost": "双倍经验",
+            "xp_boost_triple": "三倍经验",
+            "date_scene": "约会场景",
+            "physical_touch": "亲密接触",
+            "nurse_mode": "护士模式",
+            "teacher_mode": "教师模式",
+            "cat_mode": "猫咪模式",
+            "bunny_mode": "兔兔模式",
         }
         
         expired_names = [
