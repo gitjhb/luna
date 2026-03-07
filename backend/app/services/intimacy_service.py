@@ -653,6 +653,16 @@ class IntimacyService:
         # Check daily XP cap
         xp_reward = self.ACTION_REWARDS[action_type]["xp"]
 
+        # Apply XP multiplier from active effects (e.g., double XP potion)
+        try:
+            from app.services.effect_service import effect_service
+            xp_multiplier = await effect_service.get_xp_multiplier(user_id, character_id)
+            if xp_multiplier > 1.0:
+                xp_reward = int(xp_reward * xp_multiplier)
+                logger.info(f"XP multiplier active: {xp_multiplier}x -> {xp_reward} XP")
+        except Exception as e:
+            logger.warning(f"Failed to get XP multiplier: {e}")
+
         # Reset daily counter if needed
         if intimacy["last_daily_reset"]:
             time_since = datetime.utcnow() - intimacy["last_daily_reset"]

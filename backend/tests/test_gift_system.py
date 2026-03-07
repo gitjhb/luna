@@ -118,3 +118,38 @@ async def test_get_nsfw_override_returns_true():
 
     result = await effect_service.get_nsfw_override("u1", "c1")
     assert result is True
+
+
+# ============================================================================
+# Task 3: XP Multiplier Integration Tests
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_xp_multiplier_applied_to_award():
+    """When xp_boost effect is active, award_xp should multiply XP."""
+    from app.services.effect_service import effect_service
+    from app.services.intimacy_service import intimacy_service
+
+    # Apply 2x XP boost
+    await effect_service.apply_effect(
+        user_id="u1", character_id="c1",
+        effect_type="xp_boost", prompt_modifier="...",
+        duration_messages=30, xp_multiplier=2.0,
+    )
+
+    # Award XP for a message (base: 2 XP)
+    result = await intimacy_service.award_xp("u1", "c1", "message")
+
+    assert result["success"] is True
+    assert result["xp_awarded"] == 4  # 2 * 2.0 = 4
+
+
+@pytest.mark.asyncio
+async def test_xp_no_multiplier_when_no_effect():
+    """Without active effects, XP should be normal."""
+    from app.services.intimacy_service import intimacy_service
+
+    result = await intimacy_service.award_xp("u1", "c1", "message")
+
+    assert result["success"] is True
+    assert result["xp_awarded"] == 2  # base XP for message
