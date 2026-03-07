@@ -114,6 +114,84 @@ class AuthMiddleware(BaseHTTPMiddleware):
             pass
         return None
 
+    async def _ensure_user_in_database(
+        self,
+        user_id: str,
+        email: Optional[str] = None,
+        display_name: Optional[str] = None,
+        is_guest: bool = False,
+    ) -> bool:
+        """
+        Ensure user exists in database. Creates if not exists.
+        
+        This is CRITICAL for:
+        - FK constraints (transactions, subscriptions)
+        - Payment webhooks (Stripe, RevenueCat)
+        - Any database operation that references user_id
+        
+        Args:
+            user_id: Firebase UID or guest ID
+            email: User email (optional)
+            display_name: Display name (optional)
+            is_guest: Whether this is a guest user
+            
+        Returns:
+            True if user exists or was created successfully
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            from app.core.database import get_db
+            from app.models.database.user_models import User, UserWallet
+            from app.core.config import settings
+            from sqlalchemy import select
+            from datetime import datetime
+            
+            async with get_db() as db:
+                # Check if user already exists (by user_id or firebase_uid)
+                result = await db.execute(
+                    select(User).where(
+                        (User.user_id == user_id) | (User.firebase_uid == user_id)
+                    )
+                )
+                existing_user = result.scalar_one_or_none()
+                
+                if existing_user:
+                    logger.debug(f"User {user_id} already exists in database")
+                    return True
+                
+                # Create new user
+                logger.info(f"Creating user in database: {user_id} (is_guest={is_guest})")
+                user = User(
+                    firebase_uid=user_id,
+                    email=email or f"{user_id[:20]}@auto.luna.app",
+                    display_name=display_name or ("Guest" if is_guest else "User"),
+                    is_subscribed=False,
+                    subscription_tier="free",
+                    last_login_at=datetime.utcnow(),
+                )
+                db.add(user)
+                await db.flush()  # Get user_id (auto-generated)
+                
+                # Create wallet
+                wallet = UserWallet(
+                    user_id=user.user_id,
+                    free_credits=settings.DAILY_REFRESH_AMOUNT,
+                    purchased_credits=0.0,
+                    total_credits=settings.DAILY_REFRESH_AMOUNT,
+                    daily_refresh_amount=settings.DAILY_REFRESH_AMOUNT,
+                )
+                db.add(wallet)
+                await db.commit()
+                
+                logger.info(f"Created user {user.user_id} (firebase_uid={user_id}) with wallet")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Failed to ensure user in database for {user_id}: {e}")
+            return False
+
     async def _validate_token(self, token: str) -> Optional[UserContext]:
         """
         Validate auth token and return user context.
@@ -165,6 +243,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
             
             if user_id and (is_demo or is_guest or is_firebase):
                 logger.info(f"Auto-creating user record for: {user_id}")
+                
+                # CRITICAL: Also create user in DATABASE (not just memory)
+                # This ensures FK constraints work for transactions, subscriptions, etc.
+                await self._ensure_user_in_database(
+                    user_id=user_id,
+                    email=user_email or ("jhb@luna.app" if is_demo else None),
+                    display_name="JHB" if is_demo else "User",
+                    is_guest=is_guest,
+                )
+                
                 _users[user_id] = {
                     "user_id": user_id,
                     "email": user_email or ("jhb@luna.app" if is_demo else None),
