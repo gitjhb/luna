@@ -448,6 +448,77 @@ class StripeService:
             logger.error(f"Failed to link Stripe customer {stripe_customer_id} to user {user_id}: {e}")
             return False
     
+    async def _ensure_user_exists(
+        self,
+        user_id: str,
+        email: str = None,
+        stripe_customer_id: str = None,
+    ) -> bool:
+        """
+        Ensure a user exists in the database. Creates if not exists.
+        Called before processing Payment Link webhooks.
+        
+        Args:
+            user_id: Firebase UID or internal user ID
+            email: User email from Stripe checkout
+            stripe_customer_id: Stripe customer ID to link
+            
+        Returns:
+            True if user exists or was created
+        """
+        try:
+            from app.core.database import get_db
+            from app.models.database.user_models import User, UserWallet
+            from app.core.config import settings
+            from sqlalchemy import select
+            from datetime import datetime
+            
+            async with get_db() as db:
+                # Check if user exists
+                result = await db.execute(
+                    select(User).where(User.firebase_uid == user_id)
+                )
+                existing_user = result.scalar_one_or_none()
+                
+                if existing_user:
+                    # User exists, update stripe_customer_id if provided
+                    if stripe_customer_id and not existing_user.stripe_customer_id:
+                        existing_user.stripe_customer_id = stripe_customer_id
+                        await db.commit()
+                    return True
+                
+                # Create new user
+                logger.info(f"Creating new user for Payment Link: {user_id}")
+                user = User(
+                    firebase_uid=user_id,
+                    email=email or f"{user_id}@payment-link.local",
+                    display_name=email.split("@")[0] if email else "User",
+                    stripe_customer_id=stripe_customer_id,
+                    is_subscribed=False,
+                    subscription_tier="free",
+                    last_login_at=datetime.utcnow(),
+                )
+                db.add(user)
+                await db.flush()
+                
+                # Create wallet
+                wallet = UserWallet(
+                    user_id=user.user_id,
+                    free_credits=settings.DAILY_REFRESH_AMOUNT,
+                    purchased_credits=0.0,
+                    total_credits=settings.DAILY_REFRESH_AMOUNT,
+                    daily_refresh_amount=settings.DAILY_REFRESH_AMOUNT,
+                )
+                db.add(wallet)
+                await db.commit()
+                
+                logger.info(f"Created user {user.user_id} (firebase_uid={user_id}) for Payment Link")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Failed to ensure user exists for {user_id}: {e}")
+            return False
+    
     async def get_customer_for_user(
         self,
         user_id: str,
@@ -593,16 +664,21 @@ class StripeService:
             if user_id:
                 logger.info(f"Using client_reference_id as firebase_uid: {user_id}")
         
-        # CRITICAL: Link Stripe customer to our user
-        # This ensures future portal sessions work correctly
-        stripe_customer_id = session.get("customer")
-        if user_id and stripe_customer_id:
-            await self._link_stripe_customer(user_id, stripe_customer_id)
-            logger.info(f"Linked Stripe customer {stripe_customer_id} to user {user_id}")
-        
         if not user_id:
             logger.error("No user_id in checkout metadata or client_reference_id")
             return {"error": "Missing user_id"}
+        
+        # CRITICAL: Ensure user exists in database before processing
+        # This handles Payment Link users who may not have logged in yet
+        stripe_customer_id = session.get("customer")
+        customer_email = session.get("customer_details", {}).get("email")
+        
+        await self._ensure_user_exists(
+            user_id=user_id,
+            email=customer_email,
+            stripe_customer_id=stripe_customer_id,
+        )
+        logger.info(f"Ensured user {user_id} exists, linked to Stripe customer {stripe_customer_id}")
         
         # For Payment Links: infer purchase type from line_items or amount
         if not purchase_type:

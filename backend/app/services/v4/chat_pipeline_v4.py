@@ -657,7 +657,16 @@ class ChatPipelineV4:
                     assistant_reply,
                     context_messages or [],
                 )
-            
+
+            # 5. 用户记忆自动提取（LLM 分类提取，写入 user_memories 表）
+            if user_message:
+                await self._extract_user_memory(
+                    user_state.user_id,
+                    user_state.character_id,
+                    user_message,
+                    assistant_reply,
+                )
+
             logger.info(f"✅ Post-update completed for user {user_state.user_id}")
             
         except Exception as e:
@@ -685,6 +694,29 @@ class ChatPipelineV4:
         except Exception as e:
             logger.warning(f"Memory extraction failed: {e}")
     
+    async def _extract_user_memory(
+        self,
+        user_id: str,
+        character_id: str,
+        user_message: str,
+        assistant_reply: str,
+    ) -> None:
+        """LLM 自动提取分类记忆（写入 user_memories 表，供前端展示和管理）"""
+        try:
+            from app.services.subscription_service import subscription_service
+            from app.services.user_memory_service import extract_memories_from_chat
+
+            tier = await subscription_service.get_effective_tier(user_id)
+            await extract_memories_from_chat(
+                user_id=user_id,
+                character_id=character_id,
+                user_message=user_message,
+                assistant_reply=assistant_reply,
+                tier=tier,
+            )
+        except Exception as e:
+            logger.warning(f"User memory extraction failed: {e}")
+
     # 近期 emotion delta 历史（用于递减防刷）
     _recent_deltas: dict = {}  # key -> list of (timestamp, delta)
     

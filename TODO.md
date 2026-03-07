@@ -37,9 +37,16 @@
 ## 中优先级
 
 ### 📱 前端对接
-- [ ] 更新前端 API 地址指向新后端
+- [x] 更新前端 API 地址指向新后端 ✅ (luna-web 已配置 Cloud Run)
 - [ ] 实现真正的 Google/Apple OAuth
 - [ ] 对接 Stripe 支付
+- [ ] 配置 Stripe Payment Links (VITE_STRIPE_PREMIUM_LINK, VITE_STRIPE_VIP_LINK)
+
+### ✅ 已完成 (2026-03-06)
+- [x] E2E 测试套件 - 32 tests covering all APIs
+- [x] Memory API 部署到 Cloud Run
+- [x] 修复 useVirtualScroll 崩溃问题
+- [x] 修正订阅价格 ($9.99, $19.99)
 
 ### 🎤 语音功能
 - [ ] 配置真实的豆包 TTS API key

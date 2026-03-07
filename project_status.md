@@ -12,16 +12,21 @@
 - [x] **Memory 基础功能** — ✅ 已修复并验证
   - `/api/v1/chat/debug` endpoint 已创建
   - God Mode 可正常存储/检索记忆
+  - Memory API (`/memory/{character_id}`) 已部署到 Cloud Run
 
 - [x] **主动消息系统** — ✅ 从 Mio 移植完成
   - 早安/晚安/想念消息
   - 角色专属模板
   - 冷却机制 + 亲密度门槛
   - 12 tests passing
+
+- [x] **E2E 测试套件** — ✅ 32 tests passing (2026-03-06)
+  - 覆盖所有 API: Characters, Chat, Memory, Intimacy, Gifts, Wallet, Payment 等
+  - 文件: `tests/test_e2e_full_app.py`
   
-- [ ] **Memory 订阅限制** — Free plan 不存/提取记忆
-  - 状态: 待实现订阅检查
-  - 文件: `chat_pipeline_v4.py`, `memory_integration_service.py`
+- [x] **Memory 订阅限制** — ✅ 已实现
+  - free=0, basic=20, premium=无限
+  - 自动提取功能对所有用户可用
 
 ### Blocked
 - [ ] **App Store 上线** — 等待 IAP 产品配置
@@ -96,6 +101,39 @@
 ---
 
 ## 📝 Recent Changes
+
+### 2026-03-05
+- ✅ **FAQ 页面** — `/faq` 新增
+  - 4 分类：账户、订阅、聊天、技术问题
+  - 18 个 Q&A，手风琴折叠 + 搜索
+- ✅ **全站 i18n** — 中英文切换
+  - ~200 条翻译 (en.ts / zh.ts)
+  - Navbar 语言切换按钮
+- ✅ **CharacterProfileDrawer 修复** — JSX 语法错误
+
+### 2026-03-04
+- ✅ **Stripe Webhook 配置** — 生产环境
+  - 配置 webhook endpoint + STRIPE_WEBHOOK_SECRET
+  - 手动修复 JHB 订阅状态 (basic → free)
+- ✅ **Guest 聊天迁移** — 新功能
+  - 后端: `/auth/migrate-guest` 接口
+  - 前端: 登录后自动调用迁移
+  - 迁移 sessions, intimacy, emotions
+- ✅ **AI 骚扰处理优化** — prompt 更新
+  - base_prompt.py: 添加骚扰处理指南
+  - LUNA_PROMPT: 添加防御性情绪和价值观
+  - 测试通过：3轮骚扰后 Luna 会离开
+- ✅ **Karl 角色上线** — 新角色
+  - 月影之城 S级特工，代号"幽灵"
+  - 冷酷、神秘、保护欲强
+  - 针对女性用户设计
+- ✅ **前端 UI 修复**
+  - 移动端登录入口
+  - "开始聊天"按钮固定底部
+  - 首页角色卡片 Vera → Karl
+- ✅ **Admin 订阅管理** — 新接口
+  - GET/PUT `/admin/subscriptions/{user_id}`
+- ✅ **Deploy: GCP Cloud Run** — `luna-backend-00079-vns`
 
 ### 2026-03-03
 - ✅ **代码重构: 移除 fb- 前缀** — JHB 完成
