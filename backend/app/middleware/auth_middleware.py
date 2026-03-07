@@ -143,7 +143,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         
         try:
             from app.core.database import get_db
-            from app.models.database.user_models import User, UserWallet
+            from app.models.database.user_models import User
+            from app.models.database.billing_models import UserWallet
             from app.core.config import settings
             from sqlalchemy import select
             from datetime import datetime
