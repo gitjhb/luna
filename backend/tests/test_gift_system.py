@@ -10,6 +10,7 @@ os.environ["MOCK_DATABASE"] = "true"
 os.environ["MOCK_REDIS"] = "true"
 os.environ["MOCK_LLM"] = "true"
 os.environ["MOCK_AUTH"] = "true"
+os.environ["MOCK_PAYMENT"] = "true"
 
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
@@ -21,11 +22,14 @@ def reset_mock_storage():
     from app.services.effect_service import _MOCK_EFFECTS
     from app.services.gift_service import _MOCK_GIFTS, _MOCK_IDEMPOTENCY_KEYS
     from app.services.intimacy_service import _MOCK_INTIMACY_STORAGE, _MOCK_ACTION_LOGS
+    from app.services.payment_service import _wallets, _transactions
     _MOCK_EFFECTS.clear()
     _MOCK_GIFTS.clear()
     _MOCK_IDEMPOTENCY_KEYS.clear()
     _MOCK_INTIMACY_STORAGE.clear()
     _MOCK_ACTION_LOGS.clear()
+    _wallets.clear()
+    _transactions.clear()
     yield
 
 
@@ -153,3 +157,41 @@ async def test_xp_no_multiplier_when_no_effect():
 
     assert result["success"] is True
     assert result["xp_awarded"] == 2  # base XP for message
+
+
+# ============================================================================
+# Task 4: Character Exclusive Validation Tests
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_character_exclusive_wrong_character():
+    """Sending a character-exclusive gift to wrong character should fail."""
+    from app.services.gift_service import gift_service
+
+    result = await gift_service.send_gift(
+        user_id="u1",
+        character_id="wrong-character-id",
+        gift_type="vera_sunglasses",
+        idempotency_key="test-key-exclusive-1",
+    )
+
+    assert result["success"] is False
+    assert "exclusive" in result.get("error", "").lower() or "专属" in result.get("message", "")
+
+
+@pytest.mark.asyncio
+async def test_character_exclusive_correct_character():
+    """Sending a character-exclusive gift to correct character should succeed."""
+    from app.services.gift_service import gift_service
+    from app.services.payment_service import payment_service
+
+    await payment_service.add_credits("u1", 5000, description="test")
+
+    result = await gift_service.send_gift(
+        user_id="u1",
+        character_id="b6c7d8e9-f0a1-4b2c-3d4e-5f6a7b8c9d0e",
+        gift_type="vera_sunglasses",
+        idempotency_key="test-key-exclusive-2",
+    )
+
+    assert result["success"] is True

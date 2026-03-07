@@ -276,6 +276,17 @@ class GiftService:
                 "message": f"Unknown gift type: {gift_type}"
             }
         
+        # Validate character exclusive gifts
+        if gift_info.get("character_exclusive"):
+            required_character = gift_info["character_exclusive"]
+            if character_id != required_character:
+                char_name = gift_info.get("name_cn") or gift_info["name"]
+                return {
+                    "success": False,
+                    "error": "character_exclusive",
+                    "message": f"'{char_name}' 是角色专属礼物，只能送给对应角色",
+                }
+
         price = gift_info["price"]
         xp_reward = gift_info["xp_reward"]
         tier = gift_info.get("tier", GiftTier.CONSUMABLE)
