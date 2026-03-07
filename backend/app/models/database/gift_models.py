@@ -473,7 +473,12 @@ class ActiveEffect(Base):
     # Timestamps
     started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     expires_at = Column(DateTime, nullable=True)  # Optional hard expiry
-    
+
+    # Gift effect parameters (persisted for DB mode)
+    stage_boost = Column(Integer, default=0)          # Temporary stage upgrade (0-2)
+    allows_nsfw = Column(Integer, default=0)          # SQLite boolean: unlocks NSFW for this character
+    xp_multiplier = Column(Float, default=1.0)        # XP multiplier (1.0 = normal, 2.0 = double)
+
     def __repr__(self):
         return f"<ActiveEffect(type={self.effect_type}, remaining={self.remaining_messages})>"
     
