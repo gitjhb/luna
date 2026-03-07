@@ -195,3 +195,73 @@ async def test_character_exclusive_correct_character():
     )
 
     assert result["success"] is True
+
+
+# ============================================================================
+# Task 5: Min Stage Validation Tests
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_min_stage_rejected_at_stranger():
+    """Gift with min_stage=friends should be rejected if user is at strangers."""
+    from app.services.gift_service import gift_service, _MOCK_GIFT_CATALOG
+    from app.services.payment_service import payment_service
+
+    _MOCK_GIFT_CATALOG["test_touch_gift"] = {
+        "gift_type": "test_touch_gift",
+        "name": "Test Touch",
+        "name_cn": "测试触摸",
+        "price": 80,
+        "xp_reward": 60,
+        "tier": 2,
+        "icon": "🤝",
+        "min_stage": "friends",
+    }
+
+    await payment_service.add_credits("u1", 1000, description="test")
+
+    result = await gift_service.send_gift(
+        user_id="u1",
+        character_id="c1",
+        gift_type="test_touch_gift",
+        idempotency_key="test-min-stage-1",
+    )
+
+    assert result["success"] is False
+    assert "亲密" in result.get("message", "") or "stage" in result.get("error", "").lower()
+
+
+@pytest.mark.asyncio
+async def test_min_stage_accepted_at_correct_stage():
+    """Gift with min_stage=friends should succeed if user is at friends stage."""
+    from app.services.gift_service import gift_service, _MOCK_GIFT_CATALOG
+    from app.services.payment_service import payment_service
+    from app.services.intimacy_service import intimacy_service
+
+    _MOCK_GIFT_CATALOG["test_touch_gift"] = {
+        "gift_type": "test_touch_gift",
+        "name": "Test Touch",
+        "name_cn": "测试触摸",
+        "price": 80,
+        "xp_reward": 60,
+        "tier": 2,
+        "icon": "🤝",
+        "min_stage": "friends",
+    }
+
+    await payment_service.add_credits("u1", 1000, description="test")
+
+    # Set user to friends stage
+    intimacy = await intimacy_service.get_or_create_intimacy("u1", "c1")
+    intimacy["current_level"] = 8
+    intimacy["intimacy_stage"] = "friends"
+    intimacy["total_xp"] = 300.0
+
+    result = await gift_service.send_gift(
+        user_id="u1",
+        character_id="c1",
+        gift_type="test_touch_gift",
+        idempotency_key="test-min-stage-2",
+    )
+
+    assert result["success"] is True

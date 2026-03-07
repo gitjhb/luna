@@ -287,6 +287,27 @@ class GiftService:
                     "message": f"'{char_name}' 是角色专属礼物，只能送给对应角色",
                 }
 
+        # Validate min_stage for touch/interaction gifts
+        if gift_info.get("min_stage"):
+            required_stage = gift_info["min_stage"]
+            stage_order = ["strangers", "friends", "ambiguous", "lovers", "soulmates"]
+            intimacy_record = await intimacy_service.get_or_create_intimacy(user_id, character_id)
+            current_stage = intimacy_record.get("intimacy_stage", "strangers")
+
+            required_idx = stage_order.index(required_stage) if required_stage in stage_order else 0
+            current_idx = stage_order.index(current_stage) if current_stage in stage_order else 0
+
+            if current_idx < required_idx:
+                stage_names_cn = {
+                    "strangers": "陌生人", "friends": "朋友",
+                    "ambiguous": "暧昧", "lovers": "恋人", "soulmates": "挚爱",
+                }
+                return {
+                    "success": False,
+                    "error": "stage_too_low",
+                    "message": f"亲密度不足：需要达到'{stage_names_cn.get(required_stage, required_stage)}'阶段才能使用此礼物",
+                }
+
         price = gift_info["price"]
         xp_reward = gift_info["xp_reward"]
         tier = gift_info.get("tier", GiftTier.CONSUMABLE)
