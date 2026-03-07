@@ -61,6 +61,7 @@ class EffectService:
         gift_id: Optional[str] = None,
         stage_boost: int = 0,
         allows_nsfw: bool = False,
+        xp_multiplier: float = 1.0,
     ) -> dict:
         """
         Apply a new status effect.
@@ -90,6 +91,7 @@ class EffectService:
             "expires_at": None,  # No hard expiry, only message-based
             "stage_boost": stage_boost,
             "allows_nsfw": allows_nsfw,
+            "xp_multiplier": xp_multiplier,
         }
         
         if self.mock_mode:
@@ -110,6 +112,9 @@ class EffectService:
                     remaining_messages=duration_messages,
                     gift_id=gift_id,
                     started_at=now,
+                    stage_boost=stage_boost,
+                    allows_nsfw=1 if allows_nsfw else 0,
+                    xp_multiplier=xp_multiplier,
                 )
                 db.add(effect_obj)
                 await db.commit()
@@ -158,6 +163,9 @@ class EffectService:
                     "remaining_messages": e.remaining_messages,
                     "gift_id": e.gift_id,
                     "started_at": e.started_at,
+                    "stage_boost": getattr(e, 'stage_boost', 0) or 0,
+                    "allows_nsfw": bool(getattr(e, 'allows_nsfw', 0)),
+                    "xp_multiplier": getattr(e, 'xp_multiplier', 1.0) or 1.0,
                 }
                 for e in effects
             ]
