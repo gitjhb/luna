@@ -8,12 +8,71 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 import os
+import logging
 
 from app.models.schemas import UserContext
+
+logger = logging.getLogger(__name__)
 
 # Consistent demo user ID for mock mode
 # Use simple string ID that matches API fallbacks
 DEMO_USER_ID = "demo-user-123"
+
+# Firebase Admin SDK (lazy init)
+_firebase_admin_app = None
+
+
+def get_firebase_admin():
+    """Initialize Firebase Admin SDK lazily for user lookups"""
+    global _firebase_admin_app
+    if _firebase_admin_app is not None:
+        return _firebase_admin_app
+    
+    try:
+        import firebase_admin
+        from firebase_admin import credentials
+        
+        # Check if already initialized
+        try:
+            _firebase_admin_app = firebase_admin.get_app()
+            return _firebase_admin_app
+        except ValueError:
+            pass
+        
+        # Try to initialize
+        cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if cred_path and os.path.exists(cred_path):
+            cred = credentials.Certificate(cred_path)
+            _firebase_admin_app = firebase_admin.initialize_app(cred)
+        elif os.getenv("FIREBASE_PROJECT_ID"):
+            _firebase_admin_app = firebase_admin.initialize_app()
+        else:
+            return None
+            
+        return _firebase_admin_app
+    except Exception as e:
+        logger.warning(f"Firebase Admin init failed: {e}")
+        return None
+
+
+async def fetch_email_from_firebase(firebase_uid: str) -> Optional[str]:
+    """
+    Fetch user's email from Firebase Auth.
+    This is the FALLBACK when we don't have email in our database.
+    """
+    if not get_firebase_admin():
+        return None
+    
+    try:
+        from firebase_admin import auth as firebase_auth
+        user_record = firebase_auth.get_user(firebase_uid)
+        if user_record.email:
+            logger.info(f"Fetched email from Firebase for {firebase_uid}: {user_record.email}")
+            return user_record.email
+    except Exception as e:
+        logger.warning(f"Failed to fetch email from Firebase for {firebase_uid}: {e}")
+    
+    return None
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -120,9 +179,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         email: Optional[str] = None,
         display_name: Optional[str] = None,
         is_guest: bool = False,
-    ) -> bool:
+    ) -> Optional[str]:
         """
         Ensure user exists in database. Creates if not exists.
+        Also updates email if we have a better one from Firebase.
         
         This is CRITICAL for:
         - FK constraints (transactions, subscriptions)
@@ -136,11 +196,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             is_guest: Whether this is a guest user
             
         Returns:
-            True if user exists or was created successfully
+            The user's email (from DB, param, or Firebase fallback), or None on error
         """
-        import logging
-        logger = logging.getLogger(__name__)
-        
         try:
             from app.core.database import get_db
             from app.models.database.user_models import User
@@ -159,14 +216,44 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 existing_user = result.scalar_one_or_none()
                 
                 if existing_user:
-                    logger.debug(f"User {user_id} already exists in database")
-                    return True
+                    # User exists - check if we need to update email
+                    db_email = existing_user.email
+                    
+                    # If DB has fake/auto email but we have a real one, update it
+                    is_fake_email = (
+                        not db_email or 
+                        "@auto.luna.app" in (db_email or "") or
+                        "@guest.luna.app" in (db_email or "")
+                    )
+                    
+                    if is_fake_email:
+                        # Try to get real email: param > Firebase fallback
+                        real_email = email
+                        if not real_email and not is_guest:
+                            real_email = await fetch_email_from_firebase(user_id)
+                        
+                        if real_email and "@" in real_email:
+                            logger.info(f"Updating user {user_id} email: {db_email} -> {real_email}")
+                            existing_user.email = real_email
+                            await db.commit()
+                            return real_email
+                    
+                    return db_email
+                
+                # User doesn't exist - need to create
+                # First, try to get email from Firebase if not provided
+                final_email = email
+                if not final_email and not is_guest:
+                    final_email = await fetch_email_from_firebase(user_id)
+                
+                if not final_email:
+                    final_email = f"{user_id[:20]}@auto.luna.app"
                 
                 # Create new user
-                logger.info(f"Creating user in database: {user_id} (is_guest={is_guest})")
+                logger.info(f"Creating user in database: {user_id} (is_guest={is_guest}, email={final_email})")
                 user = User(
                     firebase_uid=user_id,
-                    email=email or f"{user_id[:20]}@auto.luna.app",
+                    email=final_email,
                     display_name=display_name or ("Guest" if is_guest else "User"),
                     is_subscribed=False,
                     subscription_tier="free",
@@ -188,11 +275,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 await db.commit()
                 
                 logger.info(f"Created user {user.user_id} (firebase_uid={user_id}) with wallet")
-                return True
+                return final_email
                 
         except Exception as e:
             logger.error(f"Failed to ensure user in database for {user_id}: {e}")
-            return False
+            return None
 
     async def _validate_token(self, token: str) -> Optional[UserContext]:
         """
@@ -248,12 +335,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 
                 # CRITICAL: Also create user in DATABASE (not just memory)
                 # This ensures FK constraints work for transactions, subscriptions, etc.
-                await self._ensure_user_in_database(
+                # This also fetches email from Firebase if not in DB
+                resolved_email = await self._ensure_user_in_database(
                     user_id=user_id,
                     email=user_email or ("jhb@luna.app" if is_demo else None),
                     display_name="JHB" if is_demo else "User",
                     is_guest=is_guest,
                 )
+                
+                # Use email from database/Firebase fallback
+                if resolved_email:
+                    user_email = resolved_email
                 
                 _users[user_id] = {
                     "user_id": user_id,

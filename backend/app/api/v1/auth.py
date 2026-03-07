@@ -361,6 +361,23 @@ async def authenticate_firebase(request: FirebaseAuthRequest):
         user_display_name = request.display_name or decoded_token.get("name") or "User"
         user_avatar = request.photo_url or decoded_token.get("picture")
         
+        # FALLBACK: If still no email, fetch from Firebase Admin SDK
+        # This handles cases where Apple hides email but Firebase has it
+        if not user_email:
+            try:
+                from firebase_admin import auth as firebase_auth
+                user_record = firebase_auth.get_user(firebase_uid)
+                if user_record.email:
+                    user_email = user_record.email
+                    logger.info(f"Got email from Firebase Admin for {firebase_uid}: {user_email}")
+            except Exception as e:
+                logger.warning(f"Failed to fetch email from Firebase Admin: {e}")
+        
+        # Last resort: generate placeholder email (DB requires non-null)
+        if not user_email:
+            user_email = f"{firebase_uid[:20]}@auto.luna.app"
+            logger.warning(f"No email found for {firebase_uid}, using placeholder")
+        
         from app.core.database import get_db
         from sqlalchemy import select
         from app.models.database.user_models import User
@@ -374,6 +391,16 @@ async def authenticate_firebase(request: FirebaseAuthRequest):
             if db_user:
                 # Update existing user
                 db_user.last_login_at = datetime.utcnow()
+                
+                # Update email if DB has placeholder but we have real one now
+                db_email_is_placeholder = (
+                    "@auto.luna.app" in (db_user.email or "") or
+                    "@guest.luna.app" in (db_user.email or "")
+                )
+                if db_email_is_placeholder and user_email and "@auto.luna.app" not in user_email:
+                    logger.info(f"Updating email: {db_user.email} -> {user_email}")
+                    db_user.email = user_email
+                
                 # Only update display_name if we got a new one AND current is generic
                 if request.display_name and request.display_name.strip():
                     # Apple only sends name on first auth, so save it if we get it
@@ -386,9 +413,11 @@ async def authenticate_firebase(request: FirebaseAuthRequest):
                 
                 # Use stored values from database (important for Apple re-auth)
                 user_display_name = db_user.display_name or user_display_name
-                user_email = db_user.email or user_email
+                # Prefer real email over placeholder
+                if not db_email_is_placeholder:
+                    user_email = db_user.email or user_email
                 user_avatar = db_user.avatar_url or user_avatar
-                logger.info(f"Updated existing user: {user_id}, name: {user_display_name}")
+                logger.info(f"Updated existing user: {user_id}, name: {user_display_name}, email: {user_email}")
             else:
                 # Create new user in database
                 # For new users, use the name from request (Apple sends it on first auth)
